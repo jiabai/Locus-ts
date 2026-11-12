@@ -1,0 +1,68 @@
+name: ASR Spike macOS Load Verification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: asr-spike-macos-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sherpa-onnx-node-load:
+    name: sherpa-onnx-node ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-x64
+            runner: macos-15-intel
+          - platform: macos-arm64
+            runner: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+
+      - name: Install sherpa-onnx-node
+        run: |
+          mkdir -p build/asr-spike-ci
+          cp scripts/asr-spike-ci/package.json build/asr-spike-ci/package.json
+          cp scripts/asr-spike-ci/smoke.mjs build/asr-spike-ci/smoke.mjs
+          cd build/asr-spike-ci
+          npm install --no-audit --no-fund
+
+      - name: Download SenseVoice model archive and silero VAD
+        run: |
+          cd build/asr-spike-ci
+          curl -fL --retry 3 -o sense-voice.tar.bz2 \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2
+          curl -fL --retry 3 -o silero_vad.onnx \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
+          tar -xjf sense-voice.tar.bz2
+          cp silero_vad.onnx sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17/silero_vad.onnx
+
+      - name: Run native load and recognition smoke
+        env:
+          DYLD_LIBRARY_PATH: ${{ github.workspace }}/build/asr-spike-ci/node_modules/sherpa-onnx-node/lib
+        run: |
+          node build/asr-spike-ci/smoke.mjs \
+            build/asr-spike-ci/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17 \
+            build/asr-spike-ci/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17/test_wavs \
+            build/asr-spike-ci/smoke-${{ matrix.platform }}.json
+
+      - name: Upload platform verification result
+        uses: actions/upload-artifact@v6
+        with:
+          name: asr-spike-smoke-${{ matrix.platform }}
+          path: build/asr-spike-ci/smoke-${{ matrix.platform }}.json
+          if-no-files-found: error
+          retention-days: 14
