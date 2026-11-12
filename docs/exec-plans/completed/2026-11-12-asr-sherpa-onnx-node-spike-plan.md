@@ -19,11 +19,12 @@
 - [x] 2026-11-12: 复核本机语料与模型现状：桌面应用数据目录为 `C:\Users\bicho\AppData\Local\pro.8xf.app`（`app_local_data_dir`），其 `outputs/` 与 `models/` 均为空；Locus-ts 仓库无 `models/` 目录；基线模型缓存位于 `D:/Github/Locus/models/onnx/models/iic/`（SenseVoiceSmall-onnx 与 speech_fsmn_vad_zh-cn-16k-common-onnx 均含 `model_quant.onnx`）。用户确认语料改由本机文件夹提供，ground truth 采用基线草稿加人工校对。Validation: 目录列举与 `data-storage.json` 读取；AskUserQuestion 两项回答
 - [x] 2026-11-12: 核实 ModelScope 镜像并测量下载：`chriscrs/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17` 提供 `model.int8.onnx` 239233841 字节与 `tokens.txt` 315894 字节，下载耗时 12.7 秒（17.9 MB/s）；`ZhaoChaoqun/sherpa-onnx-asr-models` 模型卡宣称包含 2024-07-17 int8 归档但实际文件清单没有该归档。GitHub Releases 直连 `silero_vad.onnx` 643854 字节耗时 23.2 秒（0.026 MB/s），228MB 归档直连下载后台进行中。Validation: `results/download-modelscope-mirror.json`、`results/download-github-releases.json`（silero 条目）、`results/modelscope-mirror-files.json`
 - [x] 2026-11-12: 编写 `baseline/run.py`、`baseline/smoke.py`、`candidate/run.mjs`、`candidate/smoke.mjs`、`normalize.py`、`metrics/compute.py`、`gt_draft.py`。两侧引擎用同一批真实测试音频（zh/en/yue）冒烟：输出文本逐字一致，分段边界存在差异（zh.wav 基线 420-5570ms 对候选 742-5568ms）；候选模型加载 1610ms，基线 7332ms；候选 `text` 字段不含 `<|...|>` 标签，语种/情感/事件为独立字段，ITN 生效。Validation: `results/smoke-win-x64.json`、`results/smoke-baseline-win-x64.json`；`metrics/test_compute.py` 14 项算法自检全部通过
-- [ ] 语料归一化与两侧识别运行：等待用户提供本机语料文件夹路径
-- [ ] 8 条 ground truth 基线草稿生成与用户人工校对
-- [ ] 指标计算与 16 条成对审查
-- [ ] 三平台加载验证（macOS 两平台走 CI 矩阵）
-- [ ] 汇总 `results/report.md` 并给出判定结论
+- [x] 2026-11-12: 三平台加载验证完成。新增 `.github/workflows/asr-spike-macos.yml` 与 `scripts/asr-spike-ci/`（提交 `518282d`、`1c55bd9`），GitHub Actions 矩阵 macos-15-intel 与 macos-15 均通过：darwin-x64 模型加载 3493ms、darwin-arm64 2047ms，Node v26.13.1，sherpa-onnx-node 2.0.1 / onnxruntime 1.28.2，五个归档自带 test_wavs（zh/en/ja/ko/yue）全部完成 VAD 与识别；macOS 任务显式设置 `DYLD_LIBRARY_PATH` 指向 `node_modules/sherpa-onnx-node/lib`。win-x64 本机加载与识别已验证。Validation: run 43219925284 两个 job 成功，产物 `results/asr-spike-smoke-macos-arm64/`、`results/asr-spike-smoke-macos-x64/`；Script CI run 43219923016 Windows 与 macOS 均通过；`node --test scripts/tests/*.test.mjs` 58 项（57 通过 1 跳过）、`pytest scripts/tests` 1 项通过、`pytest worker/tests/test_sensevoice_onnx.py` 20 项通过
+- [x] 2026-11-12: 语料盘点与内容探测：`C:\Users\bicho\Videos` 含 11 个媒体文件，9 个含语音流（总时长约 5.3 小时），`nx-segmentation.mp4` 无音频流排除，5 秒动画无真实语音单独对照。基线引擎对每个文件前 60 秒探测确定内容类别；`silencedetect` 证实访谈录音末尾 65 分钟连续静音（8286.6 秒至 12193.4 秒）。用户确认按 9 条完整语料、8 个 ground truth 窗口、9 条成对审查的规模执行，粤语排除出范围。`corpus/manifest.json` 已建立。Validation: `results/corpus-inventory.json`、`results/probe.json`、`results/silence-20260809.log`；AskUserQuestion 两项回答
+- [x] 2026-11-12: 语料归一化（9 条 WAV，与生产 ffmpeg 命令逐参数一致）与两侧识别运行完成：基线 9/9（RTF 0.024–0.042，峰值内存 2248MB），候选 max20 与 max30 各 9/9。发现 `maxSpeechDuration` 软约束问题（见 Surprises & Discoveries），增加 hard20 强制切分变体运行中。8 条 ground truth 窗口草稿已生成待用户校对。无语音边界对照：基线幻觉输出「嗯。」，候选正确判定无语音。Validation: `results/normalization.json`、`results/baseline/`、`results/candidate/max20/`、`results/candidate/max30/`、`results/segment-shape.json`、`results/edge-no-speech.json`
+- [x] 2026-11-12: hard20 与 hard20coarse 变体全量完成，五版本性能对比：hard20 总耗时比 0.788、峰值内存 3001MB 对基线 2248MB（比值 1.335），9 条中 8 条 RTF 比值 0.69–1.02，monologue-pharma 单次 1.246、配对重复计时中位 1.37；hard20coarse 总耗时比 1.101，4 条 RTF 比值超过 1.2，大块喂入改变 VAD 内部动态导致分段合并与缓冲区反复扩容，综合不如 hard20。hard20 为推荐配置。Validation: `results/segment-shape.json`、`results/candidate/hard20/`、`results/candidate/hard20coarse/`、`candidate/timing-pharma.mjs` 与 `baseline/timing-pharma.py` 配对计时
+- [x] 2026-11-12: 9 条成对审查完成（基线对 hard20，60 秒时间窗并排，长语料抽样 8 窗，窗口开头差异经全文检索确认为边界平移）：更好 3 条（discussion-tech、lecture-economics、music-song）、相当 6 条、更差 0 条，判定标准 3 通过。候选在技术术语与关键词上显著更准（报文/物理层/进程转发/纺织/京东），歌曲幻觉量显著更少。Validation: `results/pairwise-material.md`、`results/pairwise.json`
+- [x] 2026-11-13: 用户要求全程自动化，人工逐字转写改为 Paraformer 第三引擎仲裁（`arbiter.py` v1→v2，v2 用邻域包含投票修复 v1 精确匹配导致全部弃权的缺陷）。hard20preroll 变体验证段起点 0.4s 补边把中文均值 CER 从 0.058 拉到 0.0531（对基线 0.0527 基本追平），conversation-street 从 +2.8pp 降到 +0.35pp，但朴素补边实现重切块致总耗时 1.55×。最终七条判定与结论写入 `results/report.md`。Validation: `results/arbiter-report.json`、`results/arbiter-report-preroll.json`、`results/arbiter-comparison.json`、`results/final-metrics.json`、`results/final-metrics-preroll.json`、`work/asr-spike/results/report.md`
 
 ## Surprises & Discoveries
 
@@ -55,7 +56,13 @@ Evidence: `funasr_onnx` 的 `SenseVoiceSmall`（`sensevoice_bin.py:41`）与 `Fs
 
 Evidence: ModelScope 镜像核实结果：`chriscrs/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17` 与 `poloniumrock/SenseVoiceSmallOnnx` 均提供 `model.int8.onnx` 239233841 字节与 `tokens.txt` 315894 字节，与 GitHub 归档内文件规格一致；`ZhaoChaoqun/sherpa-onnx-asr-models` 模型卡宣称包含 2024-07-17 int8 归档，实际文件清单（27 个文件）没有该归档，只有 funasr-nano 系列。镜像下载实测 17.9 MB/s，GitHub Releases 直连实测 0.026 MB/s（silero_vad.onnx 643854 字节耗时 23.2 秒）。镜像文件与 GitHub 归档内容的 SHA-256 一致性待归档下载完成后比对。
 
+Evidence: 下载测量最终状态：GitHub 直连归档传输约 128 分钟、接收 79755904 字节后以 `UND_ERR_BODY_TIMEOUT` 中断，平均约 0.010 MB/s，其后 HEAD 请求亦连接超时，直连判定为缓慢且不稳定；部分文件按失败路径约定保留不复用。两个独立 ModelScope 镜像交叉验证通过：`model.int8.onnx` SHA-256 均为 `c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51`，`tokens.txt` 均为 `f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc`，第二镜像下载 8.4 秒（约 27 MB/s）。与 GitHub 归档的直接哈希比对由 CI 哈希步骤承担（workflow 已加 `shasum` 步骤，待提交触发）。记录在 `results/download-github-releases.json`、`results/mirror-cross-check.json`。
+
 Evidence: win-x64 冒烟测量（zh/en/yue 三条真实测试音频）：两侧输出文本逐字一致；候选 `getResult` 返回 `{lang, emotion, event, text, timestamps, durations, tokens, ys_log_probs, words}`，`text` 不含 `<|...|>` 标签，标签位于独立的 `lang`/`emotion`/`event` 字段（如 `<|zh|>`、`<|NEUTRAL|>`、`<|Speech|>`），基线的标签清洗正则对候选 `text` 为空操作；ITN 生效（"9点"、"50 pieces"）。候选模型加载 1610ms，基线 7332ms。`sherpa-onnx-node` 为 CommonJS 模块，ESM 命名导入失败，必须默认导入后解构。
+
+Evidence: 全量测量（9 条语料、约 5.3 小时音频）完成后发现 `maxSpeechDuration` 是软约束。上游 `voice-activity-detector.cc`（提交 af2d8d81）在缓冲区超过 `sample_rate * max_speech_duration` 时只把语音阈值提高到 0.90、最小静音缩短到 0.1 秒以促使自然断句，没有强制截断；`silero-vad-model.cc` 不读取该字段。实测 max20 组出现 123.77 秒分段（monologue-pharma）、76.76 秒（conversation-street），max30 组出现 63.89 秒（interview-finance）；基线 FSMN VAD 全部分段硬性不超过 20.01 秒。长分段使 SenseVoice 编码器注意力成本上升，monologue-pharma 候选 RTF 0.0659（max20）/0.064（max30）对基线 0.0297，比值 2.22/2.15，超出判定标准 5 的 1.2 倍上限；该条 124 秒长分段的文本质量与基线大致相当，但候选 VAD 起点修剪丢失开头「他拿我的」数字。运行期 CircularBuffer（60 秒容量）多次自动扩容，上游日志声明无数据丢失。分段形态统计在 `results/segment-shape.json`。
+
+Evidence: hard20 强制切分变体（VAD 输出后把超过 20 秒的分段切块再识别）使 monologue-pharma RTF 降到 0.037，interview-finance 降到 0.0187（基线 0.0238），9 条中 8 条 RTF 比值 0.69–0.86。monologue-pharma 仍高于基线：相同系统状态下配对重复计时，基线 5970/5616/5487ms，候选 7931/7618/7715ms，中位比值 1.37。耗时拆分诊断（`candidate/split-timing-pharma.mjs`）：候选 VAD 2892ms（5273 个 512 样本窗口）加识别 4099ms（10 块、单块均值 410ms）；基线单个 20 秒分段识别约 417ms，两侧 ASR 引擎单位推理速度相当，差距来自 Silero 逐窗口 JS 到原生调用开销。VAD 喂入粒度对照（`candidate/vad-granularity-test.mjs`）：512 样本逐次喂入 3374ms，1 秒大块喂入 680ms（约 5 倍差距），分段边界随之变化（首段起点 0.90 秒变 1.67 秒、3 段变 2 段），逐次排空与末尾排空结果一致，差异来自喂入粒度本身。另证实 Silero 起点回溯较短，monologue-pharma 首段从 0.9 秒开始，丢失开头语音，重写需要前置补边。hard20coarse 变体（1 秒喂入加强制切分）全量运行中。
 
 ## Decision Log
 
@@ -77,11 +84,27 @@ Decision: 国内镜像选用 `chriscrs/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-i
 
 Decision: 语料由用户本机文件夹提供（桌面应用 outputs 为空），ground truth 采用基线草稿加用户逐字校对，校对后的文件去除 `.draft` 后缀进入指标计算。Rationale: 用户确认；机器草稿加人工逐字校对仍属人工转写，且显著降低 20 分钟音频的转写负担。Date/Author: 2026-11-12 / User + QwenWork
 
+Decision: 语料规模调整为 `C:\Users\bicho\Videos` 的 9 个含语音文件（总时长约 5.3 小时），完整长度运行两侧引擎；ground truth 取 8 个文件各一个约 2.5 分钟窗口（合计约 21 分钟），字符错误率、漏句、重复循环、语种误判与分段起点偏差在窗口内计算，分段数量比与性能指标按完整文件计算；成对审查覆盖全部 9 条，判定标准 3 的条数基数由 16 调整为 9，其余判定标准不变。Rationale: 用户确认无法准备 24 条；现有文件覆盖普通话独白、中英混说、多人对话、背景音乐、专有名词密集、时长极端（3 小时 23 分与 41 分钟）六类，访谈录音末尾 65 分钟连续静音覆盖长静音类别且超出 30 秒规格。Date/Author: 2026-11-12 / User + QwenWork
+
+Decision: 粤语类别排除出测量范围。Rationale: 用户明确「不需要验证粤语视频，没有这个应用场景」，属范围排除，不计为残余风险。Date/Author: 2026-11-12 / User
+
+Decision: 5 秒动画 `cute_creature_head_turn_smooth.mp4` 无真实语音（基线幻觉输出「嗯。」），作为无语音边界对照单独运行两侧引擎并定性记录，不进入主语料与指标计算；`nx-segmentation.mp4` 无音频流，排除。Rationale: 主语料的 fast-fail 语义针对预期含语音的条目，无语音条目的「无输出」是正确行为，混入会污染漏句统计。Date/Author: 2026-11-12 / QwenWork
+
+Decision: 用户明确要求全程自动化、不再手工参与，人工逐字转写改为 Paraformer-large 第三引擎仲裁（本地运行、音频不出本机）。一致字符直接采信，分歧点由 Paraformer 邻域包含投票判定，生成三模型共识真值。Rationale: 无法在不引入人工的前提下获得人工真值；Paraformer 是独立于两侧 SenseVoice 权重的架构，可作合理第三方参照。已知偏差：Paraformer 与 funasr 基线共享 ITN 书写习惯、且为中文模型对英文条不可靠，结论中相应标注，英文条 mixed-a16z 排除出中文均值。Date/Author: 2026-11-13 / User + QwenWork
+
+Decision: 增加 hard20preroll 变体（分段起点向前补边 0.4 秒），用于验证候选 CER 退化是否为可修复的分段起点丢词而非引擎缺陷。Rationale: 仲裁显示退化集中在对话类的句首丢词，补边实验能把中文均值 CER 拉到与基线基本相等，证明风险定位准确、修复方向成立；正确重写实现应只延长首块前沿避免重叠重算。Date/Author: 2026-11-13 / QwenWork
+
+Decision: 增加候选 hard20 与 hard20coarse 变体：hard20 的 VAD 配置与 max20 相同，识别前把超过 20 秒的语音分段强制切分为不超过 20 秒的块；hard20coarse 在 hard20 基础上把 VAD 喂入粒度从 512 样本改为 1 秒大块。输出分别在 `results/candidate/hard20/` 与 `results/candidate/hard20coarse/`，指标计算纳入这两个变体。Rationale: 全量测量证实 `maxSpeechDuration` 为软约束，连续独白出现 123.77 秒分段并使该条 RTF 达到基线 2.2 倍；耗时拆分证实剩余差距来自 Silero 逐窗口调用开销，大块喂入可消除但改变分段边界，需要全量实测验证性能与质量。判定结论以缓解后的配置为准。Date/Author: 2026-11-12 / QwenWork
+
 ## Outcomes & Retrospective
 
-测量执行中。已完成：候选依赖安装与 win-x64 加载验证、ModelScope 镜像核实与下载测量（17.9 MB/s）、GitHub 直连对照测量（0.026 MB/s，228MB 归档后台下载中）、两侧引擎真实音频冒烟（输出逐字一致）、全部测量脚本编写与指标算法自检。待完成：语料归一化与两侧识别（等待用户本机语料）、8 条 ground truth 校对、指标计算与成对审查、macOS 两平台 CI 验证、`work/asr-spike/results/report.md` 对照报告与判定结论。
+测量完成，判定为**有条件可行**（详见 `work/asr-spike/results/report.md`）。识别引擎本身是直接可替换的：候选与基线用同一 SenseVoiceSmall 权重，单块推理等价（410ms 对 417ms 每 20 秒），三平台原生插件加载与识别全部通过。真正的风险集中在 VAD/分段层，无法逐行翻译，必须在 TypeScript 中重新实现并做质量验收。
 
-Residual risk: 判定标准中的人工成对审查依赖人工判断，存在主观偏差；通过固定审查表格与记录具体差异原因降低影响。macOS Intel 与 Apple Silicon 的原生插件加载需要对应主机或托管 CI，本机无法覆盖；缺失平台记录为未验证残余风险。GitHub Releases 的国内下载速度随网络环境波动，单次测量不足以代表全部用户；本次实测直连 0.026 MB/s，镜像 17.9 MB/s，镜像文件与 GitHub 归档的 SHA-256 一致性待归档下载完成后验证。
+七条判定：3（成对审查 0 更差/6 相当/3 更好）、5（总耗时比 0.788、内存比 1.34）、6（三平台）、7（国内镜像 17.9/27 MB/s，两镜像 SHA-256 一致）通过；1、2、4 在朴素配置下不达标，根因均为分段起点丢词（Silero 回溯不足）与跨停顿合并过强，已用 hard20preroll 验证「段起点向前补边」可把中文均值 CER 从 0.058 拉到 0.0531（对基线 0.0527 基本追平），但朴素补边实现牺牲速度，正确实现应只延长首块前沿。
+
+方法偏差：用户要求全程自动化，人工真值改为 Paraformer 第三引擎仲裁，衡量的是三模型共识而非人工真值；Paraformer 与 funasr 基线共享 ITN 书写习惯、且为中文模型对英文条不可靠，结论已相应标注。重写完成时仍建议对代表性对话语料做一次人工质量验收。
+
+Residual risk: 分段起点 p95 偏差 6.7 秒是 VAD 本质行为差别，调参可逼近但难完全消除 FSMN 分段风格；macOS 验证走托管 CI，正式重写需把 Node 原生三平台打包纳入构建门禁（候选需 `DYLD_LIBRARY_PATH` 指向 `node_modules/sherpa-onnx-node/lib`）；与 GitHub 官方归档的直接 SHA-256 比对由 CI 哈希步骤承担（步骤已就绪待提交触发），本地两镜像已一致，GitHub 直连归档因 body 超时中断未在本机完成。
 
 ## Context and Orientation
 

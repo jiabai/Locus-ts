@@ -50,6 +50,11 @@ jobs:
           tar -xjf sense-voice.tar.bz2
           cp silero_vad.onnx sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17/silero_vad.onnx
 
+      - name: Record SHA-256 of archive model files
+        run: |
+          cd build/asr-spike-ci/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17
+          shasum -a 256 model.int8.onnx tokens.txt | tee ../model-sha256-${{ matrix.platform }}.txt
+
       - name: Run native load and recognition smoke
         env:
           DYLD_LIBRARY_PATH: ${{ github.workspace }}/build/asr-spike-ci/node_modules/sherpa-onnx-node/lib
@@ -63,6 +68,8 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: asr-spike-smoke-${{ matrix.platform }}
-          path: build/asr-spike-ci/smoke-${{ matrix.platform }}.json
+          path: |
+            build/asr-spike-ci/smoke-${{ matrix.platform }}.json
+            build/asr-spike-ci/model-sha256-${{ matrix.platform }}.txt
           if-no-files-found: error
           retention-days: 14
