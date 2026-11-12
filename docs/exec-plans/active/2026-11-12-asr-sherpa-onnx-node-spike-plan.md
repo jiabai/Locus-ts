@@ -15,6 +15,15 @@
 - [x] 2026-11-12: 核实现有 ONNX ASR 路径的引擎、模型、VAD 分块、识别参数、文本清洗与音频归一化规格；核实 `sherpa-onnx-node` 的版本、平台预编译包、SenseVoice 配置字段、VAD 调用形态与模型来源；起草本计划并注册到 `active/index.md`。Validation: `uv run python scripts/validate_agents_docs.py --level ERROR` 与 `--level WARN` 均为 0 个错误 0 个警告；`.venv/Scripts/python.exe -m pytest worker/tests/test_sensevoice_onnx.py -q` 为 20 passed
 - [x] 2026-11-12: 复核本计划引用的全部代码位置与外部事实：`registry.py:25`、`registry.py:29-32`、`sensevoice_onnx.py:24-25`、`sensevoice_onnx.py:80-135`、`sensevoice_onnx.py:187-195`、`sensevoice_onnx.py:241-245`、`sensevoice.py:21-22`、`sensevoice.py:104-114`、`sensevoice.py:260-281`、`media.py:210-224`、`pyproject.toml:11-37`、`pyproject.toml:53-60`、`tauri.conf.json:53-60`、`runtime.rs:110-142`、`contractVersion` 为 12，全部与正文一致；`worker/tests/` 实测 61 个文件、768 个 `def test_` 函数，无 `skipif` 与 `importorskip`。Validation: 逐文件读取比对；`Grep` 统计 `^def test_` 得 768 occurrences across 61 files
 - [x] 2026-11-12: 核实语料与模型的实际存放位置，确定语料来源为桌面应用任务目录 `<APP_USER_DATA_DIR>/outputs/` 与用户提供的本机真实音频，并记录仓库 `models/` 实测 2.9GB。Validation: `ls -la outputs` 仅列出 `mcp-design-review`；`du -sh models` 得 2.9G；`Grep` 定位 `config.py:8` 与 `asr_model.rs:746`
+- [x] 2026-11-12: 建立 `work/asr-spike/` 目录结构，安装 `sherpa-onnx-node@2.0.1`（npm 镜像源 registry.npmmirror.com，8 个包），win-x64 原生插件加载验证通过，记录 version 2.0.1 / gitSha1 af2d8d81 / onnxruntime 1.28.2。Validation: `node -e "require('sherpa-onnx-node')"` 成功并列出全部导出；`node_modules` 含 `sherpa-onnx-win-x64`
+- [x] 2026-11-12: 复核本机语料与模型现状：桌面应用数据目录为 `C:\Users\bicho\AppData\Local\pro.8xf.app`（`app_local_data_dir`），其 `outputs/` 与 `models/` 均为空；Locus-ts 仓库无 `models/` 目录；基线模型缓存位于 `D:/Github/Locus/models/onnx/models/iic/`（SenseVoiceSmall-onnx 与 speech_fsmn_vad_zh-cn-16k-common-onnx 均含 `model_quant.onnx`）。用户确认语料改由本机文件夹提供，ground truth 采用基线草稿加人工校对。Validation: 目录列举与 `data-storage.json` 读取；AskUserQuestion 两项回答
+- [x] 2026-11-12: 核实 ModelScope 镜像并测量下载：`chriscrs/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17` 提供 `model.int8.onnx` 239233841 字节与 `tokens.txt` 315894 字节，下载耗时 12.7 秒（17.9 MB/s）；`ZhaoChaoqun/sherpa-onnx-asr-models` 模型卡宣称包含 2024-07-17 int8 归档但实际文件清单没有该归档。GitHub Releases 直连 `silero_vad.onnx` 643854 字节耗时 23.2 秒（0.026 MB/s），228MB 归档直连下载后台进行中。Validation: `results/download-modelscope-mirror.json`、`results/download-github-releases.json`（silero 条目）、`results/modelscope-mirror-files.json`
+- [x] 2026-11-12: 编写 `baseline/run.py`、`baseline/smoke.py`、`candidate/run.mjs`、`candidate/smoke.mjs`、`normalize.py`、`metrics/compute.py`、`gt_draft.py`。两侧引擎用同一批真实测试音频（zh/en/yue）冒烟：输出文本逐字一致，分段边界存在差异（zh.wav 基线 420-5570ms 对候选 742-5568ms）；候选模型加载 1610ms，基线 7332ms；候选 `text` 字段不含 `<|...|>` 标签，语种/情感/事件为独立字段，ITN 生效。Validation: `results/smoke-win-x64.json`、`results/smoke-baseline-win-x64.json`；`metrics/test_compute.py` 14 项算法自检全部通过
+- [ ] 语料归一化与两侧识别运行：等待用户提供本机语料文件夹路径
+- [ ] 8 条 ground truth 基线草稿生成与用户人工校对
+- [ ] 指标计算与 16 条成对审查
+- [ ] 三平台加载验证（macOS 两平台走 CI 矩阵）
+- [ ] 汇总 `results/report.md` 并给出判定结论
 
 ## Surprises & Discoveries
 
@@ -40,6 +49,14 @@ Evidence: `worker/tests/` 共 61 个测试文件、768 个测试函数，没有�
 
 Evidence: 仓库根目录的 `outputs/` 只含 `mcp-design-review` 一个目录，没有任务音频。桌面客户端的任务产物写入用户数据目录下的 `outputs`（`app/src-tauri/src/collections/tests.rs:73`、`:336`、`:388` 均以 `paths.user_data_dir.join("outputs")` 为任务根），worker 侧对应的环境变量为 `APP_USER_DATA_DIR`（`worker/worker_core/config.py:8`）。应用标识符为 `pro.8xf.app`（`app/src-tauri/tauri.conf.json:5`）。仓库根目录的 `models/` 为开发模式缓存，实测 2.9GB，其中 `models/onnx/` 存放 SenseVoice ONNX 模型；桌面客户端的模型根为用户数据目录下的 `models/onnx`（`app/src-tauri/src/asr_model.rs:746`）。
 
+Evidence: 本机实测桌面应用数据目录位于 `C:\Users\bicho\AppData\Local\pro.8xf.app`（Rust 侧用 `app_local_data_dir`，`app/src-tauri/src/runtime.rs:41`），其 `outputs/` 与 `models/` 均为空，`data-storage.json` 无任务记录。Locus-ts 仓库根目录没有 `models/`；基线模型缓存在原仓库 `D:/Github/Locus/models/onnx/models/iic/` 下，SenseVoiceSmall-onnx 与 speech_fsmn_vad_zh-cn-16k-common-onnx 均含 `model_quant.onnx`。24 条语料全部需要用户从本机文件夹提供。
+
+Evidence: `funasr_onnx` 的 `SenseVoiceSmall`（`sensevoice_bin.py:41`）与 `Fsmn_vad_online`（`vad_bin.py:33`）默认 `intra_op_num_threads=4`，生产构造未覆盖该参数，因此候选侧 `numThreads` 取 4 构成同等线程配置。本机 20 个逻辑处理器。
+
+Evidence: ModelScope 镜像核实结果：`chriscrs/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17` 与 `poloniumrock/SenseVoiceSmallOnnx` 均提供 `model.int8.onnx` 239233841 字节与 `tokens.txt` 315894 字节，与 GitHub 归档内文件规格一致；`ZhaoChaoqun/sherpa-onnx-asr-models` 模型卡宣称包含 2024-07-17 int8 归档，实际文件清单（27 个文件）没有该归档，只有 funasr-nano 系列。镜像下载实测 17.9 MB/s，GitHub Releases 直连实测 0.026 MB/s（silero_vad.onnx 643854 字节耗时 23.2 秒）。镜像文件与 GitHub 归档内容的 SHA-256 一致性待归档下载完成后比对。
+
+Evidence: win-x64 冒烟测量（zh/en/yue 三条真实测试音频）：两侧输出文本逐字一致；候选 `getResult` 返回 `{lang, emotion, event, text, timestamps, durations, tokens, ys_log_probs, words}`，`text` 不含 `<|...|>` 标签，标签位于独立的 `lang`/`emotion`/`event` 字段（如 `<|zh|>`、`<|NEUTRAL|>`、`<|Speech|>`），基线的标签清洗正则对候选 `text` 为空操作；ITN 生效（"9点"、"50 pieces"）。候选模型加载 1610ms，基线 7332ms。`sherpa-onnx-node` 为 CommonJS 模块，ESM 命名导入失败，必须默认导入后解构。
+
 ## Decision Log
 
 Decision: 候选引擎确定为 `sherpa-onnx-node@2.0.1`，模型为 `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17` 的 `model.int8.onnx`，VAD 为 `silero_vad.onnx`。Rationale: 该包提供包含 macOS Intel 在内的 7 个平台预编译原生包；模型与现有 `iic/SenseVoiceSmall-onnx` 同源且同为 int8 量化，构成变量最小的对照；输入规格 16000Hz、80 维与现有 ffmpeg 输出一致。Date/Author: 2026-11-12 / User + QwenWork
@@ -52,11 +69,19 @@ Decision: 全部脚本、语料、转写与结果存放在 `work/asr-spike/`，�
 
 Decision: 测量脚本采用 fast-fail，模型缺失、音频读取失败、识别结果为空一律在出错位置就地崩溃。Python 侧直接 import，不使用 try-except 包裹 import，不使用任何替身或伪造数据。Rationale: `RULES.md` 的强制行为规则；测量数据的可信度依赖真实执行。Date/Author: 2026-11-12 / QwenWork
 
+Decision: 两侧识别语言全部采用生产配置 `language="Chinese"`（映射 zh），覆盖语料中的英语、粤语与中英混说条目。Rationale: 生产路径固定传 Chinese（`artifacts.py:33` 默认值），重写需要支撑的就是这一配置；候选引擎的 auto/yue 能力不在本次对照范围。Date/Author: 2026-11-12 / QwenWork
+
+Decision: 基线脚本直接构造 `SenseVoiceOnnxTranscriber` 并传入记录包装器 `asr_factory`，包装器内部创建真实 `funasr_onnx.SenseVoiceSmall` 并逐次记录原始返回，用于提取语种标签；VAD 工厂与识别逻辑保持生产默认。Rationale: 基线转写器清洗后不保留语种标签，而判定标准需要两侧语种误判计数；包装器只观察真实引擎输出，不改变识别行为。Date/Author: 2026-11-12 / QwenWork
+
+Decision: 国内镜像选用 `chriscrs/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17`（ModelScope），下载 `model.int8.onnx` 与 `tokens.txt` 两个文件；GitHub 归档直连下载继续作为对照测量，完成后比对 SHA-256 验证同源。Rationale: 该仓库文件规格与 GitHub 归档内容一致且实测可下载；宣称包含同一归档的 ZhaoChaoqun 镜像实际未托管该文件。Date/Author: 2026-11-12 / QwenWork
+
+Decision: 语料由用户本机文件夹提供（桌面应用 outputs 为空），ground truth 采用基线草稿加用户逐字校对，校对后的文件去除 `.draft` 后缀进入指标计算。Rationale: 用户确认；机器草稿加人工逐字校对仍属人工转写，且显著降低 20 分钟音频的转写负担。Date/Author: 2026-11-12 / User + QwenWork
+
 ## Outcomes & Retrospective
 
-本计划已起草，测量尚未执行。交付目标为 `work/asr-spike/results/report.md` 中的对照数据与判定结论，以及回填到本文件的 Progress、Surprises & Discoveries 与验证记录。
+测量执行中。已完成：候选依赖安装与 win-x64 加载验证、ModelScope 镜像核实与下载测量（17.9 MB/s）、GitHub 直连对照测量（0.026 MB/s，228MB 归档后台下载中）、两侧引擎真实音频冒烟（输出逐字一致）、全部测量脚本编写与指标算法自检。待完成：语料归一化与两侧识别（等待用户本机语料）、8 条 ground truth 校对、指标计算与成对审查、macOS 两平台 CI 验证、`work/asr-spike/results/report.md` 对照报告与判定结论。
 
-Residual risk: 判定标准中的人工成对审查依赖人工判断，存在主观偏差；通过固定审查表格与记录具体差异原因降低影响。macOS Intel 与 Apple Silicon 的原生插件加载需要对应主机或托管 CI，本机无法覆盖；缺失平台记录为未验证残余风险。GitHub Releases 的国内下载速度随网络环境波动，单次测量不足以代表全部用户，需要同时记录镜像来源的可用性。
+Residual risk: 判定标准中的人工成对审查依赖人工判断，存在主观偏差；通过固定审查表格与记录具体差异原因降低影响。macOS Intel 与 Apple Silicon 的原生插件加载需要对应主机或托管 CI，本机无法覆盖；缺失平台记录为未验证残余风险。GitHub Releases 的国内下载速度随网络环境波动，单次测量不足以代表全部用户；本次实测直连 0.026 MB/s，镜像 17.9 MB/s，镜像文件与 GitHub 归档的 SHA-256 一致性待归档下载完成后验证。
 
 ## Context and Orientation
 
