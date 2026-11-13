@@ -17,10 +17,7 @@ FrameQ 外部或供应商参考资料总入口。`AGENTS.md` 不再逐条列出�
 
 ## 平台探针
 
-- `2026-08-21-xiaohongshu-platform-subtitle-probe.md` — 小红书平台字幕探针
-- `2026-08-22-xiaohongshu-platform-subtitle-probe-6a82e949.md` — 小红书平台字幕探针
-- `2026-08-22-xiaohongshu-platform-subtitle-probe-6a84fc60000000002c0077e4.md` — 小红书平台字幕探针
-- `2026-08-22-xiaohongshu-platform-subtitle-probe-6a872cd0000000002702f748.md` — 小红书平台字幕探针
+- `2026-08-22-xiaohongshu-subtitle-probes.md` — 小红书平台字幕探针（四个公开视频合并实测：`6a81333b`、`6a82e949`、`6a84fc60`、`6a872cd0`）
 
 ## 合规与验收
 

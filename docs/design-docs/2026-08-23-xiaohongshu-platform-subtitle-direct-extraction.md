@@ -26,10 +26,10 @@ FrameQ 当前小红书 fallback 只读取 `note.video.media.stream` 下载 MP4�
 
 | 笔记 ID | `source / zh-CN` 解析结果 | 现场记录 |
 | --- | --- | --- |
-| `6a81333b000000003300b98f` | 335 段，8427 字符 | [`2026-08-21` 实测](../references/2026-08-21-xiaohongshu-platform-subtitle-probe.md) |
-| `6a82e94900000000260360d5` | 276 段，6917 字符 | [`6a82e949` 实测](../references/2026-08-22-xiaohongshu-platform-subtitle-probe-6a82e949.md) |
-| `6a84fc60000000002c0077e4` | 243 段，5984 字符 | [`6a84fc60` 实测](../references/2026-08-22-xiaohongshu-platform-subtitle-probe-6a84fc60000000002c0077e4.md) |
-| `6a872cd0000000002702f748` | 224 段，5378 字符 | [`6a872cd0` 实测](../references/2026-08-22-xiaohongshu-platform-subtitle-probe-6a872cd0000000002702f748.md) |
+| `6a81333b000000003300b98f` | 335 段，8427 字符 | [`2026-08-21` 实测](../references/2026-08-22-xiaohongshu-subtitle-probes.md) |
+| `6a82e94900000000260360d5` | 276 段，6917 字符 | [`6a82e949` 实测](../references/2026-08-22-xiaohongshu-subtitle-probes.md) |
+| `6a84fc60000000002c0077e4` | 243 段，5984 字符 | [`6a84fc60` 实测](../references/2026-08-22-xiaohongshu-subtitle-probes.md) |
+| `6a872cd0000000002702f748` | 224 段，5378 字符 | [`6a872cd0` 实测](../references/2026-08-22-xiaohongshu-subtitle-probes.md) |
 
 这些结果证明字幕是平台返回的 SRT 资源，不是从视频画面 OCR，也不是 ASR 推理结果。
 
@@ -184,5 +184,4 @@ write_subtitle_atomically(subtitle.body, output_path)
 - 通用字幕解析：`worker/frameq_worker/subtitles.py`。
 - 现有小红书安全边界：`docs/design-docs/2026-07-20-xiaohongshu-fallback-module-split.md`、
   `docs/SECURITY.md`。
-- 真实验证记录：`docs/references/2026-08-21-xiaohongshu-platform-subtitle-probe.md` 及其后续三条
-  `2026-08-22-xiaohongshu-platform-subtitle-probe-*.md` 记录。
+- 真实验证记录：`docs/references/2026-08-22-xiaohongshu-subtitle-probes.md`（四个公开视频的合并实测记录）。

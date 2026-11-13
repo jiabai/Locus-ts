@@ -73,9 +73,7 @@
 - `2026-07-12-history-task-permanent-deletion.md` — Explicit irreversible deletion of one supported History vNext task and its playback cache.
 - `2026-07-12-desktop-density-history-toolbar-polish.md` — Intrinsic History height, clearer secondary typography, and a quieter grouped desktop toolbar.
 - `2026-07-12-task-workspace-visual-hierarchy.md` — Restrained hierarchy cleanup for local transcript and AI workspaces without changing product, privacy, or workflow boundaries.
-- `2026-10-20-transcript-locate-action.md`：结果工作区工具栏增加「定位文字稿」，与视频、音频并列；有未保存编辑时拦截定位，提示先保存。
-- `2026-10-23-transcript-copy-action.md`：结果工作区工具栏在「定位文字稿」右侧增加「复制文字稿」，复制磁盘上 `transcript.txt` 的内容，不受未保存编辑影响。
-- `2026-10-24-transcript-polish-action.md`：工具栏按钮在无整理稿时为「整理文字稿」，经 retry_insights `transcript` target 分段调用 LLM 修正 ASR 原稿并落盘独立的 `polished.txt`；成功后按钮变回「复制文字稿」并优先复制整理稿，原稿不动。
+- `2026-10-24-transcript-toolbar-actions.md`：结果工作区文字稿工具栏三动作合并规格——「定位文字稿」（未保存编辑拦截）、「复制文字稿」（复制磁盘 `transcript.txt` 正式稿，不受未保存编辑影响）、「整理文字稿」（经 retry_insights `transcript` target 分段 LLM 中度整理，落盘独立 `polished.txt`，成功后按钮变回「复制文字稿」优先复制整理稿，原稿不动）。
 - `2026-10-24-summary-agent-runtime.md`：要点总结改经 agent_runtime 顺序交付 Mermaid 脑图与 Markdown 总结，保留既有产物、前端契约和每次实际 LLM 调用一次 checkout 的计费规则。
 
 ## AI Insight
@@ -83,18 +81,13 @@
 - `2026-11-10-llm-byok-custom-providers.md` — v0.6.1 自定义 LLM 配置（BYOK）：设置里添加自己的 OpenAI 兼容 API，预设供应商 + 可自由输入、系统钥匙串存 key、测试连接走 worker 最小 chat 探针、多配置与启用切换；与 Locus 托管并存且默认不变，切到 BYOK 不扣 AI Credit、不需登录，草稿检索仍走 server。设计见 `docs/design-docs/2026-11-10-llm-byok-architecture.md`。
 - `2026-10-25-intelligent-extraction-agent-runtime.md` — 三个工作间目标统一使用 agent_runtime，保留产物与隐私契约，删除旧生成目录。
 - `2026-07-06-personalized-insight-preferences.md` — Six-field local Inspiration Profile v2 plus per-run six-step generation preferences.
-- `2026-07-12-generate-draft-from-inspiration.md` — Turn a single user-selected `Insight` into a new draft, with strict single-seed, quota, and local-first privacy boundaries.
-- `2026-07-15-draft-platform-selection.md` — Delta on `生成文字稿`: user-visible, editable 9-option target platform on the confirmation page (defaulted from the inspiration profile), replacing `suitable_use` as the platform source with a new platform→form mapping (视频号/抖音/Tiktok/X→抖音).
-- `2026-07-15-draft-result-editor.md` — Delta on `生成文字稿` 结果视图: 只读预览升级为左右分栏可编辑器（左 textarea + 右 MarkdownContent 预览），编辑本地落盘 `ai/draft.md`，复制/下载基于编辑器当前文本，重新生成重走首次确认页（与第一次逻辑一致）、编辑过二次确认；分屏布局与下载按钮已由 `2026-10-20-draft-result-view-modes.md` 取代，保存与重新生成条款继续有效。
-- `2026-10-20-draft-result-view-modes.md` — Delta on `生成文字稿` 结果视图: 渲染优先（打开即读渲染后的 markdown），「编辑模式」显式进入 textarea，「渲染模式」返回；移除下载按钮，新增全屏切换。
+- `2026-10-20-generate-draft.md` — `生成文字稿` 四规格合并：单条 `Insight` 种子成稿（单种子、额度 1 次尝试=1 额度、本地优先隐私边界）；确认页 9 选 1 可改目标平台（取代 `suitable_use` 平台来源，视频号/抖音/Tiktok/X→抖音文体）；结果可编辑落盘 `ai/draft.md` + 重新生成重走首次确认页；渲染优先视图（编辑/渲染模式切换、全屏、无下载）。分栏布局与下载按钮已被渲染优先节取代，保存与重新生成条款继续有效。
 - `2026-10-20-ai-detail-sheet-fullscreen.md`：三个 AI 详情 tab 共用全屏切换，关闭弹层时退出全屏，常规尺寸仍按内容收缩。
 - `2026-07-31-transcript-dissection.md` — Independent `文字稿解剖` AI target for traceable structural review of a saved transcript.
 
 ## Motion UI
 
-- `2026-08-16-motion-ui-enhancement.md` — Motion 第一阶段：处理阶段、ASR 真实进度、AI target 与历史列表的克制动效。
-- `2026-08-16-motion-sheet-lifecycle.md` — Motion 第二阶段：主要 Sheet 的延迟卸载、焦点保持与进出场动效。
-- `2026-08-16-motion-confirmation-flow.md` — Motion 第三阶段：摘要确认、灵感偏好流程、文字稿解剖确认的延迟卸载与焦点生命周期。
+- `2026-08-16-motion-ui.md` — Motion 三阶段合并规格：第一阶段处理阶段、ASR 真实进度、AI target 与历史列表的克制动效；第二阶段主要 Sheet 的延迟卸载、焦点保持与进出场动效；第三阶段摘要确认、灵感偏好流程、文字稿解剖确认的延迟卸载与焦点生命周期。
 
 ## Web Marketing Site
 
