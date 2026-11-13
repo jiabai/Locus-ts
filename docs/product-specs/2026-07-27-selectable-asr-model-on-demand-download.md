@@ -4,7 +4,7 @@
 - Status: Approved for implementation
 - Scope: desktop ASR selection, availability, and model-install behavior
 - Supersedes: the first-run automatic model-download behavior in the model-acquisition portions of
-  `2026-06-18-installer-distribution.md`
+  `archive/2026-06-18-installer-distribution.md`
 
 ## Purpose
 

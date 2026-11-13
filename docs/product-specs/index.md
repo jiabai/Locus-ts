@@ -1,11 +1,11 @@
 # Product Specs Index
 
-产品规格描述用户可见意图与边界，先于或伴随实现落盘。实施进度不进入 spec，而进入 `docs/exec-plans/`。
+产品规格描述用户可见意图与边界，先于或伴随实现落盘。实施进度不进入 spec，而进入 `docs/exec-plans/`。已退役或被取代的历史规格移入 `archive/`，索引条目保留以便追溯。
 
 ## Account, Billing & Server
 
 - `2026-08-24-self-service-email-activation-code.md` — Current default unlock intent: inactive or expired desktop users request an account-bound activation code by email, then manually redeem it for a new 31-day window; repeat after every expiry without an administrator.
-- `2026-06-21-account-billing.md` — Retired self-serve WeChat purchase draft; its administrator-issued visible-path statement is superseded by the 2026-08-24 self-service email activation spec.
+- `archive/2026-06-21-account-billing.md` — Retired self-serve WeChat purchase draft; its administrator-issued visible-path statement is superseded by the 2026-08-24 self-service email activation spec.
 - `2026-06-21-activation-code-authorization.md` — Historical administrator-issued activation-code baseline; administrator universal codes remain supported, while the default user distribution path is superseded by the 2026-08-24 self-service email activation spec.
 - `2026-06-22-server-managed-llm-quota.md` — Server-managed dedicated client LLM config and 20 AI Credits per activation window.
 - `2026-06-27-admin-entitlement-adjustments.md` — Admin Web manual compensation for entitlement expiry and LLM API-call quota after support incidents.
@@ -27,7 +27,7 @@
 - `2026-09-19-v0.3.7-desktop-release.md` — v0.3.7 desktop release scope and acceptance; bounded Douyin share-page retry and the neutralized activation-panel title.
 - `2026-09-05-v0.3.6-desktop-release.md` — v0.3.6 desktop release scope and acceptance.
 
-- `2026-06-18-installer-distribution.md` — Historical lightweight-installer distribution baseline; model-acquisition behavior superseded by `2026-07-27-selectable-asr-model-on-demand-download.md`.
+- `archive/2026-06-18-installer-distribution.md` — Historical lightweight-installer distribution baseline; model-acquisition behavior superseded by `2026-07-27-selectable-asr-model-on-demand-download.md`.
 - `2026-06-23-desktop-one-click-updates.md` — Low-noise desktop update reminders and one-click upgrades via GitHub Releases static `latest.json`.
 - `2026-07-05-app-local-cache-dir-rename.md` — Use `cache/` for the app-local temporary task area and retire the legacy worker env contract.
 - `2026-07-05-desktop-diagnostics-logs.md` — Local desktop diagnostics log for installer/runtime debugging, including YouTube JavaScript runtime failures.
