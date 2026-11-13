@@ -24,6 +24,9 @@ Paste a video link, a web page, or a local media file. Locus keeps it on your ma
 > [!NOTE]
 > Latest stable release: **v0.6.1** (Windows x64, macOS Intel, macOS Apple Silicon), published 2026-11-11. See [GitHub Releases](https://github.com/jiabai/Locus/releases). Licensed under **Apache-2.0**; the desktop client, worker, and server all live in this repository.
 
+> [!NOTE]
+> This repository is **Locus-ts**, the working copy for the TypeScript worker rewrite. Released builds still run the Python worker in `worker/worker_core/`; the rewrite is in planning and feasibility verification, and no production code has been converted yet. The target scope narrows ASR to `iic/SenseVoiceSmall-onnx` behind a replaceable `Transcriber` interface and removes the Python runtime bundled for the worker, while media handling, local notes, Studio tools and the security boundary remain unchanged. See the [product spec](docs/product-specs/2026-11-13-worker-typescript-rewrite.md), [target architecture](docs/design-docs/2026-11-13-typescript-worker-architecture.md) and [active plan](docs/exec-plans/active/2026-11-13-worker-typescript-rewrite-plan.md). Installers and release notes are published from the main [jiabai/Locus](https://github.com/jiabai/Locus) repository.
+
 ```text
 video link / web page / local media file
   -> download or system WebView extraction -> ffprobe -> 16 kHz mono audio
@@ -40,11 +43,11 @@ Grab the newest installer from **[GitHub Releases → latest](https://github.com
 
 | Platform | Asset |
 | --- | --- |
-| Windows x64 | `FrameQ_0.5.1_x64-setup.exe` (plus `.sig` for the in-app updater) |
-| macOS Apple Silicon | `FrameQ_0.5.1_aarch64.dmg` |
-| macOS Intel | `FrameQ_0.5.1_x64.dmg` |
+| Windows x64 | `Locus_0.6.1_x64-setup.exe` (plus `.sig` for the in-app updater) |
+| macOS Apple Silicon | `Locus_0.6.1_aarch64.dmg` |
+| macOS Intel | `Locus_0.6.1_x64.dmg` |
 
-Installer assets keep the `FrameQ_` prefix until the first release published under the new name. Releases also carry `latest.json` for the Windows updater and on-demand `pytorch-runtime-*.zip` components. macOS builds are ad-hoc signed, not notarized: the first launch needs a one-time **System Settings → Privacy & Security → Open Anyway**.
+Releases also carry `latest.json` for the Windows updater and on-demand `pytorch-runtime-*.zip` components. macOS builds are ad-hoc signed, not notarized: the first launch needs a one-time **System Settings → Privacy & Security → Open Anyway**. Releases at v0.6.0 and earlier can no longer sign in against the retired server domain; users on v0.5.1 or earlier need to install v0.6.1 manually.
 
 ## Locus vs Google NotebookLM
 
@@ -86,8 +89,8 @@ One source at a time; this is a local notebook, not a general downloader or batc
 
 ```powershell
 uv sync --dev
-npm --prefix app install
-npm --prefix server install
+Push-Location app; npm install; Pop-Location
+Push-Location server; npm install; Pop-Location
 npm --prefix app run tauri -- dev
 ```
 
@@ -98,6 +101,7 @@ uv run python scripts/validate_agents_docs.py --level WARN
 uv run ruff check worker
 uv run pytest worker/tests
 npm --prefix app test
+npm --prefix app run lint
 npm --prefix app run build
 npm --prefix server test
 npm --prefix server run build
@@ -111,7 +115,7 @@ Build without packaging an installer with `npm --prefix app run tauri -- build -
 | Path | Role |
 | --- | --- |
 | `app/` | Tauri + React + TypeScript desktop client |
-| `worker/worker_core/` | Python worker: download, media validation, ASR, intelligent extraction |
+| `worker/worker_core/` | Python worker: download, media validation, ASR, and the Studio tools (summary, dissection, inspiration, draft) |
 | `server/` | Fastify account, entitlement, and LLM-checkout service |
 | `contracts/` | Cross-language task and artifact contracts |
 | `deploy/` | Production runbook plus Nginx and systemd reference configs |
