@@ -1,234 +1,71 @@
-# ASR sherpa-onnx-node Spike Plan
+# ASR sherpa-onnx-node 可行性测量
 
 > This ExecPlan is a living document. The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
 
+2026-11-12 至 2026-11-13 的已完成测量记录。worker 重写的当前范围、验收条件和未完成事项分别见 `docs/product-specs/2026-11-13-worker-typescript-rewrite.md`、`docs/exec-plans/active/2026-11-13-worker-typescript-rewrite-plan.md` 与 `docs/exec-plans/active/2026-11-13-worker-typescript-rewrite-gaps.md`。
+
 ## Purpose / Big Picture
 
-用户提出把 `worker/` 的 Python 代码替换为 TypeScript。整个替换中唯一无法通过代码翻译消除的风险是 ASR 引擎：现有路径依赖 `funasr_onnx` 的 SenseVoiceSmall 与 FSMN 在线 VAD，TypeScript 侧没有对应实现。本计划用真实模型与真实音频测量 `sherpa-onnx-node` 能否承担这条路径，产出可复核的对照数据与明确结论。
-
-用户在本计划执行期间看不到任何产品变化：桌面客户端、worker、契约与打包配置全部保持原样。全部测量产物存放在 `work/asr-spike/`，该目录已被 `.gitignore` 排除。用户音频与人工转写全程留在本机，不进入任何网络服务，本地优先与安全边界不受影响。
-
-用户已确认分段边界允许变化，验收标准为识别质量不下降。
+在真实音频上比较现有 Python ONNX ASR 与 `sherpa-onnx-node` 候选，检查本地加载、语音分段、识别、性能和三平台原生依赖。测量数据与用户音频保存在本地 `work/asr-spike/`；实验未修改生产 worker、桌面应用、契约或打包配置。
 
 ## Progress
 
-- [x] 2026-11-12: 核实现有 ONNX ASR 路径的引擎、模型、VAD 分块、识别参数、文本清洗与音频归一化规格；核实 `sherpa-onnx-node` 的版本、平台预编译包、SenseVoice 配置字段、VAD 调用形态与模型来源；起草本计划并注册到 `active/index.md`。Validation: `uv run python scripts/validate_agents_docs.py --level ERROR` 与 `--level WARN` 均为 0 个错误 0 个警告；`.venv/Scripts/python.exe -m pytest worker/tests/test_sensevoice_onnx.py -q` 为 20 passed
-- [x] 2026-11-12: 复核本计划引用的全部代码位置与外部事实：`registry.py:25`、`registry.py:29-32`、`sensevoice_onnx.py:24-25`、`sensevoice_onnx.py:80-135`、`sensevoice_onnx.py:187-195`、`sensevoice_onnx.py:241-245`、`sensevoice.py:21-22`、`sensevoice.py:104-114`、`sensevoice.py:260-281`、`media.py:210-224`、`pyproject.toml:11-37`、`pyproject.toml:53-60`、`tauri.conf.json:53-60`、`runtime.rs:110-142`、`contractVersion` 为 12，全部与正文一致；`worker/tests/` 实测 61 个文件、768 个 `def test_` 函数，无 `skipif` 与 `importorskip`。Validation: 逐文件读取比对；`Grep` 统计 `^def test_` 得 768 occurrences across 61 files
-- [x] 2026-11-12: 核实语料与模型的实际存放位置，确定语料来源为桌面应用任务目录 `<APP_USER_DATA_DIR>/outputs/` 与用户提供的本机真实音频，并记录仓库 `models/` 实测 2.9GB。Validation: `ls -la outputs` 仅列出 `mcp-design-review`；`du -sh models` 得 2.9G；`Grep` 定位 `config.py:8` 与 `asr_model.rs:746`
-- [x] 2026-11-12: 建立 `work/asr-spike/` 目录结构，安装 `sherpa-onnx-node@2.0.1`（npm 镜像源 registry.npmmirror.com，8 个包），win-x64 原生插件加载验证通过，记录 version 2.0.1 / gitSha1 af2d8d81 / onnxruntime 1.28.2。Validation: `node -e "require('sherpa-onnx-node')"` 成功并列出全部导出；`node_modules` 含 `sherpa-onnx-win-x64`
-- [x] 2026-11-12: 复核本机语料与模型现状：桌面应用数据目录为 `C:\Users\bicho\AppData\Local\pro.8xf.app`（`app_local_data_dir`），其 `outputs/` 与 `models/` 均为空；Locus-ts 仓库无 `models/` 目录；基线模型缓存位于 `D:/Github/Locus/models/onnx/models/iic/`（SenseVoiceSmall-onnx 与 speech_fsmn_vad_zh-cn-16k-common-onnx 均含 `model_quant.onnx`）。用户确认语料改由本机文件夹提供，ground truth 采用基线草稿加人工校对。Validation: 目录列举与 `data-storage.json` 读取；AskUserQuestion 两项回答
-- [x] 2026-11-12: 核实 ModelScope 镜像并测量下载：`chriscrs/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17` 提供 `model.int8.onnx` 239233841 字节与 `tokens.txt` 315894 字节，下载耗时 12.7 秒（17.9 MB/s）；`ZhaoChaoqun/sherpa-onnx-asr-models` 模型卡宣称包含 2024-07-17 int8 归档但实际文件清单没有该归档。GitHub Releases 直连 `silero_vad.onnx` 643854 字节耗时 23.2 秒（0.026 MB/s），228MB 归档直连下载后台进行中。Validation: `results/download-modelscope-mirror.json`、`results/download-github-releases.json`（silero 条目）、`results/modelscope-mirror-files.json`
-- [x] 2026-11-12: 编写 `baseline/run.py`、`baseline/smoke.py`、`candidate/run.mjs`、`candidate/smoke.mjs`、`normalize.py`、`metrics/compute.py`、`gt_draft.py`。两侧引擎用同一批真实测试音频（zh/en/yue）冒烟：输出文本逐字一致，分段边界存在差异（zh.wav 基线 420-5570ms 对候选 742-5568ms）；候选模型加载 1610ms，基线 7332ms；候选 `text` 字段不含 `<|...|>` 标签，语种/情感/事件为独立字段，ITN 生效。Validation: `results/smoke-win-x64.json`、`results/smoke-baseline-win-x64.json`；`metrics/test_compute.py` 14 项算法自检全部通过
-- [x] 2026-11-12: 三平台加载验证完成。新增 `.github/workflows/asr-spike-macos.yml` 与 `scripts/asr-spike-ci/`（提交 `518282d`、`1c55bd9`），GitHub Actions 矩阵 macos-15-intel 与 macos-15 均通过：darwin-x64 模型加载 3493ms、darwin-arm64 2047ms，Node v26.13.1，sherpa-onnx-node 2.0.1 / onnxruntime 1.28.2，五个归档自带 test_wavs（zh/en/ja/ko/yue）全部完成 VAD 与识别；macOS 任务显式设置 `DYLD_LIBRARY_PATH` 指向 `node_modules/sherpa-onnx-node/lib`。win-x64 本机加载与识别已验证。Validation: run 43219925284 两个 job 成功，产物 `results/asr-spike-smoke-macos-arm64/`、`results/asr-spike-smoke-macos-x64/`；Script CI run 43219923016 Windows 与 macOS 均通过；`node --test scripts/tests/*.test.mjs` 58 项（57 通过 1 跳过）、`pytest scripts/tests` 1 项通过、`pytest worker/tests/test_sensevoice_onnx.py` 20 项通过
-- [x] 2026-11-12: 语料盘点与内容探测：`C:\Users\bicho\Videos` 含 11 个媒体文件，9 个含语音流（总时长约 5.3 小时），`nx-segmentation.mp4` 无音频流排除，5 秒动画无真实语音单独对照。基线引擎对每个文件前 60 秒探测确定内容类别；`silencedetect` 证实访谈录音末尾 65 分钟连续静音（8286.6 秒至 12193.4 秒）。用户确认按 9 条完整语料、8 个 ground truth 窗口、9 条成对审查的规模执行，粤语排除出范围。`corpus/manifest.json` 已建立。Validation: `results/corpus-inventory.json`、`results/probe.json`、`results/silence-20260809.log`；AskUserQuestion 两项回答
-- [x] 2026-11-12: 语料归一化（9 条 WAV，与生产 ffmpeg 命令逐参数一致）与两侧识别运行完成：基线 9/9（RTF 0.024–0.042，峰值内存 2248MB），候选 max20 与 max30 各 9/9。发现 `maxSpeechDuration` 软约束问题（见 Surprises & Discoveries），增加 hard20 强制切分变体运行中。8 条 ground truth 窗口草稿已生成待用户校对。无语音边界对照：基线幻觉输出「嗯。」，候选正确判定无语音。Validation: `results/normalization.json`、`results/baseline/`、`results/candidate/max20/`、`results/candidate/max30/`、`results/segment-shape.json`、`results/edge-no-speech.json`
-- [x] 2026-11-12: hard20 与 hard20coarse 变体全量完成，五版本性能对比：hard20 总耗时比 0.788、峰值内存 3001MB 对基线 2248MB（比值 1.335），9 条中 8 条 RTF 比值 0.69–1.02，monologue-pharma 单次 1.246、配对重复计时中位 1.37；hard20coarse 总耗时比 1.101，4 条 RTF 比值超过 1.2，大块喂入改变 VAD 内部动态导致分段合并与缓冲区反复扩容，综合不如 hard20。hard20 为推荐配置。Validation: `results/segment-shape.json`、`results/candidate/hard20/`、`results/candidate/hard20coarse/`、`candidate/timing-pharma.mjs` 与 `baseline/timing-pharma.py` 配对计时
-- [x] 2026-11-12: 9 条成对审查完成（基线对 hard20，60 秒时间窗并排，长语料抽样 8 窗，窗口开头差异经全文检索确认为边界平移）：更好 3 条（discussion-tech、lecture-economics、music-song）、相当 6 条、更差 0 条，判定标准 3 通过。候选在技术术语与关键词上显著更准（报文/物理层/进程转发/纺织/京东），歌曲幻觉量显著更少。Validation: `results/pairwise-material.md`、`results/pairwise.json`
-- [x] 2026-11-13: 用户要求全程自动化，人工逐字转写改为 Paraformer 第三引擎仲裁（`arbiter.py` v1→v2，v2 用邻域包含投票修复 v1 精确匹配导致全部弃权的缺陷）。hard20preroll 变体验证段起点 0.4s 补边把中文均值 CER 从 0.058 拉到 0.0531（对基线 0.0527 基本追平），conversation-street 从 +2.8pp 降到 +0.35pp，但朴素补边实现重切块致总耗时 1.55×。最终七条判定与结论写入 `results/report.md`。Validation: `results/arbiter-report.json`、`results/arbiter-report-preroll.json`、`results/arbiter-comparison.json`、`results/final-metrics.json`、`results/final-metrics-preroll.json`、`work/asr-spike/results/report.md`
+- [x] 2026-11-12：核查生产路径、模型缓存、音频归一化、分段和识别参数；基线为 `funasr_onnx.SenseVoiceSmall` + FSMN VAD，模型标识为 `iic/SenseVoiceSmall-onnx`。Validation: `worker/worker_core/asr_runtime/registry.py`、`sensevoice_onnx.py`、`model_download.py`。
+- [x] 2026-11-12 至 2026-11-13：使用 `sherpa-onnx-node@2.0.1`、SenseVoice int8 导出模型和 Silero VAD 完成真实音频对照；测试 max20、max30、hard20、hard20coarse、hard20preroll 五种配置。归一化命令保持 `-vn -ac 1 -ar 16000 -c:a pcm_s16le`。Validation: `work/asr-spike/results/normalization.json`、`candidate/`。
+- [x] 2026-11-12：9 条本机音视频合计约 5.3 小时，8 条语音文件各取一个窗口进行质量对照；另对无语音动画单独进行边界测试。粤语不属于本次质量语料范围。Validation: `work/asr-spike/corpus/manifest.json`、`results/edge-no-speech.json`。
+- [x] 2026-11-12：Windows x64 本机、macOS x64 和 macOS arm64 GitHub Actions 均完成 Node 原生插件加载和模型自带音频识别；模型与运行时尚未在正式安装包内验收。Validation: macOS run `43219925284`、`work/asr-spike/results/smoke-win-x64.json`、两份 macOS smoke JSON。
+- [x] 2026-11-13：使用本地 Paraformer 参与自动对照，保存两种候选配置的文本、仲裁和聚合结果；核对参考文本依赖候选输出的限制。Validation: `work/asr-spike/arbiter.py`、`results/final-metrics.json`、`results/final-metrics-preroll.json`。
 
 ## Surprises & Discoveries
 
-Evidence: 现有默认 ASR 路径在 `worker/worker_core/asr_runtime/registry.py:25` 指定为 `SENSEVOICE_SMALL_ONNX_MODEL`，取值 `iic/SenseVoiceSmall-onnx`（`sensevoice_onnx.py:24`）。两个受支持模型同属 SenseVoice 家族（`registry.py:29-32`），因此候选引擎只需要覆盖 SenseVoice 一种模型结构。
-
-Evidence: `sensevoice_onnx.py:187-195` 通过 `from funasr_onnx import SenseVoiceSmall` 与 `from funasr_onnx import Fsmn_vad_online` 加载引擎，两者均以 `quantize=True`、`device_id="-1"` 构造，ASR 另有 `batch_size=1`。fbank 特征提取在 `funasr_onnx` 内部完成，仓库自身没有特征提取代码。
-
-Evidence: `sensevoice_onnx.py:25` 定义 `ONNX_VAD_CHUNK_SECONDS = 10`，`_stream_onnx_vad_segments`（`sensevoice_onnx.py:80-135`）按 10 秒分块喂入 VAD，在最后一块设置 `is_final`，并对毫秒事件流做严格校验，任何不符合起点终点交替顺序的事件都会触发 `ASRRuntimeError`。候选引擎的 Silero VAD 以 512 采样点为窗口、返回采样点偏移，事件模型与之不同。
-
-Evidence: 识别调用在 `sensevoice_onnx.py:241-245` 使用 `language=_sensevoice_language(language)` 与 `textnorm="withitn"`。`_sensevoice_language`（`sensevoice.py:104-110`）把中文映射为 `zh`、英文映射为 `en`，其余全部映射为 `auto`。文本清洗使用正则 `<\|[^|>]+?\|>`（`sensevoice.py:22`、`sensevoice.py:113-114`）。
-
-Evidence: 音频归一化命令在 `worker/worker_core/media.py:210-224`，参数为 `-vn -ac 1 -ar 16000 -c:a pcm_s16le`。`_read_pcm_wav_mono_float32`（`sensevoice.py:260-281`）用标准库 `wave` 读取并按 int16 除以 32768 转 float32。sherpa-onnx 的 SenseVoice 特征规格为采样率 16000、特征维度 80，与现有输出完全一致，候选路径无需重采样。
-
-Evidence: `pyproject.toml:11-37` 的 macOS Intel 限制（`onnxruntime<1.24`、`numpy<2`、`llvmlite==0.45.1`、`numba==0.62.1`、`cryptography<49`）与 `pyproject.toml:53-60` 的 `pytorch` 可选依赖，全部来自 funasr 与 torch 的传递依赖。`sherpa-onnx-node` 的 `optionalDependencies` 提供 7 个平台预编译包：`sherpa-onnx-win-x64`、`sherpa-onnx-win-ia32`、`sherpa-onnx-win-arm64`、`sherpa-onnx-linux-x64`、`sherpa-onnx-linux-arm64`、`sherpa-onnx-darwin-x64`、`sherpa-onnx-darwin-arm64`，均为 2.0.1 版本，其中包含 macOS Intel。
-
-Evidence: sherpa-onnx 官方文档明确 VAD 只支持 silero-vad 与 ten-vad，没有 FSMN VAD。Silero 配置字段为 `model`、`threshold`、`minSpeechDuration`、`minSilenceDuration`、`maxSpeechDuration`、`windowSize`，`maxSpeechDuration` 默认 20 秒。现有 torch 路径的 `SENSEVOICE_VAD_MAX_SEGMENT_TIME_MS` 为 30000（`sensevoice.py:21`），ONNX 路径未显式设置最长分段。
-
-Evidence: SenseVoice 模型配置含 `model`、`language`、`use_itn` 三个字段，`language` 接受 `auto`、`zh`、`en`、`ko`、`ja`、`yue`，默认 `auto`。模型归档 `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2` 含 `model.int8.onnx` 228MB 与 `tokens.txt` 308KB，上游说明该模型由 ModelScope `iic/SenseVoiceSmall` 导出，与现有模型同源。归档托管在 GitHub Releases 的 `asr-models` tag 下，`silero_vad.onnx` 为 629KB，位于同一 tag。
-
-Evidence: `sherpa-onnx-node` 要求 Node >= v16，安装无需编译器、Python 或 CMake。Windows 的原生库位于 `node_modules` 内并自动定位；macOS 需要设置 `DYLD_LIBRARY_PATH` 指向 `$(npm root)/sherpa-onnx-node/lib`，Linux 需要设置 `LD_LIBRARY_PATH`。这一条直接影响 Tauri 子进程在 macOS 上的环境变量构造。
-
-Evidence: `worker/tests/` 共 61 个测试文件、768 个测试函数，没有任何用例需要真实模型、网络或 ffmpeg 二进制，全部通过注入的替身运行。因此现有测试无法用于本次引擎对照，必须新建真实模型与真实音频的测量脚本。
-
-Evidence: 仓库根目录的 `outputs/` 只含 `mcp-design-review` 一个目录，没有任务音频。桌面客户端的任务产物写入用户数据目录下的 `outputs`（`app/src-tauri/src/collections/tests.rs:73`、`:336`、`:388` 均以 `paths.user_data_dir.join("outputs")` 为任务根），worker 侧对应的环境变量为 `APP_USER_DATA_DIR`（`worker/worker_core/config.py:8`）。应用标识符为 `pro.8xf.app`（`app/src-tauri/tauri.conf.json:5`）。仓库根目录的 `models/` 为开发模式缓存，实测 2.9GB，其中 `models/onnx/` 存放 SenseVoice ONNX 模型；桌面客户端的模型根为用户数据目录下的 `models/onnx`（`app/src-tauri/src/asr_model.rs:746`）。
-
-Evidence: 本机实测桌面应用数据目录位于 `C:\Users\bicho\AppData\Local\pro.8xf.app`（Rust 侧用 `app_local_data_dir`，`app/src-tauri/src/runtime.rs:41`），其 `outputs/` 与 `models/` 均为空，`data-storage.json` 无任务记录。Locus-ts 仓库根目录没有 `models/`；基线模型缓存在原仓库 `D:/Github/Locus/models/onnx/models/iic/` 下，SenseVoiceSmall-onnx 与 speech_fsmn_vad_zh-cn-16k-common-onnx 均含 `model_quant.onnx`。24 条语料全部需要用户从本机文件夹提供。
-
-Evidence: `funasr_onnx` 的 `SenseVoiceSmall`（`sensevoice_bin.py:41`）与 `Fsmn_vad_online`（`vad_bin.py:33`）默认 `intra_op_num_threads=4`，生产构造未覆盖该参数，因此候选侧 `numThreads` 取 4 构成同等线程配置。本机 20 个逻辑处理器。
-
-Evidence: ModelScope 镜像核实结果：`chriscrs/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17` 与 `poloniumrock/SenseVoiceSmallOnnx` 均提供 `model.int8.onnx` 239233841 字节与 `tokens.txt` 315894 字节，与 GitHub 归档内文件规格一致；`ZhaoChaoqun/sherpa-onnx-asr-models` 模型卡宣称包含 2024-07-17 int8 归档，实际文件清单（27 个文件）没有该归档，只有 funasr-nano 系列。镜像下载实测 17.9 MB/s，GitHub Releases 直连实测 0.026 MB/s（silero_vad.onnx 643854 字节耗时 23.2 秒）。镜像文件与 GitHub 归档内容的 SHA-256 一致性待归档下载完成后比对。
-
-Evidence: 下载测量最终状态：GitHub 直连归档传输约 128 分钟、接收 79755904 字节后以 `UND_ERR_BODY_TIMEOUT` 中断，平均约 0.010 MB/s，其后 HEAD 请求亦连接超时，直连判定为缓慢且不稳定；部分文件按失败路径约定保留不复用。两个独立 ModelScope 镜像交叉验证通过：`model.int8.onnx` SHA-256 均为 `c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51`，`tokens.txt` 均为 `f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc`，第二镜像下载 8.4 秒（约 27 MB/s）。与 GitHub 归档的直接哈希比对由 CI 哈希步骤承担（workflow 已加 `shasum` 步骤，待提交触发）。记录在 `results/download-github-releases.json`、`results/mirror-cross-check.json`。
-
-Evidence: win-x64 冒烟测量（zh/en/yue 三条真实测试音频）：两侧输出文本逐字一致；候选 `getResult` 返回 `{lang, emotion, event, text, timestamps, durations, tokens, ys_log_probs, words}`，`text` 不含 `<|...|>` 标签，标签位于独立的 `lang`/`emotion`/`event` 字段（如 `<|zh|>`、`<|NEUTRAL|>`、`<|Speech|>`），基线的标签清洗正则对候选 `text` 为空操作；ITN 生效（"9点"、"50 pieces"）。候选模型加载 1610ms，基线 7332ms。`sherpa-onnx-node` 为 CommonJS 模块，ESM 命名导入失败，必须默认导入后解构。
-
-Evidence: 全量测量（9 条语料、约 5.3 小时音频）完成后发现 `maxSpeechDuration` 是软约束。上游 `voice-activity-detector.cc`（提交 af2d8d81）在缓冲区超过 `sample_rate * max_speech_duration` 时只把语音阈值提高到 0.90、最小静音缩短到 0.1 秒以促使自然断句，没有强制截断；`silero-vad-model.cc` 不读取该字段。实测 max20 组出现 123.77 秒分段（monologue-pharma）、76.76 秒（conversation-street），max30 组出现 63.89 秒（interview-finance）；基线 FSMN VAD 全部分段硬性不超过 20.01 秒。长分段使 SenseVoice 编码器注意力成本上升，monologue-pharma 候选 RTF 0.0659（max20）/0.064（max30）对基线 0.0297，比值 2.22/2.15，超出判定标准 5 的 1.2 倍上限；该条 124 秒长分段的文本质量与基线大致相当，但候选 VAD 起点修剪丢失开头「他拿我的」数字。运行期 CircularBuffer（60 秒容量）多次自动扩容，上游日志声明无数据丢失。分段形态统计在 `results/segment-shape.json`。
-
-Evidence: hard20 强制切分变体（VAD 输出后把超过 20 秒的分段切块再识别）使 monologue-pharma RTF 降到 0.037，interview-finance 降到 0.0187（基线 0.0238），9 条中 8 条 RTF 比值 0.69–0.86。monologue-pharma 仍高于基线：相同系统状态下配对重复计时，基线 5970/5616/5487ms，候选 7931/7618/7715ms，中位比值 1.37。耗时拆分诊断（`candidate/split-timing-pharma.mjs`）：候选 VAD 2892ms（5273 个 512 样本窗口）加识别 4099ms（10 块、单块均值 410ms）；基线单个 20 秒分段识别约 417ms，两侧 ASR 引擎单位推理速度相当，差距来自 Silero 逐窗口 JS 到原生调用开销。VAD 喂入粒度对照（`candidate/vad-granularity-test.mjs`）：512 样本逐次喂入 3374ms，1 秒大块喂入 680ms（约 5 倍差距），分段边界随之变化（首段起点 0.90 秒变 1.67 秒、3 段变 2 段），逐次排空与末尾排空结果一致，差异来自喂入粒度本身。另证实 Silero 起点回溯较短，monologue-pharma 首段从 0.9 秒开始，丢失开头语音，重写需要前置补边。hard20coarse 变体（1 秒喂入加强制切分）全量运行中。
+- Evidence: **文件和引擎。** 生产 `model_quant.onnx` 的 SHA-256 为 `21dc965f689a78d1604717bf561e40d5a236087c85a95584567835750549e822`（`worker/worker_core/model_download.py`）；实验 `model.int8.onnx` 为 `c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51`。2026-11-13 对两份本机文件执行 `Get-FileHash -Algorithm SHA256`，结果与上述值一致。两者同属 SenseVoice 模型家族，文件不同。模型文件的来源、加载兼容性与识别质量需分别验证。
+- Evidence: **分段。** 生产使用 FSMN VAD，候选使用 Silero VAD。实验中 `maxSpeechDuration` 为软约束，max20 出现最长 123.77 秒的片段；hard20 强制切分后，记录的分段均不超过 20 秒，详见 `results/segment-shape.json`。
+- Evidence: **句首。** Silero 起点与 FSMN 存在差异，部分语料出现句首丢词。hard20preroll 的 0.4 秒前置补边对部分样本有改善；实验实现存在重叠识别，总耗时约为基线 1.55 倍。分段、补边与性能需在正式实现中共同验收。见 `results/pairwise.json` 和 `results/arbiter-report-preroll.json`。
+- Evidence: **性能。** hard20 整体耗时约为基线 0.788 倍，峰值内存约为基线 1.34 倍；`monologue-pharma` 单条候选与基线配对重复计时的中位数比值约为 1.37，超过 1.2 倍逐条门槛。单块识别计时约 410 ms 对 417 ms，只说明该次测试的耗时接近。见 `candidate/timing-pharma.mjs` 和 `baseline/timing-pharma.py`。
+- Evidence: **无语音。** 单条约 5 秒的无语音动画中，基线产生一段幻觉文本，候选没有检测到语音。该结果仅覆盖该样本，见 `results/edge-no-speech.json`。
+- Evidence: **下载。** 两个 ModelScope 镜像的候选模型与词表各自哈希一致；本机直连 GitHub 模型归档中断，尚无本机与官方完整归档的直接哈希比对。CI 流程记录哈希，具体执行结果需以实际产物核验。见 `results/mirror-cross-check.json`、`results/download-github-releases.json`。
 
 ## Decision Log
 
-Decision: 候选引擎确定为 `sherpa-onnx-node@2.0.1`，模型为 `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17` 的 `model.int8.onnx`，VAD 为 `silero_vad.onnx`。Rationale: 该包提供包含 macOS Intel 在内的 7 个平台预编译原生包；模型与现有 `iic/SenseVoiceSmall-onnx` 同源且同为 int8 量化，构成变量最小的对照；输入规格 16000Hz、80 维与现有 ffmpeg 输出一致。Date/Author: 2026-11-12 / User + QwenWork
-
-Decision: 验收以字符错误率、漏句次数、重复循环次数与人工成对审查为准，分段边界与时间戳允许变化，仅测量偏差分布并设定上限。Rationale: 用户明确确认质量不下降即可，分段可变。Date/Author: 2026-11-12 / User
-
-Decision: 语料取自桌面应用任务目录 `<APP_USER_DATA_DIR>/outputs/` 中已有任务的真实音频，不足部分由用户提供本机真实音频；人工逐字转写在本机完成，用户音频与转写不进入 CI。三平台加载验证在 CI 中只运行模型归档自带的 `test_wavs`。Rationale: 本地优先与安全边界禁止把用户音频发送到外部服务；平台加载验证只需要证明原生插件可用，模型自带音频足以完成。Date/Author: 2026-11-12 / QwenWork
-
-Decision: 全部脚本、语料、转写与结果存放在 `work/asr-spike/`，不修改 `worker/`、`app/`、`contracts/`、`pyproject.toml` 与打包脚本。Rationale: `RULES.md` 要求中间结果存放在被 gitignore 的目录；本计划只做测量，测量结论用于后续独立立项。Date/Author: 2026-11-12 / QwenWork
-
-Decision: 测量脚本采用 fast-fail，模型缺失、音频读取失败、识别结果为空一律在出错位置就地崩溃。Python 侧直接 import，不使用 try-except 包裹 import，不使用任何替身或伪造数据。Rationale: `RULES.md` 的强制行为规则；测量数据的可信度依赖真实执行。Date/Author: 2026-11-12 / QwenWork
-
-Decision: 两侧识别语言全部采用生产配置 `language="Chinese"`（映射 zh），覆盖语料中的英语、粤语与中英混说条目。Rationale: 生产路径固定传 Chinese（`artifacts.py:33` 默认值），重写需要支撑的就是这一配置；候选引擎的 auto/yue 能力不在本次对照范围。Date/Author: 2026-11-12 / QwenWork
-
-Decision: 基线脚本直接构造 `SenseVoiceOnnxTranscriber` 并传入记录包装器 `asr_factory`，包装器内部创建真实 `funasr_onnx.SenseVoiceSmall` 并逐次记录原始返回，用于提取语种标签；VAD 工厂与识别逻辑保持生产默认。Rationale: 基线转写器清洗后不保留语种标签，而判定标准需要两侧语种误判计数；包装器只观察真实引擎输出，不改变识别行为。Date/Author: 2026-11-12 / QwenWork
-
-Decision: 国内镜像选用 `chriscrs/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17`（ModelScope），下载 `model.int8.onnx` 与 `tokens.txt` 两个文件；GitHub 归档直连下载继续作为对照测量，完成后比对 SHA-256 验证同源。Rationale: 该仓库文件规格与 GitHub 归档内容一致且实测可下载；宣称包含同一归档的 ZhaoChaoqun 镜像实际未托管该文件。Date/Author: 2026-11-12 / QwenWork
-
-Decision: 语料由用户本机文件夹提供（桌面应用 outputs 为空），ground truth 采用基线草稿加用户逐字校对，校对后的文件去除 `.draft` 后缀进入指标计算。Rationale: 用户确认；机器草稿加人工逐字校对仍属人工转写，且显著降低 20 分钟音频的转写负担。Date/Author: 2026-11-12 / User + QwenWork
-
-Decision: 语料规模调整为 `C:\Users\bicho\Videos` 的 9 个含语音文件（总时长约 5.3 小时），完整长度运行两侧引擎；ground truth 取 8 个文件各一个约 2.5 分钟窗口（合计约 21 分钟），字符错误率、漏句、重复循环、语种误判与分段起点偏差在窗口内计算，分段数量比与性能指标按完整文件计算；成对审查覆盖全部 9 条，判定标准 3 的条数基数由 16 调整为 9，其余判定标准不变。Rationale: 用户确认无法准备 24 条；现有文件覆盖普通话独白、中英混说、多人对话、背景音乐、专有名词密集、时长极端（3 小时 23 分与 41 分钟）六类，访谈录音末尾 65 分钟连续静音覆盖长静音类别且超出 30 秒规格。Date/Author: 2026-11-12 / User + QwenWork
-
-Decision: 粤语类别排除出测量范围。Rationale: 用户明确「不需要验证粤语视频，没有这个应用场景」，属范围排除，不计为残余风险。Date/Author: 2026-11-12 / User
-
-Decision: 5 秒动画 `cute_creature_head_turn_smooth.mp4` 无真实语音（基线幻觉输出「嗯。」），作为无语音边界对照单独运行两侧引擎并定性记录，不进入主语料与指标计算；`nx-segmentation.mp4` 无音频流，排除。Rationale: 主语料的 fast-fail 语义针对预期含语音的条目，无语音条目的「无输出」是正确行为，混入会污染漏句统计。Date/Author: 2026-11-12 / QwenWork
-
-Decision: 用户明确要求全程自动化、不再手工参与，人工逐字转写改为 Paraformer-large 第三引擎仲裁（本地运行、音频不出本机）。一致字符直接采信，分歧点由 Paraformer 邻域包含投票判定，生成三模型共识真值。Rationale: 无法在不引入人工的前提下获得人工真值；Paraformer 是独立于两侧 SenseVoice 权重的架构，可作合理第三方参照。已知偏差：Paraformer 与 funasr 基线共享 ITN 书写习惯、且为中文模型对英文条不可靠，结论中相应标注，英文条 mixed-a16z 排除出中文均值。Date/Author: 2026-11-13 / User + QwenWork
-
-Decision: 增加 hard20preroll 变体（分段起点向前补边 0.4 秒），用于验证候选 CER 退化是否为可修复的分段起点丢词而非引擎缺陷。Rationale: 仲裁显示退化集中在对话类的句首丢词，补边实验能把中文均值 CER 拉到与基线基本相等，证明风险定位准确、修复方向成立；正确重写实现应只延长首块前沿避免重叠重算。Date/Author: 2026-11-13 / QwenWork
-
-Decision: 增加候选 hard20 与 hard20coarse 变体：hard20 的 VAD 配置与 max20 相同，识别前把超过 20 秒的语音分段强制切分为不超过 20 秒的块；hard20coarse 在 hard20 基础上把 VAD 喂入粒度从 512 样本改为 1 秒大块。输出分别在 `results/candidate/hard20/` 与 `results/candidate/hard20coarse/`，指标计算纳入这两个变体。Rationale: 全量测量证实 `maxSpeechDuration` 为软约束，连续独白出现 123.77 秒分段并使该条 RTF 达到基线 2.2 倍；耗时拆分证实剩余差距来自 Silero 逐窗口调用开销，大块喂入可消除但改变分段边界，需要全量实测验证性能与质量。判定结论以缓解后的配置为准。Date/Author: 2026-11-12 / QwenWork
+- Decision: 测量候选固定为 `sherpa-onnx-node@2.0.1`、`model.int8.onnx` 与 `silero_vad.onnx`，基线固定为现有 ONNX 生产路径。Rationale: 固定模型与引擎便于比较。Date/Author: 2026-11-12 / User + QwenWork。
+- Decision: 测量采用自动化流程，音视频与转写留在本机；三平台加载测试使用模型归档自带音频。Rationale: 遵守用户要求和本地数据边界；第三模型仲裁用于衡量输出一致性。Date/Author: 2026-11-13 / User + QwenWork。
+- Decision: 质量、性能和安装包验收由当前 worker 重写计划定义。Rationale: 实验参考文本与产物存在可复现性限制。Date/Author: 2026-11-13 / Codex。
 
 ## Outcomes & Retrospective
 
-测量完成，判定为**有条件可行**（详见 `work/asr-spike/results/report.md`）。识别引擎本身是直接可替换的：候选与基线用同一 SenseVoiceSmall 权重，单块推理等价（410ms 对 417ms 每 20 秒），三平台原生插件加载与识别全部通过。真正的风险集中在 VAD/分段层，无法逐行翻译，必须在 TypeScript 中重新实现并做质量验收。
+实验判定为**有条件可行**。候选模型和原生依赖完成了三平台加载与识别，分段时长、句首保留、逐条性能和最终包内运行仍需解决并验证。
 
-七条判定：3（成对审查 0 更差/6 相当/3 更好）、5（总耗时比 0.788、内存比 1.34）、6（三平台）、7（国内镜像 17.9/27 MB/s，两镜像 SHA-256 一致）通过；1、2、4 在朴素配置下不达标，根因均为分段起点丢词（Silero 回溯不足）与跨停顿合并过强，已用 hard20preroll 验证「段起点向前补边」可把中文均值 CER 从 0.058 拉到 0.0531（对基线 0.0527 基本追平），但朴素补边实现牺牲速度，正确实现应只延长首块前沿。
+实验的 `results/final-metrics.json` 对 hard20 八个窗口报告基线 CER 均值 0.0538、候选 0.0610，漏句次数 3 对 8、重复循环次数 9 对 12；`results/final-metrics-preroll.json` 对 hard20preroll 报告基线 0.0595、候选 0.0614，漏句 3 对 7、重复循环 9 对 12。这些数值来自自动仲裁生成的参考文本。仲裁过程会读取待比较的候选输出，因此两个变体的参考文本和基线 CER 并非同一基准，不能直接跨变体比较 CER；它们也不能证明真实识别质量没有下降。
 
-方法偏差：用户要求全程自动化，人工真值改为 Paraformer 第三引擎仲裁，衡量的是三模型共识而非人工真值；Paraformer 与 funasr 基线共享 ITN 书写习惯、且为中文模型对英文条不可靠，结论已相应标注。重写完成时仍建议对代表性对话语料做一次人工质量验收。
+`results/pairwise.json` 对 9 条音视频的文本比较记录为 3 条更好、6 条相当、0 条更差；其中仍记录了句首丢失和歌曲幻觉，不能替代逐项质量门槛。英文为主的混合语料使用中文 Paraformer 仲裁存在局限，须单独报告。
 
-Residual risk: 分段起点 p95 偏差 6.7 秒是 VAD 本质行为差别，调参可逼近但难完全消除 FSMN 分段风格；macOS 验证走托管 CI，正式重写需把 Node 原生三平台打包纳入构建门禁（候选需 `DYLD_LIBRARY_PATH` 指向 `node_modules/sherpa-onnx-node/lib`）；与 GitHub 官方归档的直接 SHA-256 比对由 CI 哈希步骤承担（步骤已就绪待提交触发），本地两镜像已一致，GitHub 直连归档因 body 超时中断未在本机完成。
+`work/asr-spike/results/final-summary-run.log` 保存了一次聚合脚本失败的记录；当前聚合 JSON 的完整生成链未重新验证。实验语料、脚本和结果位于忽略目录，不能直接作为跨机器可复现门禁；复算须冻结输入、参考文本与脚本版本并记录实际运行结果。
+
+Residual risk: 模型文件兼容、独立质量参考、逐条性能、正式安装包及完整复算均待验证；三个平台的现有证据覆盖原生加载和模型自带音频。
 
 ## Context and Orientation
 
-worker ASR：
-
-- `worker/worker_core/asr_runtime/registry.py` — 模型家族解析、缓存目录、transcriber 构造
-- `worker/worker_core/asr_runtime/sensevoice_onnx.py` — 默认 ONNX 路径、FSMN 在线 VAD 状态机
-- `worker/worker_core/asr_runtime/sensevoice.py` — torch 路径、音频读取、分段切分、文本清洗、语种映射
-- `worker/worker_core/asr_runtime/types.py` — `Transcript`、`TranscriptSegment`、错误类型
-- `worker/worker_core/asr_runtime/artifacts.py` — 文字稿产物写出
-
-音频与模型：
-
-- `worker/worker_core/media.py:210-224` — ffmpeg 音频归一化命令
-- `worker/worker_core/config.py:8` — `APP_USER_DATA_DIR` 环境变量名
-- `worker/worker_core/model_download.py` — ModelScope 模型下载与进度回调
-- `worker/worker_core/runtime_component.py` — 外置运行时组件下载
-- `app/src-tauri/src/asr_model.rs:746` — 桌面客户端模型根 `用户数据目录/models/onnx`
-
-打包与运行时：
-
-- `scripts/build-installer.mjs` — bundled Python 构建、ffmpeg 与 Deno 归档、运行时组件切分
-- `app/src-tauri/tauri.conf.json:53-60` — resources 打包清单
-- `app/src-tauri/src/runtime.rs:110-142` — 解释器解析、`PYTHONPATH` 与 `PATH` 构造
-
-契约与文档：
-
-- `contracts/desktop-worker-contract.json` — desktop-worker 契约，contractVersion 12
-- `docs/exec-plans/index.md` — ExecPlan 必备章节与生命周期
-- `docs/EXECUTION_GATES.md` — 硬门禁
-- `RULES.md`、`WORKFLOW.md` — 强制规则与协作流程
-
-测量产物（不进入 git）：
-
-- `work/asr-spike/reference/` — 上游示例与文档摘录
-- `work/asr-spike/corpus/` — 24 条真实音频与 `manifest.json`
-- `work/asr-spike/ground-truth/` — 8 条人工逐字转写与语音边界标注
-- `work/asr-spike/baseline/run.py` — 基线运行脚本
-- `work/asr-spike/candidate/run.mjs` — 候选运行脚本
-- `work/asr-spike/metrics/compute.py` — 指标计算脚本
-- `work/asr-spike/results/` — 两侧输出、`metrics.json`、`pairwise.json`、`report.md`
+- 生产 ASR：`worker/worker_core/asr_runtime/registry.py`、`sensevoice_onnx.py`、`types.py`、`artifacts.py`；模型下载见 `worker/worker_core/model_download.py`。
+- 实验脚本：`work/asr-spike/baseline/`、`work/asr-spike/candidate/`、`work/asr-spike/arbiter.py`、`work/asr-spike/metrics/`。
+- 实验结果：`work/asr-spike/results/baseline/`、`candidate/`、`final-metrics.json`、`final-metrics-preroll.json`、`arbiter-comparison.json`、`segment-shape.json`、`pairwise.json`。
+- 三平台证据：`work/asr-spike/results/smoke-win-x64.json`、`asr-spike-smoke-macos-x64/`、`asr-spike-smoke-macos-arm64/`；CI 配置为 `.github/workflows/asr-spike-macos.yml`。
 
 ## Plan of Work
 
-```mermaid
-flowchart LR
-    A[桌面任务目录与用户提供的真实音频 24 条] --> B[ffmpeg 16kHz 单声道 pcm_s16le]
-    B --> C[基线 funasr_onnx 与 FSMN VAD]
-    B --> D[候选 sherpa-onnx-node 与 Silero VAD]
-    E[人工逐字转写 8 条] --> F[指标计算]
-    C --> F
-    D --> F
-    F --> G[对照报告与判定结论]
-```
+1. 固定生产路径与候选依赖，准备并归一化真实语料。
+2. 分别运行基线及候选配置，计算分段、耗时和自动仲裁指标。
+3. 验证三平台加载及模型下载，汇总测量证据。实验配置、文件路径及复算入口保存在 `work/asr-spike/`，数据访问受本机权限与原始文件可用性约束。
 
-1. 建立 `work/asr-spike/` 目录结构，安装候选依赖：在该目录初始化独立的 `package.json` 并安装 `sherpa-onnx-node@2.0.1`，确认 `node -e "require('sherpa-onnx-node')"` 成功。基线使用仓库现有 `uv` 环境，不新增 Python 依赖。
+### 实验配置与语料
 
-2. 选取语料。从桌面应用任务目录 `<APP_USER_DATA_DIR>/outputs/` 中已有任务选取真实音频，不足部分由用户提供本机真实音频，按下列类别各 3 条凑齐 24 条，写入 `corpus/manifest.json`，每条记录来源任务标识或来源说明、原始时长、类别、语言：
-
-   | 类别 | 条数 |
-   | --- | --- |
-   | 中文普通话独白 | 3 |
-   | 中英混说 | 3 |
-   | 粤语 | 3 |
-   | 多人对话 | 3 |
-   | 背景音乐或环境噪声 | 3 |
-   | 长静音（含 30 秒以上静默） | 3 |
-   | 专有名词密集（人名、产品名、技术术语） | 3 |
-   | 时长极端（30 分钟以上 2 条、10 秒以内 1 条） | 3 |
-
-3. 音频归一化。对 24 条逐一执行与 `media.py:210-224` 完全相同的 ffmpeg 命令，输出 16kHz 单声道 `pcm_s16le` WAV 到 `corpus/wav/`。两侧使用同一份 WAV，排除音频预处理差异。
-
-4. 人工逐字转写。从每个类别各选 1 条构成 8 条 ground truth，合计约 20 分钟，时长极端类别选取 10 秒以内那条。转写保留原始数字与英文拼写，同时标注每段语音的起止时间点，写入 `ground-truth/<id>.json`。
-
-5. 基线运行脚本 `baseline/run.py`。设置 `PYTHONPATH=worker`，调用 `build_asr_transcriber("iic/SenseVoiceSmall-onnx", cache_dir)`，逐条识别 `corpus/wav/` 中的音频，输出 `{id, text, segments, elapsed_ms, model_load_ms, peak_memory_mb}` 到 `results/baseline/<id>.json`。分段结构与 `TranscriptSegment` 保持一致。
-
-6. 候选运行脚本 `candidate/run.mjs`。下载并解压模型归档与 `silero_vad.onnx` 到 `work/asr-spike/models/`。VAD 配置 `threshold` 0.5、`minSpeechDuration` 0.25、`minSilenceDuration` 0.5、`windowSize` 512、`sampleRate` 16000，`maxSpeechDuration` 分别取 20 秒与 30 秒各运行一次并分别记录。识别配置 `featConfig` 为 `sampleRate` 16000、`featureDim` 80，`modelConfig.senseVoice` 含 `model`、`language`、`useInverseTextNormalization: 1`，`numThreads` 与基线保持一致，`provider` 为 `cpu`。用 `readWave` 读取 WAV，按 `windowSize` 切块喂入 VAD，`while (!vad.isEmpty())` 取 `front()` 后 `pop()`，末尾 `flush()` 再排空。分段毫秒值由 `start / sampleRate * 1000` 与 `(start + samples.length) / sampleRate * 1000` 计算。输出与基线同构的 JSON 到 `results/candidate/<id>.json`。
-
-7. 记录候选输出的原始形态。在识别前后完整打印一次结果对象，确认是否携带 `<|...|>` 标签、是否返回独立的语种与情感字段、标点与数字转换的实际行为，写入 `results/candidate-shape.md`。据此确定候选侧是否需要与基线相同的标签清洗。
-
-8. 指标计算脚本 `metrics/compute.py`。对 8 条 ground truth 计算两侧字符错误率（中文逐字、英文按单词内部字符）、漏句次数（ground truth 中连续 10 字符以上片段在输出中缺失）、重复循环次数（连续重复 3 次以上的片段）、语种误判条数。对全部 24 条计算分段数量比、分段起点相对 ground truth 语音边界偏差的中位数与 95 分位。汇总每条的识别耗时、实时因子、模型加载耗时、进程峰值内存。输出 `results/metrics.json`。
-
-9. 人工成对审查。对其余 16 条并排阅读两侧输出，逐条判定候选相对基线为更好、相当或更差，更差条目必须记录具体原因（漏句、重复循环、语种误判、专有名词错误、数字错误、标点差异）。写入 `results/pairwise.json`。
-
-10. 三平台加载验证。win-x64 在本机运行候选脚本识别模型自带 `test_wavs`。darwin-arm64 与 darwin-x64 通过 GitHub Actions 矩阵运行同一脚本，macOS 任务显式设置 `DYLD_LIBRARY_PATH`。记录每个平台的 Node 版本、加载耗时与识别结果。CI 任务不接触 `corpus/` 与 `ground-truth/`。
-
-11. 下载测量。记录 228MB 模型归档与 629KB VAD 模型从 GitHub Releases 直连的实际下载耗时与完成情况；核实 ModelScope 是否存在同一模型镜像，存在则记录镜像下载耗时，不存在则记录为待解决的发布前置条件。
-
-12. 汇总 `results/report.md`，按下列判定标准逐条给出数值与结论，回填本文件的 Progress、Surprises & Discoveries 与 Outcomes & Retrospective。
+- 基线由 `baseline/run.py` 构造真实 `SenseVoiceOnnxTranscriber`；VAD 使用生产默认实现，记录包装器只观察真实识别返回与语种标签。候选由 `candidate/run.mjs` 读取本地 WAV、模型和 VAD 文件，使用 CPU、4 个线程与 16 kHz 音频，识别语言为 `zh`、启用 ITN。
+- Silero 配置为 `threshold=0.5`、`minSpeechDuration=0.25`、`minSilenceDuration=0.5`、`windowSize=512`。max20 与 max30 分别设置最大语音时长；hard20 在识别前强制切分，hard20coarse 调整 VAD 输入粒度，hard20preroll 在 hard20 上加 0.4 秒前置补边。
+- `corpus/manifest.json` 列出 9 条完整音视频的类别、来源、语种与窗口；包括多人对话、口语独白、专业词汇、背景音乐和长静音。8 条语音材料各有一个质量窗口，英文为主的混合材料单列；歌曲只参与成对文本比较。单独的无语音动画不计入 9 条主语料。
+- `arbiter.py` 读取同一窗口内基线、候选及 Paraformer 文本生成候选相关的参考文本；`results/arbiter-report.json` 与 `results/arbiter-report-preroll.json` 使用不同候选。`metrics/final-summary.py` 聚合单次报告，结果的复算状态见 Outcomes。
+- macOS 测试使用 Node v26.13.1、`sherpa-onnx-node` 2.0.1 和 ONNX Runtime 1.28.2，x64 模型加载 3493 ms、arm64 2047 ms；GitHub Actions run `43219925284` 的两条任务使用模型包自带音频。Windows 本地 `smoke-ci-script-win-x64.json` 记录 Node v24.5.0 的加载与识别结果。
 
 ## Validation and Acceptance
 
-### 判定标准
+实验验证完成，记录的结果及局限如上。正式重写按 `docs/exec-plans/active/2026-11-13-worker-typescript-rewrite-plan.md` 执行自动化验收，包括固定独立参考、分段与无语音行为、逐条性能、旧数据兼容及三平台安装包；未通过的项目保持未验证状态。
 
-以下 7 条全部满足才判定候选引擎可行；任何一条不满足即判定不可行，并在报告中记录具体数值与失败类别。
-
-1. 8 条 ground truth 上，候选字符错误率的均值不高于基线，且单条增量不超过 2 个百分点。
-2. 候选的漏句次数与重复循环次数均不多于基线。
-3. 16 条成对审查中判定为更差的不超过 2 条，且这 2 条不含漏句、重复循环与语种误判。
-4. 分段起点偏差中位数不超过 300 毫秒，95 分位不超过 800 毫秒。
-5. 实时因子不高于基线的 1.2 倍，进程峰值内存不高于基线的 1.5 倍。
-6. win-x64、darwin-arm64、darwin-x64 三个平台均完成原生插件加载与一次完整识别。
-7. 228MB 模型归档存在可用的国内下载来源，并实测下载完成。
-
-### 可重复命令
-
-- `uv run python scripts/validate_agents_docs.py --level ERROR`
-- `uv run python scripts/validate_agents_docs.py --level WARN`
-- `uv run ruff check worker`
-- `uv run pytest worker/tests/test_sensevoice_onnx.py`
-- `node --test scripts/tests/*.test.mjs`
-- `node work/asr-spike/candidate/run.mjs`
-- `uv run python work/asr-spike/baseline/run.py`
-- `uv run python work/asr-spike/metrics/compute.py`
-
-### 人工回归
-
-在本机对同一条真实视频运行现有桌面客户端完整流程，确认导出的文字稿与 `results/baseline/` 中对应条目逐字一致，证明测量期间生产路径未被改动。
-
-### 失败路径与可恢复行为
-
-- 模型归档下载中断：脚本就地崩溃并保留已下载的部分文件，重新运行时重新下载完整归档，不使用部分文件。
-- 模型目录缺失或文件损坏：脚本在加载位置就地崩溃，报告缺失的具体路径。
-- WAV 读取失败或采样率不符：脚本就地崩溃，记录文件路径与实际采样率。
-- VAD 未检测到语音：候选脚本就地崩溃并记录该条音频标识，与基线的 `ASREmptyTranscriptError` 行为对应，该条计入漏句统计。
-- 识别结果为空：脚本就地崩溃并记录分段序号，该条计入漏句统计。
-- macOS 原生插件加载失败：记录 `DYLD_LIBRARY_PATH` 实际取值与动态库路径，该平台判定为未通过，不以其他平台结果代替。
+历史脚本门禁记录：`node --test scripts/tests/*.test.mjs` 为 57 通过、1 跳过，`pytest scripts/tests` 为 1 通过，`pytest worker/tests/test_sensevoice_onnx.py` 为 20 通过。当前文档校验使用项目虚拟环境：`.\.venv\Scripts\python.exe scripts/validate_agents_docs.py --level ERROR` 与 `.\.venv\Scripts\python.exe scripts/validate_agents_docs.py --level WARN`。实验脚本的复算需先核对本机模型、语料、依赖和输出路径，不覆盖既有证据。

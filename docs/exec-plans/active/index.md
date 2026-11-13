@@ -1,5 +1,9 @@
 # Active Exec Plans
 
+- `2026-11-13-worker-typescript-rewrite-gaps.md` — 重写待验证事项：现有 ONNX 模型、ASR 适配接口与缓存、独立 yt-dlp、TypeScript 运行期、工作间运行器，以及基线、自动质量评价、协议、旧数据和发行验证。
+
+- `2026-11-13-worker-typescript-rewrite-plan.md` — worker Python→TypeScript 重写计划，生产代码尚未实施。只实现当前 SenseVoice ONNX 模型，通过稳定 ASR 接口支持后续接入模型；旧 PyTorch 设置迁移到 ONNX 并提示，保留旧数据。验收全程自动化；官方独立 yt-dlp 程序内置 Python 获准作为唯一第三方例外。
+
 - `2026-11-11-collection-membership-feedback-plan.md` — 合集成员状态反馈：**代码、门禁、提交与原生验收完成**。用户确认合集保持引用语义，笔记总列表始终全量；添加清单保留已加入笔记并标注状态，加入/移除后显示「笔记仍在笔记列表」的说明与撤销。规格、`DESIGN.md`、组件、三语文案、样式与测试已更新；前端 137 文件 / 1591 通过 / 1 跳过，lint 与 build 通过，文档 0/0；提交 `b8b1311` 已推送 `origin/main`。2026-11-11 Windows 原生窗口真实指针与键盘验收在 `en-US` / `zh-CN` / `zh-TW` 三语各 17 项全过（累计 51 项，证据 `work/collection-membership-native-acceptance-*.json`，台账 `design-qa.md`），撤销后焦点落在 `Finish selecting notes` / `完成笔记选择` / `完成筆記選擇` 按钮。残余：macOS WKWebView 焦点链需 macOS 主机。前端门禁需在 PowerShell 里先清 `NODE_OPTIONS`。该功能随 v0.6.0 于 2026-11-11 发布。
 
 - `2026-11-10-data-storage-migration-speedup-plan.md` — 数据存储迁移提速（**第一批代码完成**）：并行复制/验证、砍写入后重哈希、源重验 identity+length 廉价判定、persist 250ms 节流；用户干净环境 data_storage 全模块 **88 passed / 0 failed**（agent 宿主内删除拦截致波动假失败，教训已记）。残余：全量 `cargo test --lib` 复跑与真实迁移计时对比。第二批与第三批单独立项。

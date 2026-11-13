@@ -16,13 +16,15 @@
 
 ## Desktop Runtime, Packaging & Distribution
 
+- `2026-11-13-worker-typescript-rewrite.md` — 自有 worker 从 Python 换成 TypeScript，只实现当前 SenseVoice ONNX 模型，并以稳定接口支持后续模型接入；旧 PyTorch 设置迁移到 ONNX，保留旧任务与数据。保留工作间、网页笔记和安全边界；官方独立 yt-dlp 内置 Python 获准作为唯一第三方例外，验收全程自动化。
+
 - `2026-11-09-project-rename-locus.md` — 改名为 Locus 并去品牌化命名：`worker_core` → `worker_core`、`APP_*` → `APP_*`、`pro.8xf.app` → `pro.8xf.app`、磁盘契约与日志去掉品牌；品牌名收敛为三处常量，文案用 `{{product}}` 占位。域名、仓库与部署目录另按运维动作处理。
 
 - `2026-11-01-data-storage-location.md` — 基础设置的统一数据存储位置；任务/笔记/合集、模型、运行组件与缓存可恢复迁移，凭据/设置/日志固定保留，兼容旧输出目录与明确清理旧副本。
 
 - `2026-10-20-windows-installer-security-software-warning.md`：Windows installer detects 360 Total Security, 火绒, and Tencent PC Manager before writing files and shows one Chinese message with the trust-list and install-location guidance; silent and passive installs skip the message.
 - `2026-11-09-windows-installer-preflight.md`：安装前测量目标卷可用空间与 `$INSTDIR` 可写性，交互安装失败时给中文提示并可换目录重试，静默/被动/更新只记录不阻断；每次安装追加一份 `$TEMP\install.log` 步骤日志。
-- `2026-10-20-lightweight-installer-runtime-trim.md`：默认模型切到 ONNX 变体，PyTorch 运行时改为按需下载的组件，安装包不再分发字节码；目标是把安装阶段写入量从 36,588 个文件、1,081 MB 降到 17,000 个文件、400 MB 以内。
+- `2026-10-20-lightweight-installer-runtime-trim.md`：现有 Python worker 的默认 ONNX 模型与按需 PyTorch 运行组件；TypeScript 重写后的模型范围见 `2026-11-13-worker-typescript-rewrite.md`。
 - `2026-09-19-v0.3.8-desktop-release.md` — v0.3.8 desktop release scope and acceptance; bundled `yt-dlp` upgrade 2026.7.4 -> 2026.8.19 to restore YouTube media-stream downloads for already-installed users, plus a read-only current-version line in Settings.
 - `2026-09-19-v0.3.7-desktop-release.md` — v0.3.7 desktop release scope and acceptance; bounded Douyin share-page retry and the neutralized activation-panel title.
 - `2026-09-05-v0.3.6-desktop-release.md` — v0.3.6 desktop release scope and acceptance.

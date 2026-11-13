@@ -1,5 +1,7 @@
 # 安装包瘦身：默认切 ONNX 与 PyTorch 运行时外置
 
+本规格描述已发布 Python worker 的模型与运行组件。TypeScript worker 重写后的单模型范围和升级行为见 `docs/product-specs/2026-11-13-worker-typescript-rewrite.md`；重写完成前现有生产行为继续有效。
+
 ## Background
 
 2026-10-20 的首次安装失败报告把安装阶段的写入量摆到了台面上：`resources/python` 是包内最大的一块，安装器顺序解压，安全软件有十几分钟窗口可以拦截。

@@ -38,6 +38,7 @@ Locus 持久设计决策文档总入口。`AGENTS.md` 不再逐条列出设计�
 
 ## Worker 生命周期、契约与边界
 
+- `2026-11-13-typescript-worker-architecture.md` — TypeScript worker 目标架构（待实施）：架构图、Python 版本对比、数据边界与待验证事项。
 - `2026-07-18-rust-worker-runtime-lifecycle.md` — Rust worker 生命周期
 - `2026-07-23-rust-worker-runner-module-split.md` — Rust worker runner 模块拆分
 - `2026-07-22-rust-worker-watchdog.md` — Rust worker watchdog
@@ -55,6 +56,7 @@ Locus 持久设计决策文档总入口。`AGENTS.md` 不再逐条列出设计�
 
 ## ASR 与模型
 
+- `2026-11-13-typescript-worker-asr-boundary.md` — TypeScript worker 的 ASR 适配设计（待实施）：单一 ONNX 模型、转写接口、模型准备、产物与宿主取消边界。
 - `2026-07-24-asr-model-download-job-capability-boundary.md` — ASR 模型下载 Job 能力边界
 - `2026-07-27-selectable-asr-model-on-demand-download.md` — 可选 ASR 模型按需下载
 - `2026-07-28-bundled-onnx-runtime-integrity.md` — 内置 ONNX 运行时依赖完整性

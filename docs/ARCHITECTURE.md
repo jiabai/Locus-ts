@@ -1,5 +1,7 @@
 # Locus Architecture
 
+TypeScript worker 的目标架构和与当前 Python 版本的对比见 `docs/design-docs/2026-11-13-typescript-worker-architecture.md`；该方案尚未实施，本文继续描述现有生产架构。
+
 ## Webpage notes and shared source text
 
 - `web_page.rs` owns the webpage operation, native data permit, reserved worker lane and
