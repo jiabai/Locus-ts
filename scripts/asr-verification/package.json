@@ -1,0 +1,12 @@
+{
+  "name": "locus-asr-verification",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "TypeScript ASR 路径的可复现门禁：直接调用生产代码 worker-ts/src/asr，用生产 SenseVoice ONNX 资产比对固定语料与冻结基线。依赖由 worker-ts 提供，本包不再自带 onnxruntime-node。",
+  "scripts": {
+    "verify": "node --experimental-strip-types run.mjs",
+    "freeze": "node --experimental-strip-types run.mjs --freeze",
+    "verify:deno": "deno run --allow-read --allow-write --allow-ffi run.mjs"
+  }
+}

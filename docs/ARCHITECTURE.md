@@ -1,0 +1,1548 @@
+# Locus Architecture
+
+TypeScript worker 的目标架构和与当前 Python 版本的对比见 `docs/design-docs/2026-11-13-typescript-worker-architecture.md`；该方案尚未实施，本文继续描述现有生产架构。
+
+## Webpage notes and shared source text
+
+- `web_page.rs` owns the webpage operation, native data permit, reserved worker lane and
+  independent native helper. Windows uses the installed Stable WebView2 Runtime through direct
+  COM interfaces; macOS uses WKWebView in a separate sandboxed helper app. The helper initializes
+  no Tauri runtime, application IPC, asset handler, host object or page message bridge. The
+  parent verifies its bundled executable manifest, file identity and hash before execution.
+- `begin_web_page` synchronously registers a window-bound Pending operation and acknowledges
+  with JSON `null`. The long `process_web_page` call adopts only that matching registration;
+  the webpage request retains
+  exactly `contract_version`, `url` and `operation_id`. Pending registration owns no browser,
+  worker, proxy or downloaded files. Cancellation removes Pending or signals its adopted claim.
+  React installs the real event listener, awaits the acknowledgement and rechecks its AbortSignal
+  before invoking the long command. Unmount cancellation reaches native cleanup independently of
+  UI liveness; an invoked long command remains awaited until its actual terminal cleanup.
+- Native admission and close/exit/restart guards share one barrier. Closing removes Pending,
+  cancels adopted claims and waits for webpage activity as well as data permits and
+  worker lanes. A claim that has not yet acquired its data permit still prevents premature exit;
+  new registration or adoption is rejected once closing starts.
+- Windows requires Stable WebView2 143.0.3650.58 or later and checks the actual COM capabilities
+  and unsafe Runtime configuration overrides. Each operation gets an exclusive UDF and InPrivate
+  controller. macOS requires version 14 or later, an independent `com.frameq.webview-host` app,
+  a nonpersistent data store and a task-specific HTTP CONNECT proxy configured before loading.
+  Stored note readers and AI operations require neither helper nor browser preparation.
+- The application build compiles the small native helper and the existing article extraction
+  bundle in sequence. It does not package or download Chromium, Playwright or a Node driver.
+  Missing or unsupported system capabilities fail the current webpage operation. The component
+  preparation commands, download UI and old browser-component release tasks are removed.
+- `app/src/articleExtraction/` supplies the verified Readability/DOMPurify/Turndown bundle.
+  Native WebView2 CDP or WKContentWorld executes it in the current main document's isolated
+  JavaScript world after bounded stable samples. Host messages bind operation, session and
+  navigation generation; page script cannot authorize a save or choose a task directory.
+  Windows keeps native Cookie/CORS/network behavior and checks observable HTTP resources.
+  Policy checks use 16 active slots and a bounded queue of 512 entries instead of a cumulative
+  request limit. Denied subresources are blocked individually; denied main documents terminate.
+  Queue and active deadlines, native navigation completion, DOM stability and article validation
+  remain required. Helpers emit bounded closed-category policy diagnostics without request URLs.
+  Windows also tracks native CDP request completion for document/script/style/XHR/Fetch work,
+  bounds completed encoded transfers to 64 MiB and resamples if loading changes during extraction.
+  macOS keeps WebKit behavior and applies the public-address proxy to its configured HTTP(S)
+  paths. Platform limits, including incomplete private-network and system-process control,
+  are recorded in `docs/design-docs/2026-11-02-system-webview-extraction.md`.
+- Python receives only a validated version 2 article request through `--save-web-page-stdin`:
+  operation ID, preallocated task ID, title, canonical source URL, text and Markdown. It performs
+  no webpage loading. TaskStore publishes both article files and the schema 4 manifest in one
+  recoverable transaction. Webpage stdin/stdout permit up to 40 MiB of encoded JSON; text remains
+  limited to 2 MiB and Markdown to 4 MiB. Other worker requests retain their existing limits.
+- Media remains schema 3. Webpage schema 4 has `source_kind=web_page`, `source_identity=null`,
+  `model=null`, `transcript=null` and explicit webpage title/time. Formal article paths are
+  `article/article.txt` and `article/article.md`. Native and worker admission reject mixed sources.
+- The shared SourceText reader selects the formal TXT by verified source kind, retains raw UTF-8
+  bytes and SHA-256, and checks file/directory identity and bounds. Summary, inspiration and
+  dissection use this source. Article dissection schema 2 names its source kind and hash; its
+  references address TXT byte ranges. The article view displays that exact source when highlighting.
+  Draft inputs remain the selected inspiration, preferences and optional existing summary.
+- AI retries preserve article metadata and both formal article files. Webpage results are rebuilt
+  from those files before Rust validates the terminal result against the saved task. Notes,
+  Collection membership, local metadata, deletion and migration use the same task authority.
+  Migration preserves old runtime files in its inventory and accepts the optional schema 1
+  `readyWebEngine` field; it no longer starts a retired webpage-engine probe.
+
+- New operation workspaces use `cache/.app-system-webviews/<operation_id>/` and retain an
+  immutable owner receipt, bounded process records and a save receipt binding the preallocated
+  task ID to the expected title, source and article hashes. A real publication interrupted before
+  stdout is recovered only from that exact formal task and validated artifacts. The old
+  `.app-web-pages` ownership recovery remains supported; installed old component files are
+  retained without downloads, execution or probing.
+  Recovery checks directory and executable identities, native process birth time, command ownership
+  and recorded ancestry before terminating a matching orphan. Windows uses process handles and
+  creation FILETIME; macOS uses native microsecond birth time and process groups. Existing
+  root receipts bind one exact instance; a new process with identical arguments is not adopted.
+  The application owner is identified by its real PID, birth time, absolute executable path and
+  file identity; its no-follow executable reader also verifies the parent directory identity and
+  permits hard links created for the same application by Cargo. New helper and worker identities
+  remain strict. System WebView2 executables may use legitimate Runtime hard links, with native
+  process identity, ancestry and the physically verified UDF establishing ownership. The owner
+  PID is rejected from the terminable member set.
+  Temporary-tree removal binds the verified directory identity to native handles/file descriptors.
+- The webpage worker belongs to a Windows kill-on-close Job or independent Unix process group
+  before receiving stdin. Its root terminal path clears remaining group members before joining
+  pipe readers, including descendants that outlive the root and inherit stdout/stderr.
+- Work has one 90-second deadline. Parent-observed completion, cancellation or failure starts
+  one shared 15-second cleanup budget for the native host and owned cache. Windows closes the
+  controller, observes BrowserProcessExited and reaps verified owned members. macOS reaps the
+  helper and save worker; all WebKit XPC PIDs, total RSS and immediate system-service release
+  are outside the public API guarantee.
+- An uncertain cleanup pauses its physical library for the rest of the process. Ordinary data
+  commands, migration and old-copy cleanup refuse access; checking again cannot clear this state.
+  Controlled restart revalidates durable receipts before the storage gate exposes normal Ready.
+
+## Data storage authority and recovery
+
+- Preflight work has a separate window/request/generation-bound in-memory session. Synchronous
+  registration precedes the long command; migration and cleanup use one active claim and retain
+  ownership until the worker actually exits. `data-storage-preflight-progress` carries monotonic
+  sequence numbers, closed stages, nullable totals and real file/chunk counts. It never changes
+  durable migration phases or writes the control record on each progress tick. Preparation,
+  resume source rechecks and target checks report their actual work; completed preview tokens
+  remain revocable by their original request. Superseding a request invalidates old withdrawal
+  authority. Commit/restart validation and actual deletion retain their non-cancellable boundary.
+
+- The system app-local directory is the fixed configuration root. It owns `.env`, authentication,
+  UI/update/Inspiration preferences, application logs, and the bounded `data-storage.json` control
+  record with its process lock. The separately resolved data root owns `outputs/`, `cache/`,
+  `models/`, `runtime/`, and `collections.json`. Bundled Python, worker and media tools retain their
+  installation resource root.
+- `data_storage.rs` owns native commands, directory-selection tokens, media authorization and
+  controlled close/restart. Its private engine owns physical directory identity, inventory,
+  copying, publication, cancellation, recovery and receipt-based old-copy cleanup. One immutable
+  location snapshot supplies every operation's output, cache, model and component paths.
+- Legacy mode preserves the effective `.env` then process-environment output setting and the
+  default output root. Managed mode derives all data paths from the committed root. Ordinary
+  settings saves update the ASR model only; they do not write `APP_OUTPUT_DIR` or initialize
+  bulk-data directories. Migration inventories effective legacy output plus default remnants and
+  the full application data trees, including physically preserved unsupported task directories.
+- Ordinary data commands retain a global permit through their complete native operation, including both
+  supervised worker lanes, implicit transaction/deletion recovery, playback preparation and cache
+  cleanup. React first pauses new actions and resolves busy/dirty owners while process → title →
+  automatic Collection membership and save → refresh promises finish. Rust then drains permits
+  and holds exclusive access for migration or old-copy cleanup.
+- Prepared inventory and its one-use confirmation token bind source/target identities, generation
+  and SHA-256 inventory. Copies and source rechecks complete before target publication and atomic
+  control replacement. Errors retain the durable phase; precommit cancellation releases the old
+  library and persists identifiable partial copies for explicit continuation.
+- A nonempty selected destination uses a persistent directory merge. Existing files win by
+  relative path and filename, and the corresponding source files are removed without a content
+  comparison. Missing files move through no-replace rename on one volume or verified copy and
+  source removal across volumes. Destination-only data remains in place. Once `merging` starts,
+  data permits remain paused through failures and process restarts until the operation continues
+  and commits. Empty destinations retain the copy migration flow.
+- Merge commits the source library ID with its next generation to the destination marker and
+  fixed control record. History and Draft artifacts scan the merged task tree using relative
+  paths; an existing destination `collections.json` remains authoritative. Restart validation
+  checks the actual merged destination and its offline model/component state.
+- Target probes and metadata temporaries have durable operation ownership, physical identity and
+  expected-content records. Uncertain interrupted material remains referenced; re-preparation uses
+  a new operation and confirmation. Sources changed after cancellation likewise require a new
+  inventory and preview. Same-physical-root relocation keeps original inventory evidence and
+  resolves sources through explicit identity-bound mappings, including interrupted publication.
+- A committed location stays paused until controlled restart. New-process validation checks the
+  current physical library, task/Collection data and inventory. The formal supervised worker runs
+  a read-only offline storage probe: existing model readiness and component fingerprint/import
+  results are compared with the pre-migration baseline for copy migration; merge validation captures
+  and verifies the actual committed destination. Missing, stale or previously unavailable
+  components retain their status without downloads, ASR, generation or checkout. Retired webpage
+  runtime files retain inventory/hash/copy checks without browser execution. Successful
+  validation ends the pending migration; cleanup receipts alone do not block normal use.
+- `StorageBootstrap` follows locale initialization and precedes `App`. It subscribes before reading
+  storage state and mounts data views only after native Ready. Invalid/offline storage and a browser
+  without a native bridge show the actual unavailable boundary. Online recovery retains dirty
+  sessions, blocks data actions and pauses playback; absolute artifact paths reload after restart.
+- Native asset authorization covers only verified output `tasks/` and playback-cache subtrees.
+  Unavailable/recovery/restart states revoke previous roots. Reauthorizing a revoked root requires
+  controlled restart. `close_window`, `restart_application` and `restart_for_data_storage` consult
+  the native storage state. The process plugin is not registered. Normal/update relaunch uses
+  `restart_application`; storage restart uses `restart_for_data_storage`. Their atomic preparation
+  pauses new permits and releases the configuration process lock before `request_restart`, allowing
+  the successor process to recover the same authoritative record.
+- Native control snapshots permit atomic replacement while a reader holds the prior snapshot.
+  An initially invalid control can be explicitly reloaded from an existing repaired record;
+  deleting the record does not initialize an empty replacement library. Existing valid control
+  authority is never replaced by arbitrary external edits during normal rechecking.
+- Cleanup compares receipt-listed old files against the current active library and their original
+  physical identities and hashes. Different, external or unlisted files and source roots remain.
+  The current library stays authoritative across repeated migrations and interrupted cleanup.
+
+## 2026-10-31 Local note actions
+
+- `app-note-metadata.json` belongs to its verified task directory and stores versioned pinned
+  state and the optional manual display title. TaskEditSession retains TaskLease, reads current
+  settings for each field update, and publishes through atomic replacement. Malformed settings
+  remain untouched and produce a separate error projection while the note stays readable.
+- History exposes settings independently from generated titles. React preserves manual metadata
+  through task restoration, cached results, title cancellation, and AI regeneration. Every title
+  consumer uses manual title, generated title, then the existing transcript/source label.
+- Sidebar rows have independent open and menu controls. One portal menu and the task-bound note
+  controller coordinate pinning, naming, Collection membership, canonical source actions, and real
+  information. Pinned entries are a separate projection; ordinary Notes retains every saved note.
+- Source commands accept a task ID and revalidate its stored SourceIdentity. No menu action starts
+  transcription, a supplier call, or account checkout. Internal settings are excluded from artifacts.
+- Permanent deletion records a bounded native intent, moves the verified task into same-volume
+  staging, and then cleans associated caches and freshly read Collection memberships. Results
+  distinguish completed cleanup from accepted deletion with cleanup pending. Startup and explicit
+  retry continue only matching directory identities; unrelated or replacement notes remain protected.
+
+## 2026-10-31 Automatic note titles
+
+- `process_video` and local-media processing persist the authoritative transcript first. Rust marks
+  only genuinely new saved tasks with `task_created=true`; cached URL reuse and history reads never
+  acquire title-generation authority. React captures the submission locale and keeps one operation
+  claim across transcription and the following `retry_insights` request with `target="title"`.
+- `worker/worker_core/note_title.py` samples the beginning, middle, and end of the saved transcript
+  within 12,000 Unicode characters and calls the existing configured provider once. Supplier retries,
+  repair calls, and tool-loop turns are disabled. A closed JSON title response is validated before storage.
+- Contract v10 adds `title_generating`, the title retry target, optional `note_title` result metadata,
+  and the native-owned creation flag. Optional schema-v3 manifest metadata has the closed fields
+  `text`, `status`, `output_language`, and `error_code`. Legacy absence is valid; present malformed
+  metadata is rejected. Completed titles are trimmed single-line text of at most 60 Unicode characters.
+- Title state publishes through the existing manifest journal while preserving other manifest fields,
+  transcript/media/result bytes, task identity, and Collection membership. History projects unfinished,
+  failed, or cancelled title state as a partial result with an explicit title retry.
+- Rust retains the task mutation lease and supervised timeout/cancellation boundary. The no-checkout
+  `record_note_title_cancellation` IPC command uses a closed expected-metadata snapshot to atomically
+  record cancellation before worker admission; a changed snapshot returns current committed state.
+- Sidebar, Notes, Collection, Artifacts, history management, task toolbar, and dissection confirmation
+  use the persisted title. An unrelated save preserves it. Refresh, restart, transcript edits, and
+  cached URL reuse never start another supplier call. Each explicit retry creates its own checkout.
+
+## 2026-10-30 Desktop shell and local navigation
+
+- `app/src/features/shell/` owns the sidebar, Home greeting, library projections, native toolbar,
+  responsive styling, and pure page/task navigation history. `App.tsx` composes these views with
+  the existing workflow, account, settings, transcript, and AI controllers.
+- Shell navigation stores page and task ID together. Completed-task Home editing changes only
+  composer source state; actual submission retains the prior result until account/model checks
+  succeed. Processing and unsaved edits guard task switches; deleted task visits are removed.
+- `useHistoryController.refreshHistory()` reads the existing Rust-owned history boundary without
+  opening a sheet. Generation counters protect list/detail/delete races and unmounts. Artifacts
+  projects only user-facing declared artifacts and restores the owning task before result actions.
+- Draft-save results include the expected task ID before updating frontend state. The shell does
+  not add worker commands, server payloads, cloud storage, or new media source contracts.
+
+## Desktop update distribution
+
+- 桌面更新使用 Tauri updater 与 GitHub Releases 的签名更新清单；账号服务负责账号、激活、权益和 AI checkout。
+- 服务端 HTTP 能力由 `server/src/routes/` 的显式注册表维护；未注册的更新路径返回标准 404。
+
+## 2026-10-25 Intelligent extraction agent boundary
+
+- 「要点总结」 (`summary`), 「启发灵感」 (`insights`) and 「文字稿解剖」 (`dissection`) each
+  run an `agent_runtime.ToolLoopAgentRunner` through the existing `retry_insights` command. The
+  shared desktop-worker contract keeps their target, result and artifact shapes. Dissection's
+  versioned budget uses at most 16 source chunks and one through six actual LLM calls.
+- `summary_agent.py` owns summary delivery and normalization. The agent delivers a Mermaid
+  mindmap through `submit_mindmap`; acceptance replaces that tool with `submit_summary` and
+  appends the summary task. A valid summary finishes the run directly. Its artifacts remain
+  `ai/summary.md` and `ai/mindmap.mmd`.
+- `topic_agent.py` owns inspiration delivery and exports. The agent reviews numbered transcript
+  chunks together with the permitted preference snapshot and submits the complete list through
+  `submit_insights`. JSON Schema and semantic validation enforce one through twelve distinct
+  topics, match reasons, one through three follow-up questions, suitable uses, and legal source
+  chunk references. Its artifacts remain `ai/insights.json` and `ai/insights.md`.
+- `dissection_agent.py` owns report delivery through `submit_dissection`. The report parser and
+  Markdown projection live in `dissection_report.py`; they enforce closed nested objects, source
+  chunk references, verbatim transcript highlights, collection limits, and worker-owned UTF-8
+  provenance. Its artifacts remain `ai/dissection.json` and `ai/dissection.md`.
+- Each agent accepts complete artifacts only through its delivery tools. Invalid deliveries return
+  safe validation feedback, and completion hooks require delivery before accepting a plain reply.
+  The caller drives bounded runner steps directly, with a six-call maximum and direct completion
+  on valid delivery. Provider failures fail the run; supplier clients disable implicit retries.
+- `ai_runtime.py` owns the shared provider and per-call checkout. Each actual supplier call uses a
+  unique `<base>-<target>-call-NNNN` request identifier, constructs and closes that call's supplier
+  provider, and consumes one AI Credit. Checkout-specific failures retain the existing
+  `AI_*` error codes; other provider failures map to `AI_LLM_REQUEST_FAILED`.
+  User retries mint a fresh request identifier.
+- `ai_prompts.py` owns prompt text, `transcript_chunks.py` owns deterministic source splitting,
+  `insight_errors.py` owns shared generation errors, and `ai_artifacts.py` owns shared artifact
+  payload commits. The task retry application keeps `TaskStoreFacade.finalize()` as the owner of
+  complete artifact/manifest transactions and preservation of previous successful results.
+- The three extraction agents expose only their delivery tools. Official source text from the
+  verified media transcript or webpage article,
+  generation instructions and this run's agent context enter supplier requests; preferences enter
+  only inspiration. Video, audio, source URLs, other task files, retrieval, skills and external
+  execution stay outside these three agents. Locus server receives only account and checkout
+  metadata.
+
+## 2026-10-24 Transcript polish target boundary
+
+- 「整理文字稿」 reuses the `retry_insights` command with `target="transcript"`, raising the global
+  desktop-worker contract to v9. No new Tauri command and no new Locus server interface exist for
+  transcript polishing.
+- The worker step lives in `worker/worker_core/transcript_polish.py` and is dispatched by the
+  `retry_insights_once` transcript branch. It reads only the exact-path-validated, non-link official
+  `transcript/transcript.txt`, splits it into ~2000-char sentence-boundary chunks (at most 24 chunks,
+  200 chars of preceding text as join context), and moderately polishes each chunk via the same
+  `agent_runtime` `ProviderOpenAIOfficial` construction as draft generation: fix ASR errors, drop
+  filler words and meaningless repeats, re-paragraph by meaning, while never altering facts,
+  wording of content-bearing terms, or tone. One polish run performs
+  exactly one server-managed LLM checkout (one AI Credit) regardless of chunk count.
+- The polished result is a separate artifact at `transcript/polished.txt` plus
+  `transcript/polished.meta.json` (schema v1, carrying `sourceTranscriptSha256`), written with
+  atomic replacement. The ASR original `transcript.txt`, `segments.json`, and the manifest
+  `text`/`text_preview` fields are never modified, and the polished files are intentionally not
+  registered in the task-transaction artifact whitelist.
+- `load_transcript_detail` returns `polished_text: Option<String>`: the polished body is exposed
+  only when `polished.txt` exists, is a regular non-link file, and its meta `sourceTranscriptSha256`
+  still matches the current `transcript.txt`. A stale or mismatched polish is treated as absent, so
+  saving an edit to the official transcript returns the UI button to the polish affordance inside
+  that same save: the document controller re-reads the detail after `save_transcript_edit` succeeds
+  and refreshes only the `polished_text` field, leaving any unsaved editor draft intact.
+- The frontend keeps `"transcript"` out of the AI-workspace `StudioTool` union: polishing is
+  a local-workspace toolbar action, reuses the `insights_generating` stage and `activeAiTarget`-free
+  progress, and fails with `POLISH_*` error codes that map to `transcript.*` error copy. The toolbar
+  button is dual-state: 「整理文字稿」 before a valid polish exists, 「复制文字稿」 (copying the
+  polished body) afterwards.
+
+## 2026-10-10 Draft generation target and server-managed anysearch boundary
+
+- `AI整理` exposes four peer target cards: `要点总结`, `文字稿解剖`, `启发灵感`, and
+  `生成文字稿`. Draft generation reuses the `retry_insights` command with `target="draft"`, so no
+  new Tauri command and no new Locus server interface exist for it.
+- Draft generation runs an agent rather than a single completion. Server-managed anysearch
+  retrieval supplies factual grounding, a platform skill supplies the voice, and the agent delivers
+  through the `submit_draft` contract. The transcript, video, audio, and source URL never enter the
+  draft prompt. Retrieved web context may re-enter the model, which preserves the "no full
+  transcript upload" boundary while relaxing the retrieval boundary.
+- Anysearch configuration is encrypted and stored on the server, and `AnysearchConfigService` is its
+  only reader and writer. The Admin view returns `mcpUrl`, `hasApiKey`, `apiKeyLast4`, and
+  `updatedAt`. The plaintext key leaves the server only through the authenticated
+  `POST /api/desktop/anysearch/checkout` route, and the worker consumes it as `ANYSEARCH_MCP_URL`
+  and `ANYSEARCH_API_KEY` for that run.
+- The draft is an independent artifact at `ai/draft.md`. The first manual edit backs up the
+  generated baseline to `ai/original/draft.md`, and regenerating the draft deletes that stale
+  backup so the next edit starts from the new baseline. The manifest records `draft_path`,
+  `has_draft`, and `draft_seed_insight_id` without embedding draft text.
+- Quota stays flat per confirmation attempt: one checkout charges one credit regardless of outcome,
+  a retry mints a fresh request identifier and charges again, and entering the confirmation panel
+  or cancelling charges nothing.
+
+## 2026-08-25 Xiaohongshu platform-subtitle-first boundary
+
+- The existing single-link worker flow now interprets the verified public Xiaohongshu
+  `note.video.mediaV2` JSON string through the private `xiaohongshu/subtitles.py` policy. It
+  deterministically selects one validated `source`/Chinese/English track and never exposes raw
+  `mediaV2` or signed URLs to the rest of the application.
+- The Xiaohongshu root adapter owns page composition. The fallback video path reuses the one
+  already-loaded note object after MP4 success; an ordinary successful `yt-dlp` path performs one
+  separate best-effort sidecar probe. Subtitle failure never changes a successful video
+  `CommandResult` or MP4 outcome.
+- `xiaohongshu/transport.py` owns subtitle HTTP policy: HTTPS credential-free initial/final hosts,
+  approved Xiaohongshu resource suffixes, bounded SRT/VTT content types, a 2 MiB limit, and
+  atomic `.part` replacement. The generic video downloader keeps its existing defaults.
+- The sidecar is written only under `cache/tasks/<task_id>/download/`; `MediaPreparationFacade`
+  continues to consume it through `find_subtitle_transcript`. Existing transcript runtime writes
+  `source=subtitle`, safe language, and `engine=null`, skips ASR on a valid candidate, and falls
+  back to the unchanged ASR path on a miss. No desktop-worker contract, top-level stage, UI, AI,
+  History, or server boundary changes.
+
+## 2026-08-24 Self-service activation email boundary
+
+- The server account surface now has two activation-code issuance paths that share one redemption
+  boundary: administrator universal codes and `self_service_email` account-bound codes. The desktop
+  capability is additive through `GET /api/desktop/account.can_request_activation_code`; older
+  clients can ignore it safely.
+- `POST /api/desktop/activation-codes/request` is auth-first and accepts only the closed locale set
+  `zh-CN`, `zh-TW`, and `en-US`. The route derives the email account from the authenticated session,
+  returns only `status`, `retry_at`, and `redeem_by`, and reports rate limiting through `retry_at`
+  plus `Retry-After`.
+- Self-service issuance is fail-closed across two transactions: prepare one `pending_delivery`
+  bound code and reserve persisted dispatch limits, send the plaintext only through SMTP, then
+  activate the prepared code only after SMTP acceptance. `pending_delivery` never redeems.
+- `ActivationCode` is the single source of truth for issuance source, bound account, status,
+  `sentAt`, and disabled reason. Self-service rows use `pending_delivery`, `active`, `redeemed`,
+  `expired`, and `disabled`; disable reasons are `delivery_failed`, `activation_became_active`, and
+  `superseded`. A partial unique SQLite index allows at most one active self-service code per user.
+- Redemption remains one Store transaction. Administrator codes retain the existing “extend from the
+  later of now/current expiry” behavior. Self-service codes require the bound session user, fail
+  when entitlement is already active, and on success start a fresh 31-day window with quota reset
+  to limit 20 / used 0. After expiry, the same account can repeat the cycle without a lifetime cap.
+- Production rollout is Server-first behind `APP_SELF_SERVICE_ACTIVATION_ENABLED`, which must be
+  explicit in production and defaults false in development/test. Reviewed schema rollout uses the
+  migration chain `202608240001`, `202608240002`, and `202608240003` after the existing baseline
+  and user-session migrations.
+
+## 2026-08-10 Desktop diagnostic export boundary
+
+- The global desktop-worker contract is v9. `APP_DIAGNOSTIC ` is a separate, strict stderr
+  channel for one message-free, closed diagnostic event on terminal ASR model-download failure.
+  The Rust worker runner is its only consumer: diagnostic records never enter `ProgressRoute`,
+  never refresh the idle watchdog, never become UI progress, and never alter stdout terminal
+  classification.
+- Python owns safe classification and emits at most one structured event; it does not persist
+  diagnostics. Rust/Tauri owns the fixed app-local `logs/asr-model-download.log` store, sanitization,
+  retention, export, and native Save As. Structured records and ordinary stderr fallback are
+  persisted only for semantic `DownloadAsrModel`; other operations retain the discard-and-marker
+  policy.
+- The Rust-owned ASR store enforces seven-day retention, a 4 MiB file ceiling, 1,000-character
+  sanitized payloads, a 200-line fallback cap per invocation, bounded record count, and adjacent
+  duplicate collapse. Export re-sanitizes both fixed source logs, uses only the fixed ZIP root
+  allowlist `diagnostics.json`, `desktop.log`, and `asr-model-download.log`, and keeps the
+  final archive at or below 5 MiB with truthful newest-first truncation metadata.
+- The export command accepts no frontend path or content and returns only a closed path-free
+  status. It writes through the native Save As destination with atomic replacement and retains no
+  app-local ZIP. Export performs no upload, DNS/HTTP/network probe, model retry, server request,
+  LLM call, or AI Credits activity; media, transcripts, prompts, generated content, model bytes,
+  paths, URLs, credentials, and machine identity are forbidden from the package.
+
+
+## 2026-08-05 Inspiration Profile v2 and generation-preference boundary
+
+- The current `InspirationProfile` is a closed six-field long-term-context object: `role`,
+  `domain`, `stage`, `cityContext`, `genderPerspective`, and `platforms`. Expression `styles` and
+  `avoid` belong only to the complete six-step `GenerationPreferences` selected for the current
+  Inspiration run; saved defaults are only a future-edit convenience, not another prompt layer.
+- Tauri solely owns app-local `insight-preferences.json` schema v2. It uses the shared
+  same-directory atomic writer for every mutation, fails closed on unknown or malformed fields, and
+  has no v1 migration: the feature shipped directly on v2, so every persisted file is already v2.
+- TypeScript strictly decodes the v2 state. No legacy `defaultStyles`/`defaultAvoid` or
+  `legacyGenerationPreferenceSeed` exists; expression `styles`/`avoid` come only from the complete
+  six-step generation preference, never from a deprecated profile field.
+- New retry snapshots are closed across the JSON contract, Rust, and Python: one nullable exact
+  six-field profile, the existing skip marker, one complete current generation preference object,
+  and labels for only those current fields. Common platforms are background context; the current
+  scenario wins when different, and transcript evidence wins over every preference.
+- Existing task-local v1 preference snapshots remain immutable historical evidence. They are not
+  rewritten or used to derive the v2 global profile/defaults. Summary, mindmap, dissection, server,
+  AI Credit, ASR, model-download, and media boundaries are unchanged. Durable rationale and
+  implementation evidence are in
+  `docs/design-docs/2026-08-05-inspiration-profile-generation-preference-boundary.md` and
+  `docs/exec-plans/completed/2026-08-05-inspiration-profile-generation-preference-boundary-plan.md`.
+
+## 2026-08-04 RetryInsights progress-aware watchdog boundary
+
+- Global desktop-worker contract v6 adds the closed `ai.generation.running` worker progress code
+  with integer-only `attempt` / `total` arguments. URL and local-media request envelopes remain
+  independently versioned v3/v4, and task terminal/artifact schemas remain unchanged.
+- Python passes the existing validated progress callback through the retry application and emits
+  one content-free event immediately before each transcript-dissection agent LLM call. The agent
+  budget is the displayed total; no timer heartbeat or post-call success claim is emitted.
+- Rust keeps timeout ownership in `worker_runtime`. `RetryInsights` now uses a 30-minute idle and
+  90-minute absolute deadline; only contract-valid progress refreshes idle, while absolute time,
+  structured-result precedence, cancellation, process-tree cleanup, Credits, and artifact
+  preservation remain unchanged.
+- The TypeScript retry client owns the matching progress-listener lifetime. The workflow controller
+  accepts events only for the active operation ID, and the AI workspace renders the localized safe
+  descriptor while preserving the saved transcript and prior AI result through cancellation.
+- Durable behavior and evidence are recorded in
+  `docs/design-docs/2026-08-04-retry-insights-progress-aware-watchdog.md` and
+  `docs/exec-plans/completed/2026-08-04-retry-insights-progress-aware-watchdog-plan.md`.
+
+## 2026-08-01 Transcript-dissection target boundary
+
+- Desktop-worker contract v5 adds the closed `dissection` retry target, terminal result, and
+  `dissection` / `dissection_md` artifact keys. The independently versioned URL and local-media
+  request envelopes remain v3 and v4; neither processing path can auto-run cloud AI.
+- React owns the explicit confirmation and frozen call-plan preview, target-scoped lifecycle,
+  structured report presentation, and conservative stale state after transcript save. At this
+  date `draft` was not yet implemented, so dissection was the third visible AI target; the
+  2026-10-10 boundary above records the current four-target arrangement.
+- Python owns one validated official-transcript snapshot, deterministic Unicode-code-point chunks
+  with UTF-8 byte provenance, the bounded agent delivery loop, strict report validation, and atomic
+  `ai/dissection.json` + `ai/dissection.md` publication through `TaskStoreFacade.finalize()`. Up to
+  sixteen source chunks are supported, and a run can attempt at most six supplier calls.
+- Rust remains the task/path authority. It closes v5 terminal decoding, validates the two fixed
+  artifacts and source transcript/range hashes, restores current or stale reports from History,
+  and never confuses splitter chunk IDs with ASR segment IDs.
+- Every supplier attempt uses the existing server-managed checkout independently. The Locus server
+  receives only account/entitlement/quota/checkout data; it does not receive or persist transcript,
+  prompt, report, preferences, URL, or local paths. Cancellation/failure exposes no partial report
+  and preserves the last complete version.
+- Durable behavior and evidence are recorded in
+  `docs/design-docs/2026-07-31-transcript-dissection-feature.md` and
+  `docs/exec-plans/completed/2026-07-31-transcript-dissection-plan.md`.
+
+## 2026-07-29 ONNX VAD result-contract and fail-closed inference boundary
+
+- The ONNX adapter uses `funasr_onnx.Fsmn_vad_online`, not the offline `Fsmn_vad` whole-waveform
+  feature path. It passes ten-second mono float32 views with one persistent provider state and a
+  final marker only on the last view, bounding VAD feature allocation independently of media
+  duration.
+- With `batch_size=1`, online VAD returns `[]` when a chunk emits no endpoint, or one nested batch
+  of endpoint events whose absolute millisecond bounds may use `-1` as an open/close sentinel.
+  Per-chunk `[]` preserves stream state and is not a no-speech decision. The ONNX adapter owns the
+  strict stateful event collector; it does not reuse the PyTorch `AutoModel` dictionary-result
+  decoder.
+- SenseVoiceSmall-ONNX requires successful VAD preparation. Prepared audio blocks are passed to
+  `funasr_onnx.SenseVoiceSmall` one at a time, in timing order; the adapter never passes either
+  `list[ndarray]` or the original full-audio path to the ASR runner.
+- VAD inference exceptions, invalid/incomplete event streams, normalized-WAV read failures,
+  unusable slices, block runtime failures, and all-empty block output are terminal typed ASR
+  failures. A valid completed VAD stream with no detected speech is an empty-transcript outcome.
+  No ONNX preparation failure can authorize a full-audio retry.
+- This supersedes the 2026-07-28 pre-block compatibility exception. It prevents both full-length
+  VAD feature matrices and full-length ASR logits while preserving the PyTorch SenseVoiceSmall
+  adapter and transcript artifact contract.
+- The durable product/runtime decision remains in
+  `docs/product-specs/2026-07-27-selectable-asr-model-on-demand-download.md` and
+  `docs/design-docs/2026-07-29-onnx-vad-result-contract-hardening.md`.
+
+## 2026-07-24 Tauri IPC runtime-decoding boundary
+
+- Ordinary Rust/Tauri command results are runtime-untrusted values even when TypeScript knows the
+  expected DTO. Every reviewed client runner must return `Promise<unknown>` and decode the complete
+  domain shape before any value enters controller or application state.
+- `accountClient.ts`, `historyClient.ts`, `settingsClient.ts`, `transcriptDetailClient.ts`, and the
+  Locus-owned command portion of `updateClient.ts` implement the boundary. Each client
+  remains its domain adapter and owns `parseXxxResponse(unknown)` functions.
+- `app/src/tauriIpcProtocol.ts` provides only domain-free safe data-object inspection and a
+  stable non-echoing `IpcProtocolError`. It will not become a generic `BaseClient<T>`, schema
+  registry, code generator, or service locator, and no validation dependency is added.
+- DTOs are closed at top-level and nested boundaries. Accessors, symbols, exotic prototypes,
+  unknown/missing fields, wrong types, invalid enums, non-finite values, and incoherent semantic
+  relationships fail with one fixed response-invalid code per domain. Rejected values are never
+  stringified or attached as causes/details.
+- The existing `workerResultProtocol.ts` and local-media contract remain specialized closed
+  boundaries. The 2026-07-19 worker terminal-result rule is already implemented for Python/Rust
+  worker families; it does not imply that every ordinary Tauri command result is already decoded.
+- Rust remains authoritative for sessions, supported tasks, path containment, filesystem effects,
+  and updater signature trust. This TypeScript anti-corruption layer changes no command, wire
+  shape, product behavior, persistence, network path, AI call, or Credit.
+- The durable decision and implementation sequence are
+  `docs/design-docs/2026-07-24-tauri-ipc-runtime-decoding-boundary.md` and
+  `docs/exec-plans/completed/2026-07-24-tauri-ipc-runtime-decoding-plan.md`.
+
+## 2026-07-23 Frontend transcript controller ownership boundary
+
+- `app/src/features/transcript/useTranscriptDetailController.ts` remains the only production
+  transcript-controller import shared by `App.tsx` and presentation components. It is a slim
+  facade that composes private owners and preserves the existing 41-key flat return surface and
+  `ReturnType` alias.
+- `useArtifactDetailController.ts` owns result-detail tab state, locale-aware copy text, clipboard,
+  and saved-artifact location actions. `useTranscriptDocumentController.ts` owns task-scoped load,
+  draft/segment state, save IPC, stale-result rejection, and semantic workflow merge.
+  `useTranscriptReviewSession.ts` owns validated audio URL conversion, browser media/segment refs,
+  timing, scrubbing/following, edit pause/resume intent, and matching-task deletion release.
+- The facade is the only composition point; private owners do not import one another. Successful
+  save sequencing passes one private completion callback from the review owner into the document
+  owner without exposing either private action through the public controller.
+- `useTaskProcessingController` remains the sole workflow/task-identity owner. The document owner
+  can only request the existing `applyTranscriptSave` semantic merge, and both load/save results
+  reject stale task identity before updating the visible projection.
+- Review identity is task-scoped. Changing or removing the current official transcript task clears
+  active/edit state and pending playback-resume intent, so task A cannot cause task B audio to play.
+- Source-boundary tests enforce owners, dependency direction, consumer imports, `ReturnType`, and
+  limits of 200 facade / 250 child physical lines. No IPC, native path validation, network,
+  localization, manifest, logging, AI, or Credits behavior changed.
+
+## 2026-07-22 Server authentication, quota, and production operations boundary
+
+- The authentication/quota data-correctness boundary and local production-operations implementation
+  are complete and locally verified. Broad publication remains blocked on hosted Linux Server CI,
+  approved production-shaped SMTP/Nginx/systemd/restore evidence, and the combined release gate.
+- `Store` is the consistency facade for critical multi-entity use cases. Authentication services
+  generate raw OTP/ticket/session/CSRF values but pass only hashes into purpose-specific semantic
+  Store operations. Routes remain HTTP adapters and cannot assemble Prisma transactions.
+- OTP challenges gain closed `desktop_login`/`admin_login` purpose, exact-scope replacement, atomic
+  attempt/consume/artifact creation, and database-backed email/IP dispatch limits. One challenge
+  creates at most one ticket/admin session and never exceeds five attempts.
+- Desktop ticket consumption and session creation become one transaction. Session insertion failure
+  rolls back ticket consumption; concurrent exchange yields one session.
+- AI Credit checkout uses one parameterized conditional entitlement update guarded by
+  `llmQuotaUsed < llmQuotaLimit` and one same-transaction unique `(userId, requestId)` usage event.
+  It preserves `consumed/reused/unavailable` semantics without supplier calls during database retry.
+- Correctness comes from conditional writes, transactions, checks, and unique constraints, not a
+  JavaScript mutex or SQLite's ordinary writer serialization. Tests must use independent Prisma
+  clients against one real temporary SQLite file. Supported production remains one server instance
+  per local SQLite file; shared-network/multi-host SQLite remains forbidden.
+- The repository establishes a current-schema Prisma migration baseline and a separate hardening
+  migration. Production uses preflight + backup + `migrate deploy`, with full database restore as
+  rollback and no silent quota clamping; the production package/runbook no longer offers schema
+  push.
+- Production startup validates a closed config and requires explicit SMTP/secrets. Fastify emits
+  redacted structured lifecycle/outcome logs, trusts forwarded IP only from loopback Nginx, exposes
+  fixed `/health/live` and database-aware `/health/ready`, and drains Fastify/Prisma through one
+  bounded idempotent signal coordinator.
+- The durable decision is
+  `docs/design-docs/2026-07-22-server-auth-quota-operations-hardening.md`; implementation steps are
+  `docs/exec-plans/completed/2026-07-22-server-auth-quota-concurrency-hardening-plan.md` and
+  `docs/exec-plans/completed/2026-07-22-server-production-operations-hardening-plan.md`.
+
+## 2026-07-22 Broad-release reliability boundary (persistence and watchdog implemented)
+
+- The authoritative-persistence half of this boundary is implemented on `main` at `61d489a`.
+  Transcript, AI, preference, manifest, and Rust transcript-edit owners use reviewed atomic
+  replacement, while existing-task bundles recover through the closed prepared/committed journal.
+- The desktop reliability boundary is implemented: the Rust runner now places every supervised
+  operation behind fixed operation-owned idle/absolute deadlines and an instance-bound watchdog.
+  Broad publication remains separately blocked on server concurrency and production operations.
+- Persistence keeps two layers distinct. A shared Python/Rust same-directory staging + sync +
+  atomic-replace primitive prevents individual-file truncation. A closed task-local
+  prepared/committed journal makes existing-task transcript and AI bundles recover to one complete
+  revision before `SupportedTask`/`TaskStoreFacade` readers trust them.
+- The journal retains official artifact paths and task schema v3, contains no content or absolute
+  paths, remains outside artifact discovery, and fails closed before unsafe recovery. New task
+  creation continues using the atomically written manifest as the final visibility record.
+- `worker_runtime` remains the sole process lifecycle owner and derives fixed idle/absolute policies
+  from `WorkerOperation`. Its instance-bound watchdog terminates while stdin delivery or wait is
+  blocked, reuses the existing process-tree primitives, and cannot act on a newer instance.
+- Structured-result-first and explicit cancellation semantics remain unchanged. A timeout has its
+  own safe outcome, clears the busy state, preserves committed artifacts, and never automatically
+  retries an LLM or consumes another AI Credit.
+- Durable decisions and implementation steps are in
+  `docs/product-specs/2026-07-22-release-reliability-hardening.md`,
+  `docs/design-docs/2026-07-19-worker-atomic-artifact-commit.md`,
+  `docs/design-docs/2026-07-22-rust-worker-watchdog.md` and the completed atomic-persistence and
+  worker-watchdog ExecPlans.
+- Server OTP/ticket/quota concurrency and local production operations are implemented. Hosted
+  Server CI, approved staging/restore evidence, and the combined release gate remain separate
+  broad-release blockers; desktop persistence/watchdog evidence does not close them.
+
+## 2026-07-20 ASR application module boundary
+
+- `worker/worker_core/asr.py` is now a slim stable compatibility surface. Production callers
+  continue importing errors, transcript DTOs, adapters, registry/cache functions, and artifact
+  writers only from `worker_core.asr`; the root re-exports the actual private objects rather than
+  wrappers or duplicate classes.
+- The private `asr_runtime/` package separates five owners: `types.py` owns shared contracts,
+  `sensevoice.py` owns SenseVoice normalization/VAD/WAV behavior, `sensevoice_onnx.py` owns the ONNX
+  adapter, `registry.py` owns model selection and cache mutation, and `artifacts.py` owns official
+  transcript output. The package initializer is empty.
+- Provider modules never import the registry, and no private module imports the stable root or
+  application orchestration. `funasr`, `funasr_onnx`, and `numpy` remain lazy; importing the stable
+  root does not load a provider SDK or initialize a model.
+- SenseVoice VAD remains best-effort and falls back to the existing full-audio call. At this
+  structural checkpoint provider failures, model order/defaults, source-identity
+  validation-before-directory-creation, filenames, Markdown/JSON shape, direct non-atomic writes,
+  and public error behavior were unchanged; `61d489a` later replaced those writes without changing
+  the ASR formats.
+- The canonical `worker/worker_core/` tree remains authoritative. Packaging validation refreshed
+  the ignored Tauri resource through the established build path and proved all 56 relative files
+  byte-equal, including the new private package. Worker contracts, local-media runtime, manifests,
+  model-download behavior, UI, and server code are unchanged.
+
+## 2026-07-20 Douyin fallback module boundary
+
+- `douyin_fallback.py` is now the stable compatibility/application adapter. It retains the complete
+  fallback sequence, default dependency composition, output naming, candidate-order wrapper, and
+  all five `douyin.*` progress events, including bounded share-page retry orchestration.
+- The private `douyin/` package separates immutable shared types, source/short-link policy, pure
+  Router Data interpretation, bit-rate/ratio-probe stream policy, and CookieJar/urllib/atomic-write
+  transport. The package initializer exports nothing, and production consumers outside the package
+  continue importing only `worker_core.douyin_fallback`.
+- One default `UrllibDouyinHttpClient` and its process-local anonymous `CookieJar` still span source
+  resolution, share-page request, ratio probes, and final media request. Direct canonical IDs remain
+  network-free.
+- Candidate sorting/deduplication stays in stream policy and the root wrapper; transport receives an
+  ordered sequence, removes probe Range headers, retries only request/safe-write failures, and uses
+  the shared atomic writer without emitting progress or exposing volatile URLs.
+- AST tests enforce owner symbols, dependency direction, transport-only low-level effects,
+  root-only production entry/progress, and exact shared identities. The generated Tauri worker
+  remains a recursive byte-equal mirror of the canonical 50-file worker tree.
+
+## 2026-07-20 Desktop-worker contract v4 source-type boundary
+
+- `contracts/desktop-worker-contract.json` is now global contract v4. The existing URL worker
+  request deliberately remains `contract_version: 3` with exactly `url + asr_model`; local media
+  owns an independent closed v4 worker request and `--process-local-media-stdin` mode.
+- The local-media contract declares the closed video/audio kind and extension sets, frontend-safe
+  selection metadata, token-only IPC intent, worker stdin fields, fixed error codes, progress codes,
+  and machine-readable full-path/selection-token transport restrictions.
+- TypeScript owns only token plus safe display metadata and has no local-path field. Rust owns pure
+  selection/IPC/worker-request types and fixed non-echoing validators. Python owns the corresponding
+  path-bearing request model and strict parser; its path and safe basename are excluded from repr.
+- The contract-first commit deliberately registered no executable consumer. The 2026-07-23 vertical
+  slice subsequently activated the picker, Tauri command, `WorkerJob`, Python CLI/pipeline,
+  manifest/History projection, and UI together.
+- The three local progress codes now have real worker producers and three-locale frontend resources;
+  producer-source and rendering tests prevent registry/resource drift.
+- The packaged Tauri worker directory is a generated ignored mirror. Its existing refresh test now
+  proves recursive relative-file and byte equality after excluding Python cache files, rather than
+  relying on one sampled file.
+
+## 2026-07-20 Video-processing application module boundary
+
+- `video_processing.rs` is now a slim Tauri adapter/module root. It retains the three stable
+  command entry points, cancellation, and narrowly shared trusted desktop task-result DTO support;
+  the process and retry commands delegate immediately to focused child modules.
+- `video_processing/url_processing.rs` owns strict process-video IPC/worker DTOs, contract-v3 ASR
+  request resolution, exact-URL then canonical-identity cache orchestration, source-identity
+  preflight, cache-hit diagnostics, and semantic process job submission.
+- Source-identity preflight is an explicit closed policy: completed identity enables the second
+  cache lookup; failed identity, wrong result family, unstructured failure, and protocol violation
+  continue without identity; cancellation, busy, and remaining transport errors stay terminal.
+- `video_processing/url_cache.rs` owns model-aware validated URL-task reuse. Its API accepts only URL
+  or `SourceIdentity` plus ASR model, reads through `SupportedTask`, and has no Tauri, worker-job,
+  settings, runtime-path, supervisor, or diagnostics dependency.
+- `video_processing/retry_insights.rs` owns strict retry parsing, execution, and safe diagnostics and
+  has no URL cache, source-identity, task-manifest, or ASR-settings dependency.
+- The existing `video_processing/task_result.rs` remains the sole closed process/retry task-outcome
+  mapper. Tauri command names/registration, contract v3, worker/runtime behavior, manifest schema,
+  frontend behavior, cancellation, and future local-media contract v4 are unchanged.
+
+## 2026-07-19 Video-processing task-result adapter boundary
+
+- `video_processing.rs` remains the Tauri command adapter and application orchestrator for request
+  preparation, URL cache lookup, source-identity preflight, diagnostics, job submission, retry, and
+  cancellation.
+- `video_processing/task_result.rs` alone maps typed task worker outcomes into the public closed task
+  result. Its exhaustive context is limited to process-video and retry-insights.
+- Each context fixes status, stage, code, and public fallback message. Valid structured task results
+  pass through unchanged; a wrong terminal-result family or protocol failure becomes a fixed empty
+  `WORKER_PROTOCOL_VIOLATION` task error rather than exposing rejected data.
+- Source-identity preflight keeps its distinct tolerant cache policy in the parent, but its terminal
+  cancellation/busy/transport categories enter the same task-result adapter instead of recreating
+  public result policy.
+- Worker runtime lifecycle, terminal parsing, diagnostics, Tauri commands, contract v3, and the
+  future local-media contract v4 remain unchanged by this boundary.
+
+## 2026-07-19 Closed worker terminal-result boundary
+
+- Each worker operation accepts exactly one declared terminal-result family: task processing and AI
+  retry use `TaskTerminalResult`, source preflight uses `SourceIdentityTerminalResult`, and model
+  download uses `ModelDownloadTerminalResult`.
+- The canonical contract closes every result object and nested object. Rust validates stdout with
+  operation-aware typed DTOs, while TypeScript independently parses unknown IPC values before they
+  enter application state, including cached and synthetic results.
+- The supervised runner retains lifecycle and cancellation ownership and delegates result semantics
+  to a focused protocol module. A validated result wins a cancellation race; missing or malformed
+  output follows the documented cancelled/protocol/unstructured precedence.
+- Worker stdout contains exactly one non-empty terminal JSON line. Progress and diagnostics remain
+  on stderr, and protocol rejection never echoes the raw line, paths, transcript, or generated text.
+- Safe unknown error codes remain structurally valid for generic localized guidance; unknown fields,
+  wrong types, unsafe codes, invalid enums, and operation-family mismatches are rejected.
+- This formalizes contract v3 without implementing local-media v4. The durable decision is recorded
+  in `docs/design-docs/2026-07-19-closed-worker-terminal-results.md`.
+
+## 2026-07-19 Worker atomic artifact commit boundary
+
+- Official task media and JSON files are commit destinations, never scratch outputs. Worker-owned
+  producers write to unique same-directory staging files, close and sync those files, validate
+  media where applicable, and install them with `os.replace` only after success.
+- `MediaPreparationFacade` owns staging, validation, installation, and safe failure mapping for the
+  current URL video and normalized WAV. The pipeline receives only committed `PreparedMedia` paths.
+- `TaskStoreFacade` atomically installs `task.json` and the preference snapshot. The manifest
+  is the final task-result commit record and may reference only committed ordinary files at known
+  official artifact paths.
+- Video and audio use independent per-file commits. A later audio failure may preserve an already
+  committed valid video under existing partial-task semantics, but incomplete staging media never
+  enters artifacts, results, History, or cache authority.
+- The original 2026-07-19 boundary did not add local-media contract v4 or change manifest schema
+  v3/result DTOs. Release-hardening Phase 2 is now implemented: transcript/AI/Rust edit owners use
+  per-file atomic replacement and existing-task updates use the closed journal/recovery boundary.
+  The durable decision and residual native validation risks are recorded in
+  `docs/design-docs/2026-07-19-worker-atomic-artifact-commit.md` and the completed ExecPlan.
+
+## 2026-07-19 Media preparation facade boundary
+
+- Python `run_worker_pipeline` enters download, media selection, ffprobe validation, task-owned
+  video copying, audio extraction/reuse, and subtitle discovery only through
+  `MediaPreparationFacade`.
+- The current closed input is `UrlMediaSource`. `LocalVideoSource` and `LocalAudioSource` are added
+  only with desktop-worker contract v4 and the real local-media CLI consumer; no dead variant is
+  reserved under contract v3.
+- The facade returns `PreparedMedia` with optional task-owned video, required task-owned audio, and
+  an optional parsed subtitle candidate. URL subtitle writing and ASR remain pipeline stages; local
+  sources must return no subtitle candidate.
+- `MediaPreparationError` carries a stable code, sanitized message, and workflow stage. The pipeline
+  maps it into a result and owns `TaskStoreFacade.finalize`; the facade does not write manifests.
+- ASR, transcript artifact writing, AI generation, History, cache policy, and task persistence stay
+  outside this facade. Existing URL progress, artifacts, results, task schema, and contract v3 are
+  unchanged.
+
+## 2026-07-21 Worker pipeline private-owner boundary
+
+- `worker/worker_core/pipeline.py` is now a slim stable compatibility surface containing only
+  explicit direct re-exports. Production callers continue importing pipeline-owned symbols only
+  from `worker_core.pipeline`; the root owns no processing behavior and preserves the exact
+  private function/class objects rather than wrappers or duplicate definitions.
+- The empty-initializer private `pipeline_runtime/` package separates four owners: `shared.py` owns
+  path/progress/failure policy, `transcript.py` owns subtitle and ASR stages, `insights.py` owns
+  official-transcript validation/read plus target-scoped AI generation, and `orchestration.py` owns
+  URL source/task/media/transcript/finalization composition.
+- Dependency direction is closed: transcript may depend on shared policy; URL orchestration may
+  depend on shared and transcript; process orchestration cannot import AI/output-language
+  policy; and AI generation cannot import ASR, media preparation, source resolution, or task
+  persistence. `cli.py` and `worker_service.py` retain their existing stable-root imports.
+- `TaskStoreFacade` remains the task lifecycle/persistence boundary and `MediaPreparationFacade`
+  remains the media subsystem boundary. The split changes no request/result contract, task or
+  manifest schema, progress/error semantics, artifact, AI call, CLI mode, or local-media behavior.
+- Ownership/identity AST gates and behavior characterization enforce this boundary. The canonical
+  worker remains authoritative, and the ignored Tauri worker resource is refreshed through the
+  supported generator and checked recursively for identical relative files and bytes.
+- The durable decision is recorded in
+  `docs/design-docs/2026-07-21-worker-pipeline-module-split.md`.
+
+## 2026-07-24 Implemented Python worker application-facade boundary
+
+- `worker_service.py` is now a slim sole stable Python application facade with exactly five
+  direct-import entries: URL processing, local-media processing, source identity, AI retry, and
+  ASR model download. The private empty-initializer `worker_application/` package gives each use
+  case one handler and gives production dependency defaults one separate owner.
+- `cli.py` is now a slim process adapter limited to fixed mode parsing, bounded stdin,
+  validated progress/result rendering, facade dispatch, and process exit status. It exposes no
+  compatibility `__all__`, broad forwarding wrapper, or production dependency factory.
+- Platform-aware URL/source-identity behavior is preserved. The production resolver, transcriber,
+  Insight client, and real-ASR defaults live in `worker_application/defaults.py`; existing facade
+  parameter names and injection seams remain stable.
+- AI retry consumes `TaskPaths` directly and uses reviewed fields instead of a dynamic
+  `object/getattr()` path bag. Exact-tree, direct-reexport, import-direction, factory-owner, and
+  typed-path gates prevent the former ownership from returning.
+- Contracts, CLI flags, results, progress, task/manifest schemas, artifacts, persistence, network
+  calls, AI Credits, and user-visible behavior remain unchanged. Full Worker validation passed
+  600 tests with 2 skips; Ruff, repository scripts 27/27, Tauri release `--no-bundle`, governance,
+  and recursive 70-file canonical/mirror byte equality also passed.
+- The durable design and completed TDD execution plan are
+  `docs/design-docs/2026-07-24-python-worker-application-facade.md` and
+  `docs/exec-plans/completed/2026-07-24-python-worker-application-facade-plan.md`.
+
+## 2026-07-18 Task access facade boundary
+
+- Rust raw task-manifest parsing, privacy predicates, relative-path resolution, canonical artifact
+  validation, and manifest writes are private to the `task_manifest` module tree. The slim
+  `task_manifest.rs` root is the only crate-visible import surface; its private `source_identity`,
+  `schema`, `storage`, and `access` children own canonical source policy, pure DTO/projection policy,
+  filesystem/path effects, and validated capability orchestration respectively.
+- History, cache reuse, transcript read/edit, and deletion continue entering through root-re-exported
+  `SupportedTask::scan/open`; no caller may import a private child or assemble raw DTO/path helpers.
+- `SupportedTask` is a validated capability, not another persisted DTO. Application callers use a
+  closed `TaskArtifact` enum and receive safe projections or validated task-local capabilities;
+  transcript mutation is restricted to `TaskEditSession`.
+- `TaskEditSession::encoded_manifest()` 生成保留未知字段与末尾换行的 manifest 字节；调用方将这些
+  字节和关联产物交给 `commit_task_artifacts()`，由任务 journal 统一提交。
+- `atomic_files::is_link_or_reparse_point` 统一识别 symlink 与 Windows reparse point；本地选源
+  直接引用，任务模块通过 storage 和根模块引用。各入口保留自身的文件类型与路径边界检查。
+  `storage` 共用产物目标/直接父目录的链接检查，以及原文件父目录下 `original/` 备份路径计算；
+  文字稿与成稿编辑通过任务根模块使用这两个 helper。
+- `schema.rs` 定义唯一的 `TASK_ARTIFACT_KEYS`，经 `task_manifest` 根模块导出，供 manifest 路径
+  校验与 Worker 结果校验共用；契约测试核对完整键集合、唯一性和 manifest 对各字段的支持。
+- 事务契约的标识格式、条目数量、内部路径、可空字段及提交顺序，由
+  `worker/tests/test_task_transaction_contract_rules.py` 和 Rust
+  `task_manifest/transaction/contract_tests.rs` 直接读取契约并核对原生实现；两端使用真实文件
+  验证 prepared/committed 恢复行为，并分别验证九项声明的独立差异能够被检测。
+- A scan isolates corrupt, unsupported, or racing individual task entries while preserving failure
+  for an unreadable configured task root. This keeps History and cache fail-closed without allowing
+  one damaged task to hide valid tasks.
+- Python task lifecycle orchestration enters through `TaskStoreFacade`, which owns create, open,
+  finalize, and preference-snapshot persistence. `OpenedTask` exposes normalized transcript metadata
+  and a validated context rather than the raw manifest.
+- This boundary does not change manifest schema v3, desktop-worker contract v3, IPC/result shapes,
+  cache identity, transcript backup behavior, or AI retry semantics. The future local-media source
+  union must extend the facade predicate rather than reintroducing caller-local manifest checks.
+
+## 2026-07-18 Process-video request contract v3 boundary
+
+- React-to-Tauri `process_video` input expresses user intent only and contains exactly `url`. UI
+  locale, transcript language, output formats, ASR configuration, and AI mode are not frontend
+  processing parameters.
+- Rust owns app-local ASR configuration. It preserves the submitted URL, resolves one supported ASR model,
+  performs cache matching with that value, and constructs a distinct immutable worker request.
+- The bounded worker-stdin request contains exactly `contract_version: 3`, `url`, and `asr_model`.
+  Python validates this request and treats it as execution truth; it does not override the model from
+  environment configuration in the process path.
+- `contracts/desktop-worker-contract.json` is the canonical worker-request schema. TypeScript IPC,
+  Rust serialization, and Python parsing/consumption tests reject missing, legacy, additional,
+  wrong-version, or unsupported values without echoing raw source input.
+- `language`, `output_formats`, and `insightflow_mode` are retired rather than assigned manufactured
+  semantics. A future option requires an owner, validator, executable consumer, failure policy, and
+  versioned contract test.
+- The change does not alter task manifests, History, cache identity, artifacts, source handling,
+  cancellation, or AI generation. The future local-media boundary remains a separate command and
+  advances the desktop-worker contract from v3 to v4.
+
+## 2026-07-16 Local Media Import Boundary
+
+- URL processing remains the existing `process_video` capability. Local processing is an independent
+  `process_local_media` command, but both share one private ProcessSupervisor task lane, cancellation
+  semantics, normalized-WAV ASR path, task lifecycle, and separately confirmed AI targets. Runtime
+  activation atomically renamed the internal lane/accessors and `VideoWorkerFacade` to
+  task-oriented vocabulary and `TaskWorkerFacade`; the public `process_video` IPC command remains
+  unchanged.
+- The native Tauri picker accepts one allowlisted file. Rust owns the complete absolute path in one
+  non-persisted current selection and returns React only a random token, sanitized basename, kind,
+  extension, and size. A replacement token invalidates the old selection; processing revalidates
+  ordinary-file/no-link status, nonzero size, extension, size, and modification time.
+- The local path crosses into the bundled worker only through a bounded one-shot
+  `--process-local-media-stdin` request. It must not enter frontend state, argv, environment variables,
+  results, progress, errors, logs, manifests, transcript exports, prompts, or cloud requests. Python
+  opens that path directly and copies the bytes to a generic task-owned staging path before invoking
+  ffprobe or FFmpeg, so descendant-process argv never contains the original directory or basename.
+- `contracts/desktop-worker-contract.json` v4 adds a closed local-media request plus registered local
+  progress/error codes while preserving the cleaned v3 URL request. TypeScript, Rust, Python, and the
+  packaged worker mirror must reject drift and invalid/additional values consistently.
+- Every local source is decoded into official `media/audio.wav` as 16 kHz mono signed 16-bit PCM
+  before SenseVoice. Video requires video+audio streams, preserves original bytes as generic
+  `media/video.<ext>`, and ignores subtitles. Its validated generic staging copy is atomically
+  promoted to that official artifact before decoding. Audio requires an audio stream, removes its
+  generic staging copy after normalization, retains no original copy, and owns no video artifact.
+  Partial artifacts are validated before manifest registration.
+- Manifest schema v3 gains a closed `local_file` source variant with empty URL, null SourceIdentity,
+  and safe local-only basename/kind/extension. Existing or absent `source_kind` retains the current
+  strict URL predicate. History and task source models become discriminated unions; older clients
+  ignore unrecognized local tasks without mutation.
+- Frontend application commands use the closed `TaskSubmission` union (`url` or token-only
+  `local_media`), while task/history projection uses the closed `TaskSourceSummary` union (`url` or
+  safe `local_file`). DOM events remain in form adapters; URL and local IPC requests remain separate
+  and no optional-field request bag is permitted.
+- A local task supports the existing History detail/restore/delete, normalized-audio playback,
+  transcript editing, artifact location, and confirmed summary/inspiration flows. AI receives the
+  saved transcript under existing rules and never receives local filename, path, token, or manifest.
+- Picker registration, `WorkerJob::ProcessLocalMedia`, Python CLI consumption, manifest/History
+  support, and UI dispatch were activated as one tested vertical slice. Contract-only validators
+  preceded it, but no half-executable command or dead job branch shipped.
+
+## 2026-07-15 Desktop i18n and AI Output-Language Boundary
+
+- The desktop localization implementation must support exactly `zh-CN`, `zh-TW`, and `en-US`
+  through bundled `i18next + react-i18next` resources. `system` must remain a persisted preference,
+  not a worker locale, and resolve to one supported locale before rendering or AI confirmation.
+- Tauri must be the only owner of app-local `ui-preferences.json` schema v1. The file must contain
+  only the language preference, fail safely to `system` with recovery metadata, and remain separate
+  from `.env`, server/account state, task manifests, History, and inspiration preferences.
+- Desktop startup must use a neutral Locus shell and a bounded 1.5-second preference read. Timeout
+  or failure must mount once with resolved system language and ignore a late result. Sequenced saves
+  must preserve the most recent successfully persisted rollback anchor.
+- `contracts/desktop-worker-contract.json` v2 declares a closed `retry_insights` request schema and
+  no old-call default. TypeScript, Rust, and Python runtime boundaries must still implement and test
+  rejection of missing, invalid, target-incompatible, or additional fields before closeout.
+- Final AI confirmation must freeze the actual resolved UI locale for that request.
+  Summary text, Mermaid labels, dissection reports and Insight user-visible fields receive fixed
+  enum-derived language semantics. Existing ASR language, subtitles, transcripts, artifacts,
+  History, caches, and task manifests must remain unchanged.
+- Worker and model-download producers must emit only contract-registered `domain.action.state` codes
+  and closed safe args; consumers must drop invalid events and record only the safe code. Model codes
+  must uniquely determine status and whether a bounded cross-platform basename `current_file` is
+  required or forbidden. URL, full path, Cookie, credential, transcript, prompt, generated content,
+  request headers, and preference prose must remain forbidden.
+- `cancelling` is a desktop ProcessSupervisor/UI transition, not a worker-progress wire stage; the
+  shared stage enum and Python/Rust/TypeScript worker boundaries therefore reject it on that channel.
+- Language adherence must remain a best-effort prompt constraint. Locus must add no output-language
+  detector, translation, or automatic retry, preserving server-managed LLM data flow and AI Credits
+  per-call accounting.
+
+## 2026-07-13 Draft Generation from Inspiration Boundary
+
+- `生成文字稿` is the third peer `AI整理` target card alongside `要点总结` and `启发灵感`, triggered by extending `retry_insights` with `target="draft"` (`RetryInsightsRequest{ task_id, target="draft", insight_id, output_language }`). No new Tauri command or Locus server interface is added for drafts; the standalone CLI `--generate-draft-json` / `generate_draft_once` / `GenerateDraftRequest` path is retired and its persistence logic is absorbed into the `retry_insights_once` draft branch.
+- The seed is exactly one user-selected `Insight` from `启发灵感`. The worker reads the task-local `PreferenceSnapshot` from `ai/preference-snapshot.json` and the optional summary grounding from `ai/summary.md` itself; the frontend SHALL NOT send `preference_snapshot` in a `target="draft"` request, so the snapshot always matches the one used when the selected insight was generated. A missing snapshot degrades to non-personalized generation without fabricating a persona; a missing summary degrades to pure web retrieval. The request carries the confirmation-frozen shared `output_language` enum, rejected when missing or invalid at the TypeScript/Rust/Python boundaries.
+- Draft generation runs an agent (anysearch web retrieval + skills + planning + `submit_draft` delivery contract), not a single LLM call. `anysearch` retrieval is the factual grounding path; original transcript fragments, video, audio, and source URL SHALL NOT enter the draft prompt. `suitableUse` drives form/platform direction in the prompt; platform-style skills (v1 `viral-writer` covers Douyin / Xiaohongshu / WeChat Official Account, with the `公众号` ↔ `微信公众号` name mapping) are self-loaded by the LLM and never hard-matched in the backend. Adding a platform means dropping a `SKILL.md` under `skills/`, with no code change.
+- Quota is flat per confirmation attempt: one checkout = one credit, charged at server checkout (`consumeLlmQuota`, idempotent per `(userId, requestId)`) regardless of success or failure, with no refund; entering the confirmation page or cancelling charges nothing; retries mint a fresh `request_id` and charge again. Agent planning/writing turns and anysearch retrieval calls do not consume additional user quota.
+- The draft is an independent artifact at `{task_dir}/ai/draft.md`, parallel to transcript/summary/insights/mindmap, never written back to `transcript.txt`. `ProcessResult` and Rust `ProcessVideoResult` carry `draft`; the manifest carries `draft_path` / `has_draft` / `draft_seed_insight_id` with no full draft text. Draft viewing renders sanitized GitHub Flavored Markdown and shares no container with the official transcript.
+- Seed validity: `insight_id` must exist in the current `insights.json`; otherwise the worker returns `DRAFT_SEED_INVALID` and consumes no draft checkout. Regenerating `启发灵感` clears `draft_seed_insight_id` and returns `生成文字稿` to a quiet disabled state. A failed draft attributes only to the draft target via `WorkerError.stage = JobStage.DRAFT_GENERATING`; the overall task is `partial_completed` and other targets' artifacts are unaffected. The UI reuses the `insights_generating` phase with `activeAiTarget="draft"` / `aiErrorTarget="draft"` and SHALL NOT infer the target from status text.
+- The confirmation panel's user-visible data prompt stays "send the selected insight fields + preference snapshot to the cloud LLM; do not upload video/audio/full transcript" and SHALL NOT add an anysearch disclosure row in v1. The internal privacy boundary is relaxed to allow anysearch-retrieved context to re-enter the LLM, while the "no full transcript upload" boundary is preserved. Locus server still owns only account, entitlement, quota, and LLM+anysearch checkout; it never receives or stores insights, preferences, or drafts.
+
+## 2026-07-12 History Task Permanent Deletion Boundary
+
+- `delete_history_task(taskId)` is the only product deletion command. The frontend sends no path;
+  Rust derives the configured task and per-task playback-cache paths from runtime configuration
+  plus a strictly validated task ID.
+- Deletion accepts only a task that passes the same exact schema-v3, current privacy-marker,
+  canonical SourceIdentity, no-quarantine, no-link History vNext predicate. Unsupported legacy
+  directories remain outside product mutation.
+- A focused Rust history-deletion domain validates that the target is exactly one child of the
+  configured tasks root, rejects symlink/junction/reparse storage, removes only the rebuildable
+  task cache first, and then permanently removes the task root with standard filesystem APIs. It
+  never invokes shell, Python, server, LLM, billing, or payment paths.
+- `useHistoryController` owns confirmation, pending state, detail-request invalidation, and list
+  refresh/removal. `useTaskProcessingController` remains the sole task-identity owner and resets
+  the workspace only when the successfully deleted task is current. App remains composition-only.
+- Local processing, AI generation, cancellation, transcript save, and overlapping deletion block
+  the operation. Recursive permanent deletion is explicitly non-transactional; failure keeps a
+  truthful current workflow and reloads disk-derived History without promising rollback.
+
+## 2026-11-01 Shared Client Sheet Boundary
+
+- `AnimatedSheet` owns the common open/closing/hidden lifecycle and `useModalFocus`; optional
+  dialog/alertdialog semantics and description IDs allow `ConfirmDialog` to share that lifecycle.
+  `features/modal/sheets.css` scopes presentation to modal surfaces, preserving the main shell.
+- Header/body/footer are distinct regions. Confirmation facts and existing safe paths change
+  layout only; frozen language, quota/privacy disclosures, selections and operations stay with
+  the existing flow/controller owners. Draft platform preselection remains a read-only request.
+- `useModalFocus` tracks background inert ownership across layers. The last active owner restores
+  the original attribute, allowing earlier sheets to finish closing before the top sheet. Focus
+  restoration skips inert/closing targets; no layer can restore another layer's background early.
+- `DraftResultSheet` owns unsaved close candidates, and `useDraftRegeneration` owns regeneration
+  candidates for both an unsaved local buffer and persisted edited draft. Candidates bind task
+  identity and saving/open state; cancellation preserves current content. Regeneration acceptance
+  only routes to the existing final confirmation, whose controller still owns provider admission.
+
+## 2026-07-11 Local Transcript and AI Workspace Boundary
+
+- One workflow task remains the only identity and artifact aggregate, but the desktop UI
+  projects it into `LocalTranscriptWorkspace` and `StudioWorkspace`. App passes its
+  real note title and these elements into `TaskWorkspaceLayout`, which owns only transient
+  AI-pane visibility and the preferred split proportion. Responsive CSS clamps widths, and the
+  component measures React layout/viewport changes for separator ARIA and pointer ownership.
+  Both slots remain mounted while hidden; inert/aria-hidden and CSS
+  transitions do not affect editing, playback, generation, results, or controller ownership.
+  `useTaskProcessingController` remains the sole task-identity owner.
+- A typed `activeAiTarget` identifies `summary`, `insights`, or no active AI request. Local
+  progress is projected only from download/media/transcription stages. AI progress, errors,
+  availability, quota, and cancellation placement are projected into the target-specific AI
+  workspace, so an AI run never hides a usable local transcript.
+- `TranscriptReviewPanel` is a presentation extraction backed by the existing transcript
+  detail controller and Tauri commands. Audio review, task-root path validation, backup,
+  save, and stale-task guards remain single implementations.
+- Summary and inspiration use separate target view models and confirmation flows. Summary
+  continues to generate summary plus its attached local Mermaid file with no preference
+  snapshot; inspiration alone may carry the confirmed snapshot. AI result viewing is
+  separate from transcript review.
+- The existing worker stage and ProcessSupervisor cancellation contract remain unchanged.
+  Selectors use `cancellingFromStage` and typed target state to place the single cancellation
+  action in the owning workspace without manufacturing a terminal result.
+- Strict History vNext detail restoration installs one complete task before either workspace
+  renders. Both projections therefore share the same task ID, and existing operation/detail/
+  save guards reject stale callbacks before state projection.
+
+## 2026-07-11 History vNext Strict Read Boundary
+
+- `task.json` schema v3 is the only history authority. Every history, cache,
+  transcript, edit, and retry read first requires the current privacy marker, an
+  allowlisted canonical SourceIdentity matching `source_url`, and
+  `source_privacy_quarantined != true`. Schema v1/v2, missing markers, invalid identities,
+  malformed manifests, and linked/reparse storage are unsupported external legacy data.
+- `get_history` is a Rust-only manifest projection. It returns lightweight
+  `HistoryListItem` values and never reads transcript, summary, insights, or transcript
+  metadata artifacts. It records only sanitized aggregate counts and stage elapsed time;
+  opening history never starts Python.
+- `get_history_detail(taskId)` performs one strict task-id/manifest validation and then
+  reads artifacts for only the selected supported task. History detail responses are
+  sequenced by the history controller; only the newest selected response may be forwarded
+  to `useTaskProcessingController`, which remains the sole task-identity owner.
+- Runtime migration is removed end to end. Tauri has no migration invocation, worker
+  command, or process-video/history/transcript migration hook; Python has no migration CLI
+  mode. Unsupported directories are not rewritten, indexed, renamed, quarantined, or
+  deleted. Their physical retention and manual backup/deletion remain outside product
+  history.
+- Cache lookup, transcript detail/save, and AI retry reuse the same strict current-task
+  predicate. They fail closed before artifact reads and never derive compatibility data
+  from an old `source_url`.
+
+## 2026-07-10 History Task-Restore Ownership Boundary
+
+- `useTaskProcessingController` is the only owner that may replace a workflow task identity. It exposes semantic actions for stable history restoration, waiting-input URL drafts, and a guarded task-local transcript-save result; it must not expose its internal React setter to App, history, or detail features.
+- A history restore is permitted only when the shared `isProcessingStage` predicate is false. Video processing, AI retry, and `cancelling` all reject restoration without cancelling or invalidating the current worker operation, so that operation continues to publish its real terminal state.
+- A permitted restore increments the controller operation ID, clears task-scoped transient UI through the existing reset callback, and installs one complete history-derived workflow. Task ID, task directory, artifacts, transcript text, summary, and insights are therefore always from the same selected task.
+- Worker progress/result callbacks and transcript-save callbacks must prove that their captured task/operation is still current before merging state. History loading and panel visibility remain in `useHistoryController`; App remains composition-only and does not own a task-identity state machine.
+
+## 2026-07-10 Desktop Process Supervision and Cancellation Boundary
+
+- `ProcessSupervisors` privately owns one `WorkerLane` for video/source/AI work and one for ASR model download. Each lane wraps the same private `ProcessSupervisor` state machine, admits one child at a time, and records a monotonically increasing instance ID, PID, Unix PGID (equal to the controlled child PID), and `Running`, `Cancelling`, `CleaningUp`, or typed `TimingOut` phase; absence is the only finished state.
+- `WorkerLane::run` is the sole Locus child-process lifecycle owner. It accepts the runtime-private typed `WorkerRunRequest`; application modules enter the task-producing lane only through `TaskWorkerFacade` and request model download only through `AsrModelDownloadJob`. No application module can construct a raw process specification or own spawn, pipe, wait/reap, supervisor mutation, or process-tree termination.
+- `worker_runtime/facade.rs` exhaustively derives URL/local/AI task invocation, lifecycle operation, progress route, retry-only server-managed LLM material, and lane, and exposes the opaque four-override model-download job. `command.rs` owns fixed task and model-download invocation/environment construction, `supervisor.rs` owns instance-safe state and OS process-tree termination, and `runner.rs` remains the sole owner of spawn/register/stdin/read/wait/finish/parse/classify/log ordering above four private implementation owners: `runner/process_io.rs`, `watchdog.rs`, `progress.rs`, and `terminal.rs`. Application modules cannot import these child paths.
+- Start, cancellation claim, signal-failure rollback, and terminal cleanup must match the running instance ID. A stale waiter or PID cannot clear or restore a newer child. A duplicate cancellation request returns structured `already_cancelling` and sends no second signal.
+- Registration and watchdog startup occur before one-shot stdin delivery. After terminal observation, the runner stops and joins the watchdog, finishes the matching instance before joining stderr readers, and an internal guard clears only its own instance on every setup or wait failure. A termination-in-flight lease prevents lane reuse until the complete OS termination call returns.
+- Windows terminates the controlled PID with `taskkill /PID <pid> /T /F`. On supported macOS releases, the Unix implementation starts each worker in a fresh process group, sends `TERM` to the negative PGID, waits only for the bounded escalation grace, and sends `KILL` to the same group only if it remains alive. Commands receive only supervisor-owned numeric IDs and are never built through a shell. Linux is not a supported release target.
+- Signal delivery exposes `cancelling`, never a fabricated completed cancellation. The runner owns terminal precedence: a structured result wins a concurrent cancellation claim; only an unstructured termination observed for the matching `Cancelling` instance becomes `Cancelled`. Successful malformed stdout is a protocol violation, while nonzero malformed output is a typed unstructured failure.
+- Progress routing is closed to `None`, validated worker progress, or validated ASR model-download progress. The typed job/model-download boundary derives the route; application modules cannot select it or provide arbitrary parsers, event names, or unvalidated payload emission.
+- React keeps the operation ID and task UI while cancellation is pending. It resets only after a confirmed cancelled worker/model-download terminal result; a signal failure restores the prior observable processing state so progress and the real later result remain visible. Cancellation deliberately preserves existing outputs, cache, and model files.
+- Production execution now uses the fixed watchdog policy in
+  `docs/design-docs/2026-07-22-rust-worker-watchdog.md`. Only validated progress extends idle time;
+  every operation has an absolute deadline, and timeout classification preserves valid-result and
+  explicit-cancellation precedence.
+
+## 2026-07-19 Typed Worker Job Execution Boundary
+
+- The current closed `WorkerJob` set is `ProcessVideo`, `ProcessLocalMedia`,
+  `ResolveSourceIdentity`, and `RetryInsights`. Each semantic constructor supplies only payload plus
+  the window required by a progress-publishing job; callers cannot construct or import raw
+  `WorkerInvocation`, `WorkerOperation`, `ProgressRoute`, `WorkerRunRequest`, or `WorkerLane` policy.
+- `TaskWorkerFacade::execute` is the single application-facing task-lane entry. Its exhaustive match
+  fixes the CLI mode, lifecycle log operation, progress protocol, lane, and LLM policy; only
+  `RetryInsights` resolves server-managed LLM invocation material.
+- ASR model download remains a separate method because it owns a distinct progress protocol and
+  lane, and it still delegates the complete child lifecycle to `WorkerLane`. `asr_model.rs` owns
+  model availability and app-local `.env` parsing, then submits only an opaque
+  `AsrModelDownloadJob` containing the existing URL, checksum, ModelScope endpoint, and revision
+  overrides. `worker_runtime::command` fixes executable, argv, stdin, environment keys/removals, and
+  cwd; `ProcessSupervisors` fixes operation, progress, and lane. `WorkerCommandSpec` and
+  `WorkerRunRequest` are runtime-private and a source-ownership gate prevents re-export or
+  application bypass. Design and evidence:
+  `docs/design-docs/2026-07-24-asr-model-download-job-capability-boundary.md` and
+  `docs/exec-plans/completed/2026-07-24-asr-model-download-job-capability-plan.md`.
+- `ProcessLocalMedia` landed with desktop-worker contract v4 and the Python CLI consumer in the same
+  vertical slice as native selection, manifest/History projection, and UI dispatch. That slice also
+  renamed the facade and internal accessors to task-lane vocabulary without compatibility aliases,
+  while preserving the public `process_video` command. The accepted decision is recorded in
+  `docs/design-docs/2026-07-19-typed-worker-job-facade.md`.
+
+## 2026-07-21 Server HTTP Capability Boundary
+
+- `server/src/server.ts` is the sole public HTTP composition surface. It exports only
+  `ServerDependencies` and `buildServer()`, creates Fastify and the six application services from
+  explicit dependencies, installs observability/proxy/readiness policy plus the global exact
+  raw-JSON parser, and synchronously composes private route registrars. It does not read environment
+  variables or own process signals.
+- `server/src/runtimeConfig.ts` parses and freezes environment-owned startup configuration before
+  listener creation. `server/src/index.ts` is the process composition root, while
+  `server/src/bootstrap.ts` owns readiness initialization, listen, idempotent signal drain,
+  Fastify close, Prisma disconnect, and the shutdown deadline.
+- Private `server/src/routes/` modules own health, administrator, desktop authentication, desktop
+  account, desktop LLM, desktop update, and billing/webhook HTTP adaptation. `authSchemas.ts` and
+  `shared.ts` provide private reusable validation and HTTP helpers; no individual registrar is a
+  public startup surface.
+- Registrars are ordinary synchronous functions, not Fastify plugins and not a second facade. They
+  receive only the services/configuration required by their capability, register routes on the
+  supplied Fastify instance, and preserve the existing `buildServer()` startup contract.
+- Route modules depend on the `Store` port or application services only. They do not import Prisma,
+  construct services, own transactions, or call one another; semantic multi-write transactions
+  remain wholly inside `PrismaStore`.
+- The HTTP root owns raw-body capture because it is parser lifecycle policy, while only `billing.ts`
+  consumes `rawBody`. Only `admin.ts` owns administrator session/CSRF cookies and their policy.
+  Production startup and tests continue to import the stable HTTP root instead of assembling
+  routes; process lifecycle composition stays outside route modules.
+
+## 2026-07-23 Server Store Adapter Boundary
+
+- `server/src/store.ts` is a two-line stable compatibility root that directly re-exports the full
+  32-method `Store` contract and all record/outcome types from `store/contracts.ts`, plus the actual
+  `MemoryStore` class from `store/memory.ts`. `server/src/prismaStore.ts` remains the only
+  production module exporting `PrismaStore`.
+- `server.ts` still receives one complete Store instance. Services and route helpers do not create
+  child adapters; each declares a local type-only `Pick<Store, ...>` containing only the
+  persistence capabilities it consumes. The complete instance is structurally assigned to those
+  erased types at composition time.
+- Private Memory owners separate authentication, billing, entitlement/accounting, and LLM
+  configuration. One `store/memory/atomic.ts` coordinator serializes semantic operations and
+  snapshots/restores the complete mutable adapter state; capability-local locks or partial
+  snapshots are forbidden.
+- Private Prisma owners separate authentication, billing, entitlement/accounting, and LLM
+  configuration. `prismaStore/rateLimits.ts` owns conditional rate-limit reservations and returns
+  the latest release time across blocked windows, with the caller's transaction rolling back all
+  rejected reservations. `prismaStore/concurrency.ts` owns recognized conflict/error classification,
+  the fixed three-attempt bound, and
+  `attempt * 5` backoff.
+- Each of the eight cross-record semantic operations has exactly one Memory owner and one Prisma
+  owner. A transaction client may be used only inside the private Prisma tree and never crosses
+  into a service, route, public Store contract, or caller-supplied callback.
+- `server/tests/storeModuleBoundaries.test.ts` locks stable exports, exact private trees, line
+  limits, dependency direction, transaction/concurrency ownership, semantic-operation identity,
+  and all 12 consumer capability aliases. Schema, migrations, runtime composition, HTTP behavior,
+  and the Store/class compatibility surface remain unchanged.
+
+## 2026-07-10 Server Entitlement Transaction Boundary
+
+- Entitlement validity is derived from `expiresAt > now`; equality is expired. The persisted model
+  and `EntitlementRecord` contain expiry and quota accounting without a status field. The public
+  `entitlement_status` projection remains derived from expiry. Migration
+  `202610290001_remove_entitlement_status` preserves the remaining data and database constraints;
+  startup checks and current preflight reject the unmigrated entitlement schema.
+- `Store` is the only persistence boundary for payment settlement, activation-code redemption, and administrator entitlement compensation. Its semantic methods return the final entitlement and, for compensation, its audit record; no caller coordinates those writes itself.
+- `PrismaStore` owns one interactive `this.prisma.$transaction(...)` per semantic operation. The transaction callback is not exposed to services or Fastify routes and contains all validation reads, conditional state transitions, entitlement writes, webhook/audit writes, and final reads.
+- `BillingService`, `ActivationCodeService`, and the entitlement-adjustment use case own policy invocation and compatible error mapping. Fastify routes own only authentication, CSRF, request parsing, and HTTP mapping.
+- Payment idempotency is keyed by provider event and reconciled with immutable order transaction identity. A verified replay can complete a deterministically incomplete historical payment once; conflicting order/event/transaction state fails without overwriting. Activation and administrator adjustments have no automatic legacy compensation path when their intended grant cannot be reconstructed safely.
+- Administrator quota display is read-only. Every administrator quota grant goes through `applyEntitlementAdjustmentWithAudit` with positive `quota_add` and a reason; there is no parallel remaining-quota write route or Store method.
+- WeChat Native billing was a disabled future integration. The unused channel (code, routes, runtime configuration, and the `Order` / `WebhookEvent` tables) was removed on 2026-11-08.
+
+## 2026-07-10 Source Identity and AI Input Boundary
+
+- The worker owns one source boundary for every request. `SourceRequest` contains transient `download_url` for the current downloader/fallback call and has no persistence/result serialization path. The raw submission crosses frontend-to-Tauri IPC and a one-shot child stdin pipe only for a cache-only identity preflight or the current full processing call; it never enters worker argv or environment variables. The separate persistable `SourceIdentity` contains only version, platform, stable id, effective part, and canonical URL.
+- `WorkerCommandSpec` separates fixed mode arguments from an optional in-memory stdin payload. Serialized process-video, source-identity, and retry requests use fixed `--request-stdin`, `--resolve-source-stdin`, or `--retry-insights-stdin` flags. `WorkerLane::run` pipes, writes, and closes stdin before any output wait; no-payload model download receives null stdin.
+- Both desktop and worker cap stdin payloads at 1 MiB and use fixed non-echoing delivery/parse errors. The runner registers the spawned PID/PGID before writing, so cancellation can terminate the process tree even while pipe delivery is blocked; a matching cancellation during delivery returns the confirmed cancelled terminal result rather than starting another worker stage. The runner preserves the no-shell command vector, Windows hidden process/tree behavior, and macOS process-group behavior.
+- Canonical URLs are reconstructed from allowlisted stable platform identifiers: Xiaohongshu note ID, Bilibili BV/av ID plus non-default `p`, YouTube video ID, or Douyin video/work ID. Userinfo, fragments, and non-allowlisted query fields never cross the canonicalization boundary.
+- Supported short links are resolved in the worker, then canonicalized from the resolved stable ID. The original short link remains only the current download input. A failed resolution cannot promote the raw URL to persistent identity.
+- Task creation, transcript writing, and manifest writing accept only a worker-validated `SourceIdentity`. Cache matching and history defensively validate the persisted identity but do not regenerate platform canonical URLs in Tauri. A desktop preflight identity is cache-only advisory data and is never injected into the full worker request.
+- `transcript/transcript.txt` under the same task root as `ai/` is the official AI input artifact.
+  Summary, inspiration, dissection and transcript polish validate that exact path before reading
+  its plain text body; `transcript.md`, alternate same-named files and linked/reparse-point targets
+  must not be used as prompt sources.
+- Unsupported legacy task directories are physically retained but excluded from every product read. Locus does not migrate, redact, repair, rename, index, or delete them; users may manage backups or deletion outside the product.
+
+## 2026-07-09 Account Processing and AI Gate Boundary
+
+- `/api/desktop/account` returns two capability fields with different responsibilities. `can_process` means the authenticated desktop user has an active entitlement and may start local video extraction, audio extraction, and ASR transcription.
+- `can_process` must not depend on `llm_configured` or `llm_quota_remaining`; local transcription is allowed to degrade independently when cloud AI is unavailable.
+- `can_generate_ai` means the authenticated desktop user has an active entitlement, server-managed LLM config is available, and LLM API-call quota remains.
+- The desktop UI uses `can_process` only for submitting a new video URL. It uses `can_generate_ai` for confirmed `summary` and `insights` generation.
+- `process_video` has no AI field or AI branch. Its frontend type, strict Tauri IPC request,
+  explicit worker-stdin DTO, Python `ProcessRequest`, and local pipeline omit
+  `generate_insights`; a payload containing that retired field is rejected rather than normalized.
+  The command never constructs an AI client or receives checkout. `retry_insights` is the only
+  command that may construct an AI client, enter `run_insight_generation_step`, require checkout,
+  or consume quota.
+
+## 2026-07-08 Split Summary and Inspiration Generation Boundary
+
+- `retry_insights` receives an explicit target: `summary`, `insights`, `dissection`, `draft` or
+  `transcript` polish. The command reuses the saved official transcript and owning task manifest;
+  it must not re-download media or rerun ASR.
+- The `summary` target generates only `ai/summary.md` and hidden `ai/mindmap.mmd`. It must not accept, read, write, or prompt with the personalized preference snapshot.
+- The `insights` target generates only `ai/insights.json` and `ai/insights.md`. It may persist `ai/preference-snapshot.json` and may include that snapshot only in insight-topic prompts.
+- Retrying either target must merge existing AI artifacts from the same task directory before writing `task.json`, so generating one output cannot clear the other output or reset `insights_count`.
+- Each user confirmation uses server-managed LLM checkout and consumes quota per actual supplier API-call attempt for that target.
+
+## 2026-07-06 Personalized Insight Preferences Boundary
+
+- The desktop UI owns the inspiration-profile setup flow, the per-run six-step generation-preference wizard, confirmation summaries, and result-detail actions such as `换个方向`.
+- Tauri owns app-local persistence for the inspiration profile. The profile should be stored as a constrained local JSON file, not in app-local `.env`, and Tauri commands must validate the file path under app-local data.
+- If the user skips profile setup, Tauri persists a local skipped marker such as `profileSkipped: true` without profile fields. This marker suppresses repeated first-use prompts but must not create an implicit default persona.
+- The per-run preference snapshot is passed to `retry_insights` only when the target is `insights`, together with the saved official transcript reference. It may be recorded in the local task manifest as user-visible context for already-generated inspiration artifacts.
+- The worker treats profile and generation preferences as structured prompt context for insight-topic generation only. Summary and Mermaid mindmap generation continue to use the generic AI整理 prompts and must not read the personalized preference snapshot. The worker must not infer hidden preferences from unrelated history.
+- Inspiration generation supplies deterministic numbered transcript chunks and compact structured
+  preference JSON to the agent. The agent reviews the full supplied source and submits a complete
+  list with source references through its delivery tool.
+- Locus server continues to own only account, entitlement, quota, and LLM checkout. It must not receive or store inspiration profiles, generation preferences, transcripts, generated insights, or local task manifests.
+- Quota is counted per cloud LLM API call attempt: `1 quota use = 1 supplier chat-completion/API call
+  attempt`. Summary, inspiration and dissection agents consume separate quota uses for each actual
+  call after their target is confirmed. Re-running via `换个方向` starts a fresh confirmed
+  `insights` attempt. Failed, timed-out, invalid or partially failed calls remain consumed once
+  checkout succeeds.
+- The LLM supplier may receive transcript snippets only after the user confirms the corresponding AI target. The selected preference snapshot may be sent only with the insight-topic generation request, not with summary or Mermaid mindmap requests.
+
+## 2026-07-05 Desktop Diagnostics Boundary
+
+- The Tauri desktop layer owns app-local diagnostic logs at `logs/desktop.log`.
+- Worker lifecycle diagnostics are emitted only by `WorkerLane::run` from a closed operation mapping. They record fixed operation kind, supervisor-owned PID, safe exit/status markers, and structured safe summaries; they never include raw args, stdin, environment values, full executable/current-directory paths, source/local-media paths, URLs, credentials, transcripts, prompts, preference prose, generated bodies, or raw stderr.
+- Application diagnostics may retain task id, structured error code, validated retry target/output locale, cache outcomes, and sanitized short messages, but they do not reconstruct process lifecycle logs.
+- A validated worker progress code may be folded into one fixed desktop log record when the closed contract makes it diagnostic evidence. `worker.douyin.share_page.retry` records only that `douyin.page.retrying` occurred; retry count, attempt numbers, delays and URLs are not persisted, and exported record count is the retry count.
+- Worker task diagnostics remain under the active data root's `cache/tasks/<task_id>/` when task-specific temporary evidence is needed; application logs remain in the fixed configuration root.
+- YouTube extraction may explicitly enable local JavaScript runtimes supported by `yt-dlp` (`deno`, `node`, `quickjs`, `bun`) but must still run as a worker-owned public-link download policy.
+- Release packages bundle Deno in `resources/bin` so clean Windows and macOS machines have a local JavaScript runtime available for `yt-dlp` YouTube player evaluation.
+
+## 2026-07-05 Task-Owned Artifact Store Boundary
+
+- A processing run is now a first-class task. The worker creates `<output_root>/tasks/<task_id>/task.json` and writes all final user artifacts under that same task directory.
+- Final artifacts use stable names inside task folders: `media/video.mp4`, `media/audio.wav`, `transcript/transcript.txt`, `transcript/transcript.md`, `transcript/segments.json`, `ai/summary.md`, `ai/mindmap.mmd`, `ai/insights.json`, and `ai/insights.md`.
+- The active data root's `cache/tasks/<task_id>/` owns temporary downloads, partial files, media merge scratch space, and diagnostics. It is not the user-facing artifact contract.
+- `task.json` is the source of truth for desktop history and artifact lookup. Any cache index is rebuildable, not the authority.
+- Tauri may satisfy a repeated canonical source identity from an existing completed or partial-completed task manifest when the transcript artifact still exists. Exact canonical URLs can hit before Python launch; variants and short links may invoke the worker's lightweight identity preflight, but a hit returns before download/transcode/ASR and unusable or broken old tasks are skipped.
+- Tauri commands should resolve artifacts from `task_id` and manifest-relative paths only. They must not accept arbitrary transcript/audio/result paths for normal task operations.
+- Legacy flat outputs and unsupported manifests do not become trusted task authorities. Location migration preserves application-owned legacy bytes without converting them into current tasks; ambiguous shared-root contents block migration.
+
+## 2026-07-05 Subtitle-First Transcript Source Boundary
+
+- The worker may request public platform subtitle files for YouTube and Bilibili `yt-dlp` success paths before loading ASR. This is a worker-owned transcript optimization, not a new UI platform crawler or download workflow.
+- Subtitle probing runs after media validation/audio extraction and before ASR model readiness/loading checks. This preserves the current `media/video.mp4`, `media/audio.wav`, audio review, result cards, and history behavior while skipping only ASR model load/inference when subtitles are usable.
+- Bilibili public fallback does not fetch or reuse subtitles in v1. If `yt-dlp` fails and `download_bilibili_video` succeeds, the task continues through the existing ASR path.
+- Subtitle parsing writes the same official `transcript/transcript.txt`, `transcript/transcript.md`, and `transcript/segments.json` artifacts as ASR. Later AI整理 reads only the official saved `transcript.txt` body.
+- `task.json` schema version 3 keeps top-level `model`, `transcript: { source, language, engine }`, canonical `source_url`, and the structured `source_identity`. Schema versions 1 and 2 remain readable; version 1 manifests without `transcript` are treated as ASR-sourced, while missing source identity triggers bounded migration or a no-link placeholder.
+- Raw `.vtt` / `.srt` files remain temporary files in `cache/tasks/<task_id>/download/` and are not user-facing artifacts or manifest paths.
+
+## 2026-07-03 Transcript Detail and Audio Review Boundary
+
+- Transcript audio review is split across the existing three local layers: worker produces optional segment metadata, Tauri performs constrained local file IO, and the frontend owns playback/editor interaction state.
+- The worker may emit a sidecar `<stem>_transcript_segments.json` when ASR output contains trustworthy sentence timing or, for SenseVoice long-audio runs, when the built-in FSMN-VAD provides speech block timing and each block is transcribed directly. The sidecar shape is `segments: [{ id, start_ms, end_ms, text, speaker? }]`; `speaker` is metadata only and must not drive seek, highlight, or edit behavior.
+- Existing transcript `.txt` and `.md` files remain the official text artifacts. The segment sidecar is optional enhancement metadata, so old tasks and ASR outputs without valid timing keep working as full-text review.
+- Tauri owns `load_transcript_detail` and `save_transcript_edit` commands. These commands validate local transcript/audio paths, read/write only approved transcript artifacts, create the first original backup, and update local history previews after save.
+- `app/src-tauri/src/transcript_detail.rs` is the only crate-visible transcript-detail command and composition root. It opens one validated `SupportedTask` per operation, then delegates audio playback/cache preparation to private `audio_playback`, tolerant segment decoding and strict encoding to private `segments`, and official transcript load/edit persistence to private `edit_storage`.
+- Transcript-detail children accept validated task capabilities rather than output roots, task IDs, or raw manifests. `edit_storage` is the only child that converts a task into `TaskEditSession`; none of the children resolve Tauri runtime roots or parse/write `task.json` directly.
+- Tauri must not expose arbitrary file playback or arbitrary text-file write commands. Frontend audio playback may only use paths returned by the validated detail command.
+- Tauri resolves direct audio authorization and rebuildable playback copies from the same active location snapshot. Copies, when required, live under `<data_root>/cache/.app-audio-review/<task_id>/`. The frontend plays `audio_asset_path`; `audio_path` remains the original validated task artifact.
+- The existing Settings cache category queries and clears only the active `.app-audio-review` subtree under a data permit. Task artifacts, other caches, models and fixed configuration remain protected.
+- The frontend owns the native audio element, current segment selection, playback-following highlight, edit pause/resume behavior, dirty state, copy-from-draft behavior, and save feedback.
+- Later AI整理 must read the saved official transcript, not an unsaved frontend draft.
+
+## 2026-06-29 YouTube Public Video Support Boundary
+
+- YouTube v1 is a worker-owned `yt-dlp` command policy, not a new platform crawler. UI and Tauri continue to submit one source string and receive the existing worker result shape.
+- The frontend may accept public YouTube watch, short, and Shorts URLs, but it does not parse YouTube pages, select formats, import cookies, or manage downloads.
+- The worker keeps `yt-dlp --no-playlist` and adds a YouTube-specific 720p transcription-first format selector that prefers MP4 video plus M4A audio when available.
+- Successful YouTube downloads produce a normal local media file and then reuse the existing `ffprobe`, FFmpeg audio extraction, ASR, history, summary, Mermaid mindmap, and insight pipeline without new result fields.
+- YouTube-specific failures are classified only inside the worker error message as sanitized `YOUTUBE_*` prefixes under the existing top-level `VIDEO_DOWNLOAD_FAILED` error.
+- YouTube v1 must not add YouTube login, browser cookie import, cookies-from-browser, Authorization headers, proxy/bypass settings, playlist batching, live-stream handling, age/member/private bypass, stream picker UI, or a download-center product surface.
+
+## 2026-11-09 有界的 yt-dlp 下载执行
+
+- `worker/worker_core/media.py` 的 `run_command` 对形如 `sys.executable -m yt_dlp ...` 的下载命令施加 20 分钟 `subprocess.run` 预算；`ffprobe` 与 `ffmpeg` 命令不设该预算。
+- 预算到期返回 `VIDEO_DOWNLOAD_TIMEOUT` 结果，`download_video` 直接抛出 `CommandExecutionError`，跳过字幕重跑、YouTube 单次重试与三个平台备用下载；`MediaPreparationFacade` 仍把它归入 `VIDEO_DOWNLOAD_FAILED`。
+- `CommandRunner` 的单参数签名、平台 URL 支持规则、下载策略表、任务产物布局与账号服务数据边界保持不变。
+
+## 2026-06-27 Bilibili Public Video Fallback Boundary
+
+- Bilibili fallback remains worker-owned and ordinary-public-video-only. UI and Tauri submit a source string and receive the existing worker result shape; they do not call Bilibili APIs, select DASH streams, import cookies, or manage downloads.
+- The frontend may accept ordinary Bilibili BV/av video URLs and safe `b23.tv` short links, but all platform interpretation happens inside the Python worker.
+- `worker/worker_core/bilibili_fallback.py` is the slim stable compatibility/application adapter and the only Bilibili import path used by production modules outside the private package. It owns default dependency construction, page/output composition, final MP4 replacement, cleanup sequencing, and the five `bilibili.*` progress events.
+- Private `worker/worker_core/bilibili/` modules separate shared identities (`types.py`), input/short-link policy (`source.py`), public API/DASH policy (`playback.py`), bounded HTTP/resumable streaming (`transport.py`), and candidate/FFmpeg effects (`artifacts.py`). Private children do not import the root adapter or task/application/ASR/AI layers; no new facade class or generic multi-platform downloader framework exists.
+- `yt-dlp` stays the first attempt. Bilibili fallback runs only after a Bilibili-related failure and only for public or user-authorized ordinary videos.
+- The fallback parses BV/av IDs, resolves safe `b23.tv` links, selects one part from `?p=N` or the first part, fetches `x/web-interface/view` and `x/player/playurl`, chooses one video stream plus one audio stream, downloads `.m4s` files safely, and merges them to MP4 with the existing bundled FFmpeg. Stable root re-exports preserve the repository-observed type and function identities.
+- The fallback must not add Bilibili QR login, account login automation, `SESSDATA` collection or storage, browser cookie import, PGC/bangumi support, VIP/member-only access, DRM decryption, stream picker UI, batch queue, proxy pools, or a download-center product surface.
+
+## 2026-06-27 Xiaohongshu Video Fallback Completion Boundary
+
+- Xiaohongshu fallback remains worker-owned and video-only. UI and Tauri submit a source string and receive the existing worker result shape; they do not parse Xiaohongshu HTML, select streams, import cookies, or manage downloads.
+- The frontend may accept Xiaohongshu share text, full note URLs, and short links, but all platform interpretation happens inside the Python worker.
+- `worker/worker_core/xiaohongshu_fallback.py` is the slim stable compatibility/application adapter and the only Xiaohongshu import path used by production modules outside the private package. It owns default dependency composition, the complete fallback sequence, output naming, nested candidate/backup attempts, and all three `xiaohongshu.*` progress events.
+- Private `worker/worker_core/xiaohongshu/` modules separate shared identities (`types.py`), source/short-link policy (`source.py`), bounded page-state interpretation (`page.py`), deterministic stream ranking (`streams.py`), and CookieJar/urllib/safe-download effects (`transport.py`). Private children do not import the root adapter or task/application/ASR/AI layers; no facade class or generic multi-platform fallback framework exists.
+- The worker ports only the required EasyDownload Xiaohongshu parser/client/downloader ideas into these Python boundaries and shared download helpers; it does not call or bundle the Go/Wails EasyDownload runtime. Stable root re-exports preserve repository-observed type, client, source-builder, and test-seam identities.
+- `yt-dlp` stays the first attempt. Xiaohongshu fallback runs only after a Xiaohongshu-related failure and only for public or user-authorized video notes.
+- The fallback preserves transient `xsec_token`, short-link `3xx` and embedded-HTML resolution, `gzip`/`br`/`deflate` note-page decoding, `window.__INITIAL_STATE__` parsing, deterministic stream ranking, one process-local client/CookieJar, and safe resumable `.part` writes with atomic final replacement.
+- The fallback must not add image album ZIP output, Live Photo sidecar output, stream picker UI, batch queue, login automation, browser cookie import, CAPTCHA solving, proxy pools, or private-note scraping.
+
+## 2026-06-27 Admin Entitlement Adjustment Boundary
+
+- Admin Web may manually compensate users by updating the existing `Entitlement` record's expiry and LLM API-call quota fields; it must not introduce a separate entitlement source that bypasses the normal processing gate.
+- Compensation is an administrator-only support workflow for product bugs, release regressions, or goodwill repair. It is not a public self-service refund, coupon, or subscription-management system.
+- Manual quota compensation should add to `llmQuotaLimit` while preserving `llmQuotaUsed`, so consumed usage remains traceable and `/api/desktop/account` can keep computing remaining uses with the existing response shape.
+- Manual expiry extension should use `base = max(now, current expiresAt)` for day-based extensions, with absolute expiry setting reserved for repair cases.
+- Every successful adjustment must create an append-only server-side audit record with administrator identity, target user, reason, optional note, before/after expiry, before/after quota values, and timestamp.
+- Desktop clients observe the result through account status refresh: `can_process` for local transcription entitlement and `can_generate_ai` for LLM-ready AI generation.
+
+## 2026-06-26 Worker-Owned Download Strategy Boundary
+
+- The Python worker owns all platform-specific public-link fallback strategy, safe media download helpers, candidate probing, media validation, and structured error mapping.
+- UI and Tauri continue to pass a source URL into the existing command flow and receive the same worker JSON shape; they must not parse platform HTML, choose media candidates, manage cookies, or become a download queue.
+- `yt-dlp` remains the first attempt for supported public links. Worker fallback code may run only after matching failures and only for public or user-authorized links that can expose a playable media URL.
+- EasyDownload is an MIT-licensed design and algorithm reference. Locus should port the minimal needed behavior into `worker/` and must not import, shell out to, or bundle the Go/Wails application as a runtime dependency.
+- Shared download reliability helpers may support `.part` files, resume-safe range checks, no-progress timeouts, maximum-size guardrails, and candidate retries, but they must preserve the current output/history/result contract.
+- Xiaohongshu fallback is scoped to video suitable for transcription. Bilibili fallback is scoped to ordinary public videos that expose no-cookie DASH streams. Image albums, platform archiving, login-gated content, Bilibili PGC/bangumi/member-only/DRM behavior, and broad multi-platform downloader behavior are outside the desktop worker boundary.
+
+## 2026-06-25 Douyin Share Page Fallback Boundary
+
+- The Python worker owns Douyin fallback extraction. UI and Tauri commands continue to submit a source URL and receive the same structured worker result; they do not parse Douyin HTML, choose streams, or download media directly.
+- The download path becomes a small strategy chain: attempt `yt-dlp` first, then, only for Douyin download failures that match empty web detail JSON or cookie/challenge-like extractor failures, attempt a local Douyin share page fallback.
+- The fallback is derived from EasyDownload's MIT-licensed approach, but Locus should port the minimal algorithm into `worker/` rather than importing or bundling the Go/Wails EasyDownload application.
+- The fallback extracts an `aweme_id`, requests `https://www.iesdouyin.com/share/video/{aweme_id}/?app=aweme`, parses `window._ROUTER_DATA`, builds stream candidates from `bit_rate` or `play_addr.uri`, and probes candidate streams with ranged GET requests.
+- The fallback may use a fixed mobile Safari `User-Agent` (`iPhone OS 16_5`, Safari `604.1`) plus minimal public-page headers. It must not implement UA rotation, proxy pools, browser fingerprint spoofing, CAPTCHA solving, or account automation.
+- A process-local cookie jar may keep anonymous cookies naturally issued by the public share page for the current worker invocation only; browser cookies are not read, persisted, or uploaded.
+- Candidate selection is automatic. Locus chooses the largest valid stream by byte size to preserve the highest-quality local video for users who keep the downloaded file, with resolution or quality rank as a tie-breaker.
+- Duplicate candidate streams should be collapsed by verified `Content-Range` total size. If the selected stream fails download or media validation, the worker tries the next candidate before surfacing failure.
+- The selected media is written into the current task's `media/video.mp4` artifact and then flows through `ffprobe`, `ffmpeg`, ASR, task manifest, and result workspace handling.
+- If all fallback candidates fail download or media validation, the worker returns a structured `VIDEO_DOWNLOAD_FAILED` with a short cause and recovery guidance; it must not hide the failed stage behind a generic worker error.
+
+## 2026-06-23 Desktop Update Boundary (superseded 2026-11-16)
+
+- **Superseded:** the Tauri updater, in-app update flow and `updates.json` preferences were removed when this repository split from its original hosting. The desktop app no longer checks for updates; upgrades are manual, by installing a newer build.
+- Worker code upgrades together with the desktop application bundle; there is no independent worker hot update from app-local data.
+- Updates (when they existed) preserved the active data root and fixed configuration root, including migrated models, task data, caches, authentication and local settings.
+
+## 2026-06-23 Runtime Configuration Boundary
+
+- Desktop worker runtime configuration no longer reads repository-root `.env` files such as `D:/Github/Locus/.env`.
+- Fixed-root `.env` stores ASR model selection and model-download overrides. Its existing output key is read for legacy compatibility; settings saves retain that key unchanged, and committed managed storage takes precedence.
+- The desktop settings panel returns and displays the app-local data `.env` path, can locate it in the file manager, and creates a commented template if the file is missing.
+- Legacy local `APP_LLM_PROVIDER`, `APP_LLM_BASE_URL`, `APP_LLM_API_KEY`, `APP_LLM_MODEL`, and `APP_LLM_TIMEOUT_SECONDS` dotenv values are ignored.
+- Insight topic generation receives LLM runtime material only through server-managed checkout environment variables injected by Tauri for the insight-generation worker invocation.
+
+## 2026-06-23 ASR Model Cache Layout Boundary
+
+- Desktop `APP_MODEL_DIR` points to the active data root's `models/` ModelScope cache root, not the directory that directly contains `iic/SenseVoiceSmall`.
+- The canonical release ASR layout is `<APP_MODEL_DIR>/models/iic/SenseVoiceSmall` plus `<APP_MODEL_DIR>/models/iic/speech_fsmn_vad_zh-cn-16k-common-pytorch`.
+- Worker startup keeps legacy top-level `iic/...` readable for upgrade compatibility, but normalizes it to the canonical layout before real ASR loading.
+- Automatic cleanup is limited to Locus's known SenseVoice/VAD legacy directories and stale `._____temp` folders without `model.pt`.
+
+## 2026-07-27 Selectable ASR Models and On-Demand Download
+
+- Desktop startup reads local settings and descriptor-private readiness only; it must not start a
+  model download. The installer contains no ASR weights.
+- `iic/SenseVoiceSmall-onnx` is the default model: its runtime ships in the installer, so a fresh
+  install transcribes without downloading the PyTorch component. `iic/SenseVoiceSmall` remains the
+  PyTorch compatibility path and requires the on-demand runtime component. The ONNX descriptor uses
+  a separate ONNX cache and only official ModelScope
+  SenseVoiceSmall-ONNX plus ONNX VAD sources.
+- Source/account validation precedes model validation and task creation. The validated
+  `asr_model` is frozen into the existing request and task metadata; a missing selection starts
+  only the separate model-download lane and retains no task artifacts.
+- A verified download is atomically promoted to its descriptor-private ready cache, revalidated,
+  and automatically resumes the held URL/local-media intent. Failed, cancelled, corrupt, or
+  offline installs create no task and never fall back to a different model.
+- Rust owns descriptor validation, source-intent retention, and download-lane lifecycle. Python
+  owns official-source acquisition, cache validation, and direct local runtime loading. The ONNX
+  runtime uses `funasr_onnx` directly; it does not use `funasr.AutoModel` or auto-export.
+
+## 2026-10-22 Settings Schema Migration and Migration Notice
+
+- Local settings carry `APP_SETTINGS_SCHEMA_VERSION`. The first read of a file without the
+  current version rewrites `APP_ASR_MODEL` to the ONNX default and stamps the version, so the
+  rewrite happens once. A later explicit PyTorch selection is preserved because the version
+  already matches.
+- When the rewritten value was still the old PyTorch template default, the migration also writes
+  `APP_ASR_MODEL_MIGRATION=1`. A file that already held the ONNX model gets no marker, so the
+  notice only appears for users whose selection actually changed.
+- `get_llm_config` returns `asr_model_migrated` from that marker. The settings sheet renders a
+  one-time notice explaining why the default changed and how to switch back; it does not block
+  the form.
+- `dismiss_asr_model_migration` deletes only the marker, so dismissing never writes an unsaved
+  draft. Saving the settings through `save_llm_config` also clears it.
+
+## 2026-06-21 Account and Billing Boundary
+
+- `server/` is a small TypeScript Fastify service for email OTP login, desktop session exchange, administrator-issued activation-code monthly passes, entitlement status, Admin Web, and server-managed LLM checkout.
+- The service stores account and entitlement state in a private SQLite database at `server/data/app.sqlite` with WAL mode enabled. It is designed for a single writer service instance.
+- The service stores encrypted administrator-managed LLM config for a dedicated Locus client supplier key and tracks per-user LLM API-call quota.
+- Desktop authentication uses `frameq://auth/callback` deep links. The browser receives a short-lived ticket, and the desktop client exchanges that ticket for an opaque session token.
+- The user-facing entitlement is a monthly pass. Activation codes are the current administrator-issued way to open or extend that monthly pass, and they update the same `Entitlement` record used by the processing gate.
+- No self-serve payment provider is integrated. Monthly passes are opened and extended only with activation codes; the unused WeChat purchase channel was removed on 2026-11-08.
+- Each activation grants 20 cloud LLM API-call uses. The desktop worker authorizes quota through server-managed checkout before each supplier chat-completion/API call, then calls the LLM supplier directly with the returned config for that call.
+- Admin Web access is limited to the configured administrator email and uses short-lived HttpOnly cookie sessions.
+- The account service never receives video files, audio files, transcripts, generated insights, cookies, model caches, or local history contents. It may store and return the dedicated Locus client LLM key.
+- The local worker remains the execution owner for video extraction, ASR and AI generation.
+
+## 概述
+
+Locus 是本地优先的桌面客户端：本地 worker 处理公开视频或已授权视频链接、本地媒体、
+媒体校验、音频提取与 ASR。正式文字稿完成后，用户可独立确认要点总结、文字稿解剖与
+启发灵感，由 `agent_runtime` 生成对应本地 AI 产物。
+
+## 代码地图
+
+主要模块如下：
+
+| 模块 | 责任 | 状态 |
+|------|------|------|
+| `app/` | Tauri + React + TypeScript 桌面 UI、状态展示、历史面板、设置面板、导出入口 | 已初始化；web build、Tauri release build 和安装器打包已验证 |
+| `app/src-tauri/src/worker_runtime/` | Rust worker 命令构造、单一受监督运行器、实例安全取消、progress 校验路由和进程树终止 | `WorkerLane::run` 已统一 process-video、AI retry、source preflight 与 ASR model download；低层生命周期 API 对应用模块不可见 |
+| `worker/` | Python 下载、ffprobe 校验、ffmpeg 音频提取、ASR、结果写盘；开发态由 `uv` 管理 `.venv`，分发态由安装包内置 Python runtime 执行 | 已初始化 schema、CLI facade、下载/媒体校验/音频提取、ASR adapter、transcript writers；分发态默认选中 SenseVoice Small，缺失模型仅在已验证任务提交时按选择下载 |
+| `worker/worker_core/summary_agent.py`、`dissection_agent.py`、`topic_agent.py`、`draft_agent.py` | 工作间里四件工具（要点总结、文字稿解剖、启发灵感、生成文字稿）的实现、验收与有界运行 | 共享 `agent_runtime`，通过交付工具提交完整产物，每次实际调用独立 checkout |
+| `worker/worker_core/ai_runtime.py`、`ai_prompts.py`、`transcript_chunks.py` | 托管 provider、提示词与确定性文字稿分段 | 供应商调用最多执行一次，分段记录 UTF-8 偏移和 SHA-256 |
+| `worker/worker_core/dissection_report.py`、`ai_artifacts.py`、`insight_errors.py` | 解剖报告、产物提交与生成错误 | 保留闭合 schema、完整导出、任务事务与错误协议 |
+| `app/src-tauri/resources/` | 分发态内置 Python runtime、worker、ffmpeg/ffprobe 和配置模板 | 构建脚本生成；仓库只保留 placeholder，避免提交大体积 runtime |
+| `app/src-tauri/src/data_storage.rs`、`data_storage/`、`safe_filesystem.rs` | 数据许可、位置权威、身份与完整性、复制提交、恢复及旧副本清理 | 固定控制根与可迁移数据根分离；前端只提交原生选择和确认令牌 |
+| 数据根 `models/` | 用户本机可写模型缓存；桌面由 `APP_MODEL_DIR` 指向 | ModelScope cache root；canonical ASR files live under `models/iic/...` |
+| 数据根 `outputs/`；Legacy 模式下的有效旧输出根 | `tasks/<task_id>/` 最终视频、音频、文字稿、AI 产物和 `task.json` | 由位置快照派生，设置中的明确迁移流程改变有效位置 |
+| 数据根 `cache/`、`runtime/`、`collections.json` | 任务与播放缓存、按需运行组件、合集及成员 | 随任务和模型一同迁移；缓存分类保留播放缓存清理 |
+| 固定配置根 `updates.json` | 桌面更新偏好，不含用户内容或签名私钥 | 记录检查时间、稍后提醒时间和跳过版本 |
+| 固定配置根 `.env` | 本机非 LLM 配置；设置页可定位，缺失时创建注释模板 | 普通保存只写 ASR 选择，保留旧输出键；托管 LLM 配置不从 dotenv 读取 |
+| 固定配置根 `data-storage.json`、`.data-storage.lock` | 位置、迁移阶段、物理身份及有界恢复引用 | 原子切换位置；完整库存与清理凭据保存在数据根的应用元数据区 |
+
+## 模块关系
+
+`app/src` 通过 Tauri command 调用受监督 worker。主流程调度媒体、ASR 与平台 fallback，
+按同一位置快照写入数据根的 `outputs/`、`cache/`、`models/`，固定配置与日志保持原位。用户确认 `retry_insights` 后，
+worker 使用托管 checkout 环境调用相应 AI agent；server 只处理账号与额度元数据。
+
+```mermaid
+graph LR
+  subgraph "app/ (Tauri + React + TS)"
+    A1["app/src/<br/>StorageBootstrap · workflow<br/>dataStorageClient · settings/history"]
+    A2["app/src-tauri/src/<br/>data_storage · lib.rs<br/>video_processing · settings/history"]
+    A3["worker_runtime/<br/>command.rs · runner.rs + runner/*<br/>supervisor.rs"]
+  end
+
+  subgraph "worker/worker_core/"
+    W1["cli.py · pipeline.py<br/>pipeline_runtime/<br/>models.py"]
+    W2["media.py<br/>asr.py · asr_runtime/<br/>model_download.py"]
+    W3["summary_agent · topic_agent<br/>dissection_agent<br/>agent_runtime"]
+    W4["ai_runtime · ai_prompts<br/>transcript_chunks<br/>llm · config"]
+    W5["dissection_report<br/>ai_artifacts<br/>TaskStoreFacade.finalize"]
+  end
+
+  subgraph "平台 fallback"
+    F1["douyin_fallback.py"]
+    F2["xiaohongshu_fallback.py"]
+    F3["bilibili_fallback.py"]
+  end
+
+  subgraph "当前数据根 (本机可迁移)"
+    D1["outputs/tasks/&lt;task_id&gt;/<br/>task.json<br/>media · transcript · ai"]
+    D2["cache/tasks/&lt;task_id&gt;/<br/>下载缓存 · 临时产物"]
+    D3["models/<br/>ASR 缓存<br/>iic/SenseVoiceSmall"]
+    D4["runtime/ · collections.json<br/>运行组件 · 合集"]
+  end
+
+  subgraph "固定配置根 (系统 app-local)"
+    C1["data-storage.json · process lock<br/>auth · .env · preferences · logs"]
+  end
+
+  subgraph "外部 / 独立服务"
+    S1["server/ (Fastify + SQLite)<br/>账户 · 激活码 · 配额"]
+    S2["LLM supplier<br/>OpenAI-compatible API"]
+  end
+
+  A1 -->|Tauri invoke| A2
+  A2 -->|typed WorkerRunRequest| A3
+  A3 -->|fixed CLI + bounded stdin| W1
+  W1 --> W2
+  W1 --> W3
+  W1 --> W4
+  W1 --> F1
+  W1 --> F2
+  W1 --> F3
+  W2 -->|yt-dlp · ffprobe · ffmpeg| D1
+  W2 -->|下载缓存 · 临时产物| D2
+  W2 -->|ASR 加载| D3
+  W3 --> W4
+  W3 --> W5
+  W5 -->|总结 · mindmap · 灵感 · 解剖| D1
+  W4 -.->|仅 retry_insights 阶段| S1
+  S1 -->|逐调用配置与额度授权| W4
+  W4 -->|文字稿与本轮生成上下文| S2
+  A2 -->|读取历史 / 写盘路径| D1
+  A2 -->|位置许可 / 组件与合集| D4
+  A2 -->|配置 / 控制记录| C1
+```
+
+阅读路径：
+
+- 改 UI 状态或历史展示：`app/src/workflow.ts` → `app/src/historyClient.ts` → `app/src-tauri/src/video_processing.rs` / `history.rs` / `settings.rs`。
+- 改 task manifest、artifact 或 History/cache/transcript/delete 的任务信任规则：从稳定
+  `app/src-tauri/src/task_manifest.rs` surface 进入，再按职责修改私有 `source_identity.rs`、
+  `schema.rs`、`storage.rs` 或 `access.rs`；同时核对 Python
+  `worker/worker_core/task_store.py` 的 `TaskStoreFacade`，调用方不得恢复 raw manifest/path
+  组合或直接导入私有 child。
+- 改 Rust worker 生命周期顺序：从 `app/src-tauri/src/worker_runtime/runner.rs` 进入；按职责修改私有 `runner/process_io.rs`、`watchdog.rs`、`progress.rs` 或 `terminal.rs`，进程树信号仍只改 `supervisor.rs`，固定 invocation/env 仍只改 `command.rs`；应用命令只保留领域映射。
+- 改下载 / 媒体校验 / 音频提取：`worker/worker_core/cli.py` → `media.py` → 对应平台 fallback。
+- 改 ASR 行为或模型缓存：`worker/worker_core/asr.py` → `asr_runtime/` → `model_download.py` → 当前数据根 `models/`。
+- 改数据位置、迁移或访问许可：`dataStorageClient.ts` / `features/dataStorage/` → `data_storage.rs` → 私有 engine 与 `safe_filesystem.rs`；正式模型/组件核验由 `data_storage_validation.rs` 和受监督只读 worker 负责。
+- 改灵感 / 总结 / mindmap / 解剖：从 `pipeline_runtime/insights.py` 进入相应
+  `summary_agent.py`、`topic_agent.py` 或 `dissection_agent.py`；共享提示词、分段与调用分别
+  在 `ai_prompts.py`、`transcript_chunks.py`、`ai_runtime.py`，checkout 协议在 `llm.py`。
+- 改账户、激活码、配额或 LLM checkout：`server/`。
+
+
+## 关键文件
+
+- `AGENTS.md`：AI 协作入口地图和最高优先级约束摘要。
+- `docs/design-docs/code-audit-uml.md`：面向 LLM 与人工重构评审的当前代码 UML 基线、依赖证据和结构压力点。
+- `docs/design-docs/2026-07-18-task-access-facade.md`：Rust/Python 任务访问门面、安全不变量和迁移边界。
+- `docs/design-docs/2026-07-21-task-manifest-module-split.md`：Rust task-manifest 私有 owner
+  拆分、稳定 root surface 与 source/dependency boundary。
+- `docs/design-docs/2026-07-21-worker-pipeline-module-split.md`：Python worker pipeline 稳定
+  root、四个私有 owner 与 process/AI dependency boundary。
+- `docs/product-specs/index.md`：产品规格入口；根目录历史方案已迁移进 `docs/` 并删除。
+- `docs/product-specs/2026-06-16-douyin-video-transcription-client.md`：首个用户可见 MVP 规格。
+- `docs/exec-plans/completed/2026-06-18-installer-distribution-runtime-plan.md`：已完成的轻量安装包、首启模型下载与 clean-machine 验证计划；首个 MVP 计划已归档到 `docs/exec-plans/completed/2026-06-16-mvp-desktop-client-plan.md`。
+- `ruff.toml`：Python worker 初始 lint 约束。
+- `pyproject.toml`：Python worker 项目元数据和 `uv` 依赖入口（初始化后维护）。
+- `app/src/workflow.ts`：前端工作流状态模型。
+- `app/src/settingsClient.ts`：ASR 设置与固定 `.env` 路径；旧输出字段只读兼容，普通保存不写目录。
+- `app/src/dataStorageClient.ts`、`dataStorageProtocol.ts`、`features/dataStorage/`：严格位置 DTO、启动恢复、设置行、迁移进度和未保存会话保护。
+- `app/src/historyClient.ts`：前端历史记录读取 client（Tauri invoke 包装）。
+- `app/src-tauri/src/worker_runtime/command.rs`：固定 worker invocation、受限 stdin payload 与配置根/当前数据快照环境构造。
+- `app/src-tauri/src/worker_runtime/runner.rs`：所有 Rust-owned Python 子进程唯一的生命周期编排；私有 `runner/process_io.rs`、`watchdog.rs`、`progress.rs`、`terminal.rs` 分别拥有底层实现，不构成新的应用入口。
+- `app/src-tauri/src/worker_runtime/supervisor.rs`：每 lane 的实例状态、取消 claim/rollback 与 Windows/macOS 进程树终止。
+- `worker/worker_core/models.py`：worker request/result/error schema。
+- `worker/worker_core/cli.py`：worker CLI/facade 入口，默认在真实 ASR 未启用时返回结构化 `ASR_MODEL_NOT_READY`。
+- `worker/worker_core/media.py`：yt-dlp、ffprobe 和 ffmpeg 音频提取服务。
+- `worker/worker_core/asr.py`：稳定 ASR 导入入口；实现按 failure boundary 位于私有 `asr_runtime/` 的 types、registry、SenseVoice/VAD、ONNX 和 artifact owners。
+- `worker/worker_core/model_download.py`：SenseVoice Small 与 VAD 模型缓存下载、归档解压、校验和 `MODEL_VERSION.txt` 写入。
+- `worker/worker_core/runtime_component.py`：PyTorch 运行时组件的检测、指纹比对与 `sys.path` 注入；包内 manifest 缺失时门禁不生效，保持未裁剪运行时的原有行为。
+- `worker/worker_core/config.py`：app-local data `.env` 加载、旧本地 LLM dotenv 字段过滤和环境变量合并；项目根 `.env` 不参与 worker runtime。
+- `worker/worker_core/llm.py`：托管 LLM checkout 的 HTTP 协议、配置校验、超时和逐调用请求标识。
+- `worker/worker_core/ai_runtime.py`：工作间共享 provider，逐次 checkout、供应商单次调用、
+  target 请求标识与专用错误映射。
+- `worker/worker_core/ai_prompts.py`：工作间和成稿提示词、偏好序列化与平台词表。
+- `worker/worker_core/transcript_chunks.py`：确定性文字稿分段、UTF-8 字节范围和片段 SHA-256。
+- `worker/worker_core/pipeline.py`：稳定 pipeline 导入入口；`pipeline_runtime/shared.py`、
+  `transcript.py`、`insights.py`、`orchestration.py` 分别拥有共享 policy、字幕/ASR、AI target
+  和 URL task orchestration。
+- `worker/worker_core/summary_agent.py`：脑图与总结的顺序工具交付、规范化和产物构造。
+- `worker/worker_core/topic_agent.py`：完整灵感工具交付、JSON Schema 和重复主题校验、产物导出。
+- `worker/worker_core/dissection_agent.py`：文字稿解剖的有界 agent 循环、工具校验反馈与进度。
+- `worker/worker_core/dissection_report.py`：解剖闭合模型、来源校验、UTF-8 溯源与 Markdown 导出。
+- `worker/worker_core/ai_artifacts.py`：AI 产物 payload 的原子提交适配。
+- `worker/worker_core/insight_errors.py`：工作间共享生成错误与现有错误码。
+
+## 架构不变量
+
+- UI 只编排任务和展示状态，不直接调用 `yt-dlp`、`ffmpeg`、ASR 或 LLM。
+- Tauri 应用模块只能通过 `TaskWorkerFacade::execute(WorkerJob)`、
+  `AsrModelDownloadJob` 以及语义 cancel/activity query 管理 Locus worker；
+  `WorkerLane::run`、`WorkerRunRequest` 和 `WorkerCommandSpec` 都是 runtime 内部能力。应用层不得
+  直接 spawn、wait、finish、发送 OS 信号或转发未验证 progress。
+- UI 通过 Tauri command 保存 ASR；数据位置通过原生目录令牌、库存确认和重启验证改变。LLM 配置由 server Admin Web 管理，桌面 UI 不回显也不输入 API Key。
+- worker 通过结构化 JSON 返回状态、路径、文本、灵感和错误码。
+- `process_video` 主流程只负责视频下载、音频提取和 ASR 文字稿。`retry_insights` 在用户
+  二次确认后按 `summary`、`insights`、`dissection`、`draft` 或 `transcript` 独立运行，
+  是本地 AI 生成、server-managed checkout 与额度消费的唯一 worker 命令。
+- `summary`、`insights`、`dissection` 使用各自 agent 交付工具，并逐次计费；`draft` 使用
+  单条 Insight 与任务局部偏好，经 anysearch、skills、planning 和 `submit_draft` 生成
+  `ai/draft.md`；`transcript` 目标分段整理原稿，生成 `transcript/polished.txt`。后两者
+  沿用各自的一次确认计费契约。
+- worker 运行期使用 `worker_core` 内的 AI 模块及 `agent_runtime` 依赖，不跨目录导入
+  外部参考项目或本仓库 server 代码。
+- 对外分发态的最终产物、缓存、模型、运行组件与合集均从当前数据位置派生；Legacy 保留有效旧输出解释，Managed 采用统一数据根。每个 worker 命令的输出、缓存、模型、组件路径来自同一快照，配置根与 cwd 保持固定。
+- 历史记录从当前有效输出根的受支持任务 manifest 读取。位置迁移保留 task ID 与相对产物路径，重启后重新生成绝对路径。空目标保留原件；已有目录合并按相对路径同名文件的目标优先规则移动或删除源文件，目标合集文件优先。
+- 灵感失败不得阻断文字稿结果，客户端进入 `部分完成` 状态。
+
+## 层级边界
+
+依赖方向为 `UI -> Tauri command/domain adapter -> worker_runtime -> Worker facade -> Services -> Config/Types`。下层不得 import 上层；共享数据结构应收敛到明确的 request/result schema。
+
+## 横切关注点
+
+- 安全与合规：见 `docs/SECURITY.md`。
+- UI 和交互状态：见 `docs/DESIGN.md`。
+- 完成标准：见 `docs/EXECUTION_GATES.md`。

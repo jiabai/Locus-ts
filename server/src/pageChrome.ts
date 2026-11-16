@@ -1,0 +1,110 @@
+import { PRODUCT_MARK } from "./brand.js";
+/**
+ * Shared brand chrome for server-rendered web pages.
+ *
+ * Brand identity (the monogram tile, its row layout and the eyebrow label)
+ * must read as one product across `/login`, `/dashboard`, `/admin/login` and
+ * `/admin`. Each page injects {@link brandChromeCss} into its `<style>` and
+ * composes its header with {@link renderBrandMark}, so the brand mark is defined
+ * once instead of being copy-pasted per page.
+ *
+ * The brand mark is decorative (`aria-hidden`): the accessible product/page name
+ * comes from the heading in each header.
+ */
+
+/** Shared CSS for `.brand-row`, `.brand-mark` and `.eyebrow`. Consumes `var(--fq-*)`. */
+export function brandChromeCss(): string {
+  return `
+    .brand-row { align-items: center; display: flex; gap: 12px; min-width: 0; }
+    .brand-mark {
+      align-items: center;
+      background: var(--fq-primary);
+      border-radius: var(--fq-radius);
+      color: var(--fq-text-on-primary);
+      display: inline-flex;
+      flex: 0 0 auto;
+      font-size: 0.78rem;
+      font-weight: 800;
+      height: 38px;
+      justify-content: center;
+      letter-spacing: 0;
+      width: 38px;
+    }
+    .eyebrow {
+      color: var(--fq-text-soft);
+      font-size: 0.74rem;
+      font-weight: 760;
+      letter-spacing: 0;
+      margin-bottom: 3px;
+      text-transform: uppercase;
+    }
+  `;
+}
+
+/** Renders the brand monogram tile. Decorative — not exposed to AT. */
+export function renderBrandMark(): string {
+  return `<span class="brand-mark" aria-hidden="true">${PRODUCT_MARK}</span>`;
+}
+
+/**
+ * Copy of `site/public/favicon.svg` (the brand mark), inlined as a base64
+ * SVG data URI so every server page gets a browser-tab icon without needing a
+ * static-file route. Color (`#0066cc`) matches `--fq-primary`; keep the two in
+ * sync if the brand primary ever changes. Updated once at module load.
+ */
+const APP_FAVICON_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">' +
+  '<rect width="64" height="64" rx="14" fill="#0066cc"/>' +
+  '<text x="32" y="44" font-family="-apple-system, \'Segoe UI\', system-ui, sans-serif" font-size="38" font-weight="600" text-anchor="middle" fill="#ffffff">F</text>' +
+  "</svg>";
+
+const APP_FAVICON_URI = `data:image/svg+xml;base64,${Buffer.from(APP_FAVICON_SVG, "utf8").toString("base64")}`;
+
+/** `<link rel="icon">` for the brand mark, ready to drop into a page `<head>`. */
+export function faviconLink(): string {
+  return `<link rel="icon" type="image/svg+xml" href="${APP_FAVICON_URI}" />`;
+}
+
+/** Options for {@link renderFrameHeader}. */
+export type FrameHeaderOptions = {
+  /** Optional eyebrow label above the title (e.g. the admin console). */
+  eyebrow?: string;
+  /** Page title (already localized). */
+  title: string;
+  /** Optional id for the title heading (for `aria-labelledby` on a section). */
+  titleId?: string;
+  /** Optional HTML rendered under the title (e.g. an email subtitle). */
+  subtitleHtml?: string;
+  /** Optional HTML for the right-side actions (lang switcher, logout, session chip…). */
+  rightHtml?: string;
+  /** Optional class for the `<header>` wrapper. */
+  wrapperClass?: string;
+};
+
+/**
+ * Renders the shared page header: a `<header>` containing the brand row
+ * (brand mark + optional eyebrow / title / subtitle) and an optional right-side
+ * actions slot. Pages pass their own localized title and right-side HTML, so the
+ * brand block is defined once instead of copy-pasted across the four headers.
+ */
+export function renderFrameHeader(options: FrameHeaderOptions): string {
+  const { eyebrow, title, titleId, subtitleHtml, rightHtml, wrapperClass } = options;
+  const classAttr = wrapperClass ? ` class="${wrapperClass}"` : "";
+  const idAttr = titleId ? ` id="${titleId}"` : "";
+  const titleBlock = [
+    eyebrow ? `<p class="eyebrow">${eyebrow}</p>` : "",
+    `<h1${idAttr}>${title}</h1>`,
+    subtitleHtml ?? "",
+  ]
+    .filter(Boolean)
+    .join("\n          ");
+  const rightBlock = rightHtml ? `\n        ${rightHtml}` : "";
+  return `      <header${classAttr}>
+        <div class="brand-row">
+          ${renderBrandMark()}
+          <div>
+            ${titleBlock}
+          </div>
+        </div>${rightBlock}
+      </header>`;
+}

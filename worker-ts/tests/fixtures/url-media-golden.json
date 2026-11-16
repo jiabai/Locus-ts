@@ -1,0 +1,330 @@
+{
+  "url": "https://www.douyin.com/video/7524373044106677544",
+  "asr_model": "iic/SenseVoiceSmall-onnx",
+  "cases": [
+    {
+      "label": "success without subtitle",
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 18,
+          "message_code": "video.download.preparing"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 34,
+          "message_code": "video.stream.validating"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 48,
+          "message_code": "audio.extract.running"
+        },
+        {
+          "stage": "video_transcribing",
+          "progress": 58,
+          "message_code": "subtitle.detect.running"
+        }
+      ],
+      "outcome": {
+        "video_path": "media/video.mp4",
+        "audio_path": "media/audio.wav",
+        "subtitle": null
+      }
+    },
+    {
+      "label": "download failure is sanitized",
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 18,
+          "message_code": "video.download.preparing"
+        }
+      ],
+      "outcome": {
+        "error": {
+          "code": "VIDEO_DOWNLOAD_FAILED",
+          "message": "Media command failed with exit code 1.",
+          "stage": "video_extracting"
+        }
+      }
+    },
+    {
+      "label": "download produced no media",
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 18,
+          "message_code": "video.download.preparing"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 34,
+          "message_code": "video.stream.validating"
+        }
+      ],
+      "outcome": {
+        "error": {
+          "code": "VIDEO_DOWNLOAD_OUTPUT_MISSING",
+          "message": "Video download completed but no media file was found.",
+          "stage": "video_extracting"
+        }
+      }
+    },
+    {
+      "label": "downloaded media is invalid",
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 18,
+          "message_code": "video.download.preparing"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 34,
+          "message_code": "video.stream.validating"
+        }
+      ],
+      "outcome": {
+        "error": {
+          "code": "MEDIA_VALIDATION_FAILED",
+          "message": "Downloaded file must contain valid video and audio streams.",
+          "stage": "video_extracting"
+        }
+      }
+    },
+    {
+      "label": "media probe failed",
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 18,
+          "message_code": "video.download.preparing"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 34,
+          "message_code": "video.stream.validating"
+        }
+      ],
+      "outcome": {
+        "error": {
+          "code": "MEDIA_VALIDATION_FAILED",
+          "message": "Downloaded media could not be validated.",
+          "stage": "video_extracting"
+        }
+      }
+    },
+    {
+      "label": "audio extraction failed",
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 18,
+          "message_code": "video.download.preparing"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 34,
+          "message_code": "video.stream.validating"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 48,
+          "message_code": "audio.extract.running"
+        }
+      ],
+      "outcome": {
+        "error": {
+          "code": "AUDIO_EXTRACTION_FAILED",
+          "message": "Audio extraction failed.",
+          "stage": "video_extracting"
+        }
+      }
+    },
+    {
+      "label": "existing audio is reused",
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 18,
+          "message_code": "video.download.preparing"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 34,
+          "message_code": "video.stream.validating"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 48,
+          "message_code": "audio.extract.running"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 50,
+          "message_code": "audio.extract.reused"
+        },
+        {
+          "stage": "video_transcribing",
+          "progress": 58,
+          "message_code": "subtitle.detect.running"
+        }
+      ],
+      "outcome": {
+        "video_path": "media/video.mp4",
+        "audio_path": "media/audio.wav",
+        "subtitle": null
+      }
+    },
+    {
+      "label": "platform subtitle is used",
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 18,
+          "message_code": "video.download.preparing"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 34,
+          "message_code": "video.stream.validating"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 48,
+          "message_code": "audio.extract.running"
+        },
+        {
+          "stage": "video_transcribing",
+          "progress": 58,
+          "message_code": "subtitle.detect.running"
+        }
+      ],
+      "outcome": {
+        "video_path": "media/video.mp4",
+        "audio_path": "media/audio.wav",
+        "subtitle": {
+          "text": "First line\nSecond line",
+          "language": "zh-Hans",
+          "segments": [
+            {
+              "id": "subtitle-1",
+              "start_ms": 1000,
+              "end_ms": 2000,
+              "text": "First line"
+            },
+            {
+              "id": "subtitle-2",
+              "start_ms": 2000,
+              "end_ms": 3000,
+              "text": "Second line"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "bilibili fallback skips subtitle detection",
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 18,
+          "message_code": "video.download.preparing"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 34,
+          "message_code": "video.stream.validating"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 48,
+          "message_code": "audio.extract.running"
+        },
+        {
+          "stage": "video_transcribing",
+          "progress": 58,
+          "message_code": "subtitle.detect.running"
+        }
+      ],
+      "outcome": {
+        "video_path": "media/video.mp4",
+        "audio_path": "media/audio.wav",
+        "subtitle": null
+      }
+    },
+    {
+      "label": "video commit failed",
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 18,
+          "message_code": "video.download.preparing"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 34,
+          "message_code": "video.stream.validating"
+        }
+      ],
+      "outcome": {
+        "error": {
+          "code": "MEDIA_VALIDATION_FAILED",
+          "message": "Prepared video could not be stored safely.",
+          "stage": "video_extracting"
+        }
+      }
+    }
+  ],
+  "language_tags": [
+    {
+      "input": "zh-Hans",
+      "result": "zh-Hans"
+    },
+    {
+      "input": "zh_CN",
+      "result": "zh-CN"
+    },
+    {
+      "input": "en-US",
+      "result": "en-US"
+    },
+    {
+      "input": "EN",
+      "result": "en"
+    },
+    {
+      "input": "und",
+      "result": "und"
+    },
+    {
+      "input": "unknown",
+      "result": null
+    },
+    {
+      "input": "zh-Hans-CN-extra",
+      "result": null
+    },
+    {
+      "input": "a",
+      "result": null
+    },
+    {
+      "input": "",
+      "result": null
+    },
+    {
+      "input": "zh_Hans_CN",
+      "result": "zh-Hans-CN"
+    },
+    {
+      "input": 5,
+      "result": null
+    },
+    {
+      "input": "sr-Latn-RS",
+      "result": "sr-Latn-RS"
+    }
+  ]
+}

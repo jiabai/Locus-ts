@@ -1,0 +1,992 @@
+{
+  "contractVersion": 2,
+  "urls": [
+    {
+      "input": "https://www.python.org/doc/?id=12",
+      "result": {
+        "ok": true,
+        "value": "https://www.python.org/doc/?id=12"
+      }
+    },
+    {
+      "input": "https://www.python.org/?token=secret#fragment",
+      "result": {
+        "ok": true,
+        "value": "https://www.python.org/"
+      }
+    },
+    {
+      "input": "https://www.python.org/?page=2&id=3&id=4&post_id=7",
+      "result": {
+        "ok": true,
+        "value": "https://www.python.org/?page=2&post_id=7"
+      }
+    },
+    {
+      "input": "https://www.python.org/?p=0&p=10&story_id=42&x=1",
+      "result": {
+        "ok": true,
+        "value": "https://www.python.org/?story_id=42"
+      }
+    },
+    {
+      "input": "https://www.python.org/?id=123456789012345678901&keep=1",
+      "result": {
+        "ok": true,
+        "value": "https://www.python.org/"
+      }
+    },
+    {
+      "input": "http://www.python.org:80/",
+      "result": {
+        "ok": true,
+        "value": "http://www.python.org/"
+      }
+    },
+    {
+      "input": "https://www.python.org:443/a?b=%20",
+      "result": {
+        "ok": true,
+        "value": "https://www.python.org/a"
+      }
+    },
+    {
+      "input": "http://www.python.org:443/",
+      "result": {
+        "ok": true,
+        "value": "http://www.python.org:443/"
+      }
+    },
+    {
+      "input": "http://www.python.org:080/",
+      "result": {
+        "ok": true,
+        "value": "http://www.python.org/"
+      }
+    },
+    {
+      "input": "https://bücher.io:443/章节/一个b",
+      "result": {
+        "ok": true,
+        "value": "https://xn--bcher-kva.io/%E7%AB%A0%E8%8A%82/%E4%B8%80%E4%B8%AAb"
+      }
+    },
+    {
+      "input": "https://xn--bcher-kva.io/",
+      "result": {
+        "ok": true,
+        "value": "https://xn--bcher-kva.io/"
+      }
+    },
+    {
+      "input": "https://straße.io/",
+      "result": {
+        "ok": true,
+        "value": "https://strasse.io/"
+      }
+    },
+    {
+      "input": "https://日本.io/章节",
+      "result": {
+        "ok": true,
+        "value": "https://xn--wgv71a.io/%E7%AB%A0%E8%8A%82"
+      }
+    },
+    {
+      "input": "https://BÜCHER.example.io/",
+      "result": {
+        "ok": true,
+        "value": "https://xn--bcher-kva.example.io/"
+      }
+    },
+    {
+      "input": "http://8.8.8.8/",
+      "result": {
+        "ok": true,
+        "value": "http://8.8.8.8/"
+      }
+    },
+    {
+      "input": "http://224.0.0.1/x",
+      "result": {
+        "ok": true,
+        "value": "http://224.0.0.1/x"
+      }
+    },
+    {
+      "input": "http://127.0.0.1/",
+      "result": {
+        "ok": false,
+        "error": "Web page address is unavailable."
+      }
+    },
+    {
+      "input": "http://10.0.0.1/",
+      "result": {
+        "ok": false,
+        "error": "Web page address is unavailable."
+      }
+    },
+    {
+      "input": "http://100.64.0.1/",
+      "result": {
+        "ok": false,
+        "error": "Web page address is unavailable."
+      }
+    },
+    {
+      "input": "http://192.0.2.1/",
+      "result": {
+        "ok": false,
+        "error": "Web page address is unavailable."
+      }
+    },
+    {
+      "input": "http://1.2.3/",
+      "result": {
+        "ok": false,
+        "error": "'1.2.3' does not appear to be an IPv4 or IPv6 address"
+      }
+    },
+    {
+      "input": "http://999.1.1.1/",
+      "result": {
+        "ok": false,
+        "error": "'999.1.1.1' does not appear to be an IPv4 or IPv6 address"
+      }
+    },
+    {
+      "input": "http://[2a00:1450:4001:81b::2008]/",
+      "result": {
+        "ok": true,
+        "value": "http://[2a00:1450:4001:81b::2008]/"
+      }
+    },
+    {
+      "input": "http://[::ffff:8.8.8.8]/",
+      "result": {
+        "ok": false,
+        "error": "Web page address is unavailable."
+      }
+    },
+    {
+      "input": "http://[::1]/",
+      "result": {
+        "ok": false,
+        "error": "Web page address is unavailable."
+      }
+    },
+    {
+      "input": "http://[2001:db8::1]/",
+      "result": {
+        "ok": false,
+        "error": "Web page address is unavailable."
+      }
+    },
+    {
+      "input": "http://[v1.x]/",
+      "result": {
+        "ok": true,
+        "value": "http://v1.x/"
+      }
+    },
+    {
+      "input": "http://[example.com]/",
+      "result": {
+        "ok": false,
+        "error": "'example.com' does not appear to be an IPv4 or IPv6 address"
+      }
+    },
+    {
+      "input": "http://[::1%25eth0]/",
+      "result": {
+        "ok": false,
+        "error": "Web page address is unavailable."
+      }
+    },
+    {
+      "input": "https://example.com/a/../b?x=1",
+      "result": {
+        "ok": true,
+        "value": "https://example.com/b"
+      }
+    },
+    {
+      "input": "https://example.com/./",
+      "result": {
+        "ok": true,
+        "value": "https://example.com/"
+      }
+    },
+    {
+      "input": "https://example.com/a/b/..",
+      "result": {
+        "ok": true,
+        "value": "https://example.com/a/"
+      }
+    },
+    {
+      "input": "https://example.com/a/%2e%2e/b",
+      "result": {
+        "ok": false,
+        "error": "Saved web page URL path is invalid."
+      }
+    },
+    {
+      "input": "https://example.com/a/%2E/b",
+      "result": {
+        "ok": false,
+        "error": "Saved web page URL path is invalid."
+      }
+    },
+    {
+      "input": "https://example.com/..%2f/b",
+      "result": {
+        "ok": true,
+        "value": "https://example.com/..%2f/b"
+      }
+    },
+    {
+      "input": "https://example.com/%2e%2e",
+      "result": {
+        "ok": false,
+        "error": "Saved web page URL path is invalid."
+      }
+    },
+    {
+      "input": "http://localhost/",
+      "result": {
+        "ok": false,
+        "error": "Web page host is invalid."
+      }
+    },
+    {
+      "input": "http://example.com/",
+      "result": {
+        "ok": true,
+        "value": "http://example.com/"
+      }
+    },
+    {
+      "input": "http://example.io./",
+      "result": {
+        "ok": false,
+        "error": "Web page host is invalid."
+      }
+    },
+    {
+      "input": "http://my_host.example.io/",
+      "result": {
+        "ok": false,
+        "error": "Web page host is invalid."
+      }
+    },
+    {
+      "input": "http://io/",
+      "result": {
+        "ok": false,
+        "error": "Web page host is invalid."
+      }
+    },
+    {
+      "input": "http://example.123/",
+      "result": {
+        "ok": false,
+        "error": "Web page host is invalid."
+      }
+    },
+    {
+      "input": "http://example.io.internal/",
+      "result": {
+        "ok": false,
+        "error": "Web page host is invalid."
+      }
+    },
+    {
+      "input": "http://USER@example.io/",
+      "result": {
+        "ok": false,
+        "error": "Web page URL is invalid."
+      }
+    },
+    {
+      "input": "http://example.io:99/",
+      "result": {
+        "ok": false,
+        "error": "Web page URL is invalid."
+      }
+    },
+    {
+      "input": "http://example.io:/",
+      "result": {
+        "ok": true,
+        "value": "http://example.io/"
+      }
+    },
+    {
+      "input": "HTTP://EXAMPLE.IO/A",
+      "result": {
+        "ok": true,
+        "value": "http://example.io/A"
+      }
+    },
+    {
+      "input": "http://example.io/%70%73",
+      "result": {
+        "ok": true,
+        "value": "http://example.io/%70%73"
+      }
+    },
+    {
+      "input": "http://%70%73.example.io/",
+      "result": {
+        "ok": false,
+        "error": "Web page host is invalid."
+      }
+    },
+    {
+      "input": "http://example.io/?q=a+b&empty=&flag&=%z",
+      "result": {
+        "ok": true,
+        "value": "http://example.io/"
+      }
+    },
+    {
+      "input": "http://example.io/?x=%zz&y=%C3%BC",
+      "result": {
+        "ok": true,
+        "value": "http://example.io/"
+      }
+    },
+    {
+      "input": "http://example.io/?中文=值",
+      "result": {
+        "ok": true,
+        "value": "http://example.io/"
+      }
+    },
+    {
+      "input": "http://example.io/?p=10&p=10&id=x",
+      "result": {
+        "ok": true,
+        "value": "http://example.io/"
+      }
+    },
+    {
+      "input": "http://example.io/?page=02&article_id=007",
+      "result": {
+        "ok": true,
+        "value": "http://example.io/?article_id=007"
+      }
+    },
+    {
+      "input": "http://example.io/docs;p=1",
+      "result": {
+        "ok": true,
+        "value": "http://example.io/docs;p=1"
+      }
+    },
+    {
+      "input": "ftp://example.io/",
+      "result": {
+        "ok": false,
+        "error": "Web page URL is invalid."
+      }
+    },
+    {
+      "input": "http:///path",
+      "result": {
+        "ok": false,
+        "error": "Web page URL is invalid."
+      }
+    },
+    {
+      "input": "http://example.io\\x",
+      "result": {
+        "ok": false,
+        "error": "Web page URL is invalid."
+      }
+    },
+    {
+      "input": "https://example.io/a b",
+      "result": {
+        "ok": false,
+        "error": "Web page URL is invalid."
+      }
+    },
+    {
+      "input": "https://example.io/\t",
+      "result": {
+        "ok": false,
+        "error": "Web page URL is invalid."
+      }
+    },
+    {
+      "input": "http://-example.io/",
+      "result": {
+        "ok": false,
+        "error": "Web page host is invalid."
+      }
+    },
+    {
+      "input": "http://example-.io/",
+      "result": {
+        "ok": false,
+        "error": "Web page host is invalid."
+      }
+    },
+    {
+      "input": "http://a--b.io/",
+      "result": {
+        "ok": true,
+        "value": "http://a--b.io/"
+      }
+    },
+    {
+      "input": "http://xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.io/",
+      "result": {
+        "ok": false,
+        "error": "label empty or too long"
+      }
+    },
+    {
+      "input": "http://xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.io/",
+      "result": {
+        "ok": true,
+        "value": "http://xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.io/"
+      }
+    },
+    {
+      "input": "http://a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.io",
+      "result": {
+        "ok": true,
+        "value": "http://a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.io/"
+      }
+    },
+    {
+      "input": "http://8.8.8.8:443/",
+      "result": {
+        "ok": true,
+        "value": "http://8.8.8.8:443/"
+      }
+    },
+    {
+      "input": "https://8.8.8.8:80/",
+      "result": {
+        "ok": true,
+        "value": "https://8.8.8.8:80/"
+      }
+    }
+  ],
+  "articles": [
+    {
+      "payload": {
+        "title": "公开文章与本地保存",
+        "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+        "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+        "sourceUrl": "https://www.python.org/doc/?id=12"
+      },
+      "result": {
+        "ok": true,
+        "value": {
+          "title": "公开文章与本地保存",
+          "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+          "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+          "sourceUrl": "https://www.python.org/doc/?id=12"
+        }
+      }
+    },
+    {
+      "payload": {
+        "title": "带有 Markdown 标点 #1 *强调* [链接] <括号> `code` _{}[]<>()#+-.!|",
+        "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+        "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+        "sourceUrl": "https://www.python.org/doc/?id=12"
+      },
+      "result": {
+        "ok": true,
+        "value": {
+          "title": "带有 Markdown 标点 #1 *强调* [链接] <括号> `code` _{}[]<>()#+-.!|",
+          "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+          "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+          "sourceUrl": "https://www.python.org/doc/?id=12"
+        }
+      }
+    },
+    {
+      "payload": {
+        "title": " leading space",
+        "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+        "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+        "sourceUrl": "https://www.python.org/doc/?id=12"
+      },
+      "result": {
+        "ok": false,
+        "error": "Web page extraction is invalid."
+      }
+    },
+    {
+      "payload": {
+        "title": "",
+        "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+        "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+        "sourceUrl": "https://www.python.org/doc/?id=12"
+      },
+      "result": {
+        "ok": false,
+        "error": "Web page extraction is invalid."
+      }
+    },
+    {
+      "payload": {
+        "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+        "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+        "sourceUrl": "https://www.python.org/doc/?id=12"
+      },
+      "result": {
+        "ok": false,
+        "error": "Web page extraction is invalid."
+      }
+    },
+    {
+      "payload": {
+        "title": "标题\u0000",
+        "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+        "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+        "sourceUrl": "https://www.python.org/doc/?id=12"
+      },
+      "result": {
+        "ok": false,
+        "error": "Web page extraction is invalid."
+      }
+    },
+    {
+      "payload": {
+        "title": "公开文章与本地保存",
+        "text": "太短",
+        "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+        "sourceUrl": "https://www.python.org/doc/?id=12"
+      },
+      "result": {
+        "ok": false,
+        "error": "Web page extraction is invalid."
+      }
+    },
+    {
+      "payload": {
+        "title": "公开文章与本地保存",
+        "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+        "markdown": "   ",
+        "sourceUrl": "https://www.python.org/doc/?id=12"
+      },
+      "result": {
+        "ok": false,
+        "error": "Web page extraction is invalid."
+      }
+    },
+    {
+      "payload": {
+        "title": "公开文章与本地保存",
+        "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+        "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+        "sourceUrl": "https://www.python.org/doc/?id=12#frag"
+      },
+      "result": {
+        "ok": false,
+        "error": "Web page extraction is invalid."
+      }
+    },
+    {
+      "payload": {
+        "title": "公开文章与本地保存",
+        "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+        "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+        "sourceUrl": "https://www.python.org:443/doc/?id=12"
+      },
+      "result": {
+        "ok": false,
+        "error": "Web page extraction is invalid."
+      }
+    },
+    {
+      "payload": {
+        "title": "公开文章与本地保存",
+        "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+        "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+        "sourceUrl": "https://www.python.org/doc/?id=12",
+        "extra": true
+      },
+      "result": {
+        "ok": false,
+        "error": "Web page extraction is invalid."
+      }
+    },
+    {
+      "payload": {
+        "title": "t",
+        "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+        "markdown": "m"
+      },
+      "result": {
+        "ok": false,
+        "error": "Web page extraction is invalid."
+      }
+    },
+    {
+      "payload": {
+        "title": "公开文章与本地保存",
+        "text": 42,
+        "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+        "sourceUrl": "https://www.python.org/doc/?id=12"
+      },
+      "result": {
+        "ok": false,
+        "error": "Web page extraction is invalid."
+      }
+    }
+  ],
+  "requests": [
+    {
+      "payload": {
+        "contract_version": 2,
+        "operation_id": "00000000-0000-0000-0000-000000000001",
+        "task_id": "20261102-123456-web-0123456789abcdef",
+        "article": {
+          "title": "公开文章与本地保存",
+          "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+          "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+          "sourceUrl": "https://www.python.org/doc/?id=12"
+        }
+      },
+      "result": {
+        "ok": true,
+        "value": {
+          "title": "公开文章与本地保存",
+          "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+          "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+          "sourceUrl": "https://www.python.org/doc/?id=12"
+        }
+      }
+    },
+    {
+      "payload": {
+        "contract_version": 1,
+        "operation_id": "00000000-0000-0000-0000-000000000001",
+        "task_id": "20261102-123456-web-0123456789abcdef",
+        "article": {
+          "title": "公开文章与本地保存",
+          "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+          "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+          "sourceUrl": "https://www.python.org/doc/?id=12"
+        }
+      },
+      "result": {
+        "ok": false,
+        "error": "Web page request is invalid."
+      }
+    },
+    {
+      "payload": {
+        "contract_version": true,
+        "operation_id": "00000000-0000-0000-0000-000000000001",
+        "task_id": "20261102-123456-web-0123456789abcdef",
+        "article": {
+          "title": "公开文章与本地保存",
+          "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+          "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+          "sourceUrl": "https://www.python.org/doc/?id=12"
+        }
+      },
+      "result": {
+        "ok": false,
+        "error": "Web page request is invalid."
+      }
+    },
+    {
+      "payload": {
+        "contract_version": "2",
+        "operation_id": "00000000-0000-0000-0000-000000000001",
+        "task_id": "20261102-123456-web-0123456789abcdef",
+        "article": {
+          "title": "公开文章与本地保存",
+          "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+          "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+          "sourceUrl": "https://www.python.org/doc/?id=12"
+        }
+      },
+      "result": {
+        "ok": false,
+        "error": "Web page request is invalid."
+      }
+    },
+    {
+      "payload": {
+        "contract_version": 2,
+        "operation_id": "00000000-0000-0000-0000-000000000001",
+        "task_id": "../escape",
+        "article": {
+          "title": "公开文章与本地保存",
+          "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+          "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+          "sourceUrl": "https://www.python.org/doc/?id=12"
+        }
+      },
+      "result": {
+        "ok": false,
+        "error": "Web page task identity is invalid."
+      }
+    },
+    {
+      "payload": {
+        "contract_version": 2,
+        "operation_id": "00000000-0000-0000-0000-000000000001",
+        "task_id": "20261102-123456-local-abcdef0123456789",
+        "article": {
+          "title": "公开文章与本地保存",
+          "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+          "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+          "sourceUrl": "https://www.python.org/doc/?id=12"
+        }
+      },
+      "result": {
+        "ok": false,
+        "error": "Web page task identity is invalid."
+      }
+    },
+    {
+      "payload": {
+        "contract_version": 2,
+        "operation_id": "article_123",
+        "task_id": "20261102-123456-web-0123456789abcdef",
+        "article": {
+          "title": "公开文章与本地保存",
+          "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+          "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+          "sourceUrl": "https://www.python.org/doc/?id=12"
+        }
+      },
+      "result": {
+        "ok": false,
+        "error": "badly formed hexadecimal UUID string"
+      }
+    },
+    {
+      "payload": {
+        "contract_version": 2,
+        "operation_id": "00000000-0000-0000-0000-0000000000011",
+        "task_id": "20261102-123456-web-0123456789abcdef",
+        "article": {
+          "title": "公开文章与本地保存",
+          "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+          "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+          "sourceUrl": "https://www.python.org/doc/?id=12"
+        }
+      },
+      "result": {
+        "ok": false,
+        "error": "badly formed hexadecimal UUID string"
+      }
+    },
+    {
+      "payload": {
+        "contract_version": 2,
+        "operation_id": "00000000-0000-0000-0000-00000000000Z",
+        "task_id": "20261102-123456-web-0123456789abcdef",
+        "article": {
+          "title": "公开文章与本地保存",
+          "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+          "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+          "sourceUrl": "https://www.python.org/doc/?id=12"
+        }
+      },
+      "result": {
+        "ok": false,
+        "error": "invalid literal for int() with base 16: '0000000000000000000000000000000Z'"
+      }
+    },
+    {
+      "payload": {
+        "contract_version": 2,
+        "operation_id": "00000000-0000-0000-0000-000000000001",
+        "task_id": "20261102-123456-web-0123456789abcdef",
+        "article": {
+          "title": "公开文章与本地保存",
+          "text": "段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n段落保留原始UTF-8字节🙂。\r\n",
+          "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+          "sourceUrl": "https://www.python.org/doc/?id=12"
+        },
+        "extra": true
+      },
+      "result": {
+        "ok": false,
+        "error": "Web page request is invalid."
+      }
+    },
+    {
+      "payload": {
+        "contract_version": 2,
+        "operation_id": "00000000-0000-0000-0000-000000000001",
+        "task_id": "20261102-123456-web-0123456789abcdef"
+      },
+      "result": {
+        "ok": false,
+        "error": "Web page request is invalid."
+      }
+    },
+    {
+      "payload": {
+        "contract_version": 2,
+        "operation_id": "00000000-0000-0000-0000-000000000001",
+        "task_id": "20261102-123456-web-0123456789abcdef",
+        "article": {
+          "title": "公开文章与本地保存",
+          "text": "短",
+          "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+          "sourceUrl": "https://www.python.org/doc/?id=12"
+        }
+      },
+      "result": {
+        "ok": false,
+        "error": "Web page extraction is invalid."
+      }
+    }
+  ],
+  "sources": [
+    {
+      "url": "https://www.python.org/doc/?id=12",
+      "title": "公开文章与本地保存",
+      "extractedAt": "2026-11-02T12:34:56Z",
+      "result": {
+        "ok": true,
+        "value": {
+          "kind": "web_page",
+          "url": "https://www.python.org/doc/?id=12",
+          "title": "公开文章与本地保存",
+          "extractedAt": "2026-11-02T12:34:56Z"
+        }
+      }
+    },
+    {
+      "url": "https://www.python.org:443/doc/?id=12",
+      "title": "t",
+      "extractedAt": "2026-11-02T12:34:56Z",
+      "result": {
+        "ok": false,
+        "error": "Saved web page URL is invalid."
+      }
+    },
+    {
+      "url": "https://www.python.org/doc/",
+      "title": "标题",
+      "extractedAt": "2026-11-02T12:34:56.123Z",
+      "result": {
+        "ok": true,
+        "value": {
+          "kind": "web_page",
+          "url": "https://www.python.org/doc/",
+          "title": "标题",
+          "extractedAt": "2026-11-02T12:34:56.123Z"
+        }
+      }
+    },
+    {
+      "url": "https://www.python.org/doc/",
+      "title": "标题",
+      "extractedAt": "2026-11-02T12:34:56+00:00",
+      "result": {
+        "ok": false,
+        "error": "Web page extraction time is invalid."
+      }
+    },
+    {
+      "url": "https://www.python.org/doc/",
+      "title": "标题",
+      "extractedAt": "2026-02-30T12:34:56Z",
+      "result": {
+        "ok": false,
+        "error": "day is out of range for month"
+      }
+    },
+    {
+      "url": "https://www.python.org/doc/",
+      "title": "标题",
+      "extractedAt": "2026-11-02T25:34:56Z",
+      "result": {
+        "ok": false,
+        "error": "hour must be in 0..23"
+      }
+    },
+    {
+      "url": "https://www.python.org/doc/",
+      "title": " 空白标题 ",
+      "extractedAt": "2026-11-02T12:34:56Z",
+      "result": {
+        "ok": false,
+        "error": "Web page title is invalid."
+      }
+    },
+    {
+      "url": "https://www.python.org/doc/",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "extractedAt": "2026-11-02T12:34:56Z",
+      "result": {
+        "ok": false,
+        "error": "Web page title is invalid."
+      }
+    }
+  ],
+  "taskIds": [
+    {
+      "input": "20261102-123456-web-0123456789abcdef",
+      "result": {
+        "ok": true,
+        "value": "20261102-123456-web-0123456789abcdef"
+      }
+    },
+    {
+      "input": "20261102-123456-web-0123456789abcdeG",
+      "result": {
+        "ok": false,
+        "error": "Web page task identity is invalid."
+      }
+    },
+    {
+      "input": "20261102-123456-web-0123456789abc",
+      "result": {
+        "ok": false,
+        "error": "Web page task identity is invalid."
+      }
+    },
+    {
+      "input": "20261102-123456-local-abcdef0123456789",
+      "result": {
+        "ok": false,
+        "error": "Web page task identity is invalid."
+      }
+    },
+    {
+      "input": "",
+      "result": {
+        "ok": false,
+        "error": "Web page task identity is invalid."
+      }
+    }
+  ],
+  "savedMarkdown": [
+    {
+      "title": "公开文章与本地保存",
+      "url": "https://www.python.org/doc/?id=12",
+      "extractedAt": "2026-11-02T12:34:56Z",
+      "markdown": "## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n",
+      "expected": "# 公开文章与本地保存\n\n<https://www.python.org/doc/?id=12>\n\n2026-11-02T12:34:56Z\n\n## 文章\n\n段落保留结构。\n\n- 第一条\n- 第二条\n"
+    },
+    {
+      "title": "标点 #1 *强调* [链接] (括号) `code` _{}[]<>()#+-.!|",
+      "url": "http://example.io/",
+      "extractedAt": "2026-11-02T12:34:56Z",
+      "markdown": "\n\n正文\n",
+      "expected": "# 标点 \\#1 \\*强调\\* \\[链接\\] \\(括号\\) \\`code\\` \\_\\{\\}\\[\\]\\<\\>\\(\\)\\#\\+\\-\\.\\!\\|\n\n<http://example.io/>\n\n2026-11-02T12:34:56Z\n\n\n\n正文\n"
+    }
+  ]
+}

@@ -1,0 +1,1337 @@
+# Tasks
+
+> [!NOTE]
+> 项目在 v0.6.0 改名为 **Locus**（原 FrameQ），并把品牌名从包名、环境变量、应用标识符与磁盘契约中移除。
+> 本文件中早于该次改名的条目保留当时的产品名与路径，属于历史记录，不回改。
+> 规范见 `docs/design-docs/2026-11-09-neutral-naming-policy.md`。
+
+## Completed Worker Work
+
+- [x] 拆分 YouTube 403 与 429 失败原因（2026-10-20）: ✅ 已完成。`classify_youtube_download_failure`
+  新增两条分支，429 归入 `YOUTUBE_RATE_LIMITED`，无其他线索的 403 归入
+  `YOUTUBE_STREAM_FORBIDDEN`。两个原因码在 worker、TypeScript 原因码集合、消息映射与三语文案
+  同步登记。单次重试覆盖通用码与禁止码，限流码立即返回，因为立即重试会加深限流。两条顺序保护
+  用例锁住判定优先级：带 cookie 建议的 429 仍归限流，带登录标记的风控 403 仍归登录要求。
+  ExecPlan：`docs/exec-plans/completed/2026-10-20-youtube-rejection-reason-codes-plan.md`。
+
+- [x] 增加小红书平台字幕优先转写（2026-08-25）— ✅ 从公开 note 的 `mediaV2.video.subtitles`
+  选择一条安全的 `source`/中文/英文平台 SRT；fallback 与成功 `yt-dlp` 两条路径均 best-effort
+  下载到 task cache，命中时复用现有 transcript pipeline 并跳过 ASR，缺失/异常时回退原 ASR。
+  字幕传输限制为 HTTPS credential-free Xiaohongshu host、允许内容类型、2 MiB 和原子 `.part`
+  提交；不新增 UI、IPC contract、顶层阶段、manifest artifact、Cookie/login/CAPTCHA 或 server
+  数据流。ExecPlan：`docs/exec-plans/completed/2026-08-25-xiaohongshu-platform-subtitle-first-transcript-plan.md`。
+
+## Active UI Work
+
+- [x] 生产域名切换到 `locus.8xf.pro` 并修复客户端默认服务地址（2026-11-11）— ✅ 服务器与仓库两侧都已完成。旧域名 `frameq.8xf.pro` 的 DNS 记录删除、**不保留别名或跳转**，`/etc/nginx` 内已无残留。服务器：`certbot --nginx` 签发 `locus.8xf.pro` 单 SAN 证书（到期 2027-02-09），`/etc/nginx/conf.d/frameq-server.conf` 换成 `locus-server.conf` 后 `nginx -t` 通过并 reload，旧配置备份到 `/home/ubuntu/nginx-backups/`；实测首页、`/login`、`/video/locus-demo.mp4`、`/health/live` 均 200，`:80` 全部 301 到 HTTPS。仓库：nginx 样例改名 `locus-server.conf`（顺带把线上独有的 `expires -1` 回写，避免样例再次漂移），两处 `server_name` 与 ACME 证书路径换新，`deploymentContracts.test.ts` 增加 `server_name` 计数断言，`check-self-service-rollout.mjs` 的默认地址、deploy 三份 runbook、`robots.txt` 的 Sitemap 域名同步。**关键缺陷**：`app/src-tauri/src/account.rs` 的 `DEFAULT_SERVER_BASE_URL` 把旧域名编译进客户端，旧域名停用后 **v0.6.0 及更早版本的登录、额度与结账全部连不上**（自动更新走 GitHub Releases，不受影响，所以 v0.6.0 能收到修复）；常量与断言已改为 `https://locus.8xf.pro`，随 v0.6.1 发出。发布说明：`docs/releases/v0.6.1.md`。**v0.6.1 已发布**：tag `v0.6.1` → `afe26e9`，release run `43029662947` 三平台全绿，published `2026-11-11T14:33:30Z`，8 资产归一化后与 v0.6.0 集合一致，`latest.json` 两处 416B 签名与 `.sig` 逐字符相同，三个安装包 URL 从服务器 range 校验均 206；线上正文与源文件逐字符一致。营销站重建并部署（三页 sha256 与 dist 一致，robots.txt 与 sitemap 指向新域名）。顺带修掉 33840fa 遗留的 `tauri-window-config.test.ts` 断言（它仍在期待 `APP_*_ARM64` 这种消费侧命名，而工作流早已把架构后缀放在 Secret 侧），该用例自 v0.6.0 起一直是红的，发布构建不跑这套用例所以没人发现。
+
+- [x] Locus v0.6.1 自定义 LLM 配置 BYOK（2026-11-10）— ✅ 代码与门禁完成。设置页新增「模型」分类：多配置管理（预设供应商 + 可自由输入）、API Key 只存系统钥匙串（`keyring 4.2.0`）、测试连接走 worker 最小 chat 探针、与 Locus 托管并存可切换（BYOK 不扣 AI Credit、不需登录）；草稿仍用 server anysearch，未登录时返回 `AI_DRAFT_REQUIRES_LOGIN`。契约 v12 双模式，`llm_providers.json` 只存元数据，`env_remove` 按来源分支化。门禁：worker 1310/4、前端 1576/1、服务端 375/1、脚本 57+1、Rust 相关 79 项、文档 0/0、diff check、版本一致。**Step 11 已用真实 SiliconFlow Key 跑通**：探针 `ok` 1078 ms、钥匙串写入/读回/删除均验证、真实摘要生成 621 字 + 思维导图 27.8 s，数据目录全文扫描无明文密钥。该轮修掉两个只有真实调用才暴露的缺陷：① Tauri 顶层参数必须传 `apiKey`（传 `api_key` 会静默变 `None`，导致保存与测试连接永远失败）；② 供应商对未知模型返回 HTTP 400 未归类为 `LLM_PROBE_MODEL_NOT_FOUND`。**未做**：无；本功能随 Locus v0.6.0 于 2026-11-11 正式发布。ExecPlan：`docs/exec-plans/completed/2026-11-10-v0.6.1-llm-byok-plan.md`。
+
+- [x] Rename the GitHub repository to Locus (2026-11-10) — ✅ `jiabai/FrameQ` → `jiabai/Locus` via `gh repo rename`. Old-name redirects verified: releases page, a release asset direct link, and `releases/latest/download/latest.json?updater=1` all return 200, and old/new names resolve to the same `latest.json` asset. Updater endpoint, runtime-component URLs, macOS releases link, `app/src/brand.ts`, `updateClient.ts`, the window-config test, `site/src/consts.ts` and README links now use the new name. Historical release URLs in this ledger and completed plans are kept as-is.
+
+- [x] Prepare and publish Locus v0.6.0 desktop release (2026-11-11) — ✅ Tag `v0.6.0` at `33840fa`
+  (release run `42988520117`, Windows updater / macOS Intel / macOS Apple Silicon all green;
+  published `2026-11-11T09:49:20Z`). First release under the new name: eight assets change from
+  `FrameQ_0.5.1_*` / `frameq-pytorch-runtime-*` to `Locus_0.6.0_*` / `pytorch-runtime-*`, so the
+  normalized asset-name gate was re-baselined once. `latest.json` has only the two established
+  Windows platform keys; both 416-byte signatures match the uploaded `.sig` byte-for-byte, and all
+  three installer URLs return 206 from the deployment server. Release notes:
+  `docs/releases/v0.6.0.md`. Ship set: the Locus rename and de-branding, user-managed model
+  providers (BYOK), actionable generation errors, Collection membership feedback with undo, and
+  faster data-location migration. Old installs are neither migrated nor auto-uninstalled; the data
+  directory moves to `pro.8xf.app`, and the optional PyTorch runtime component must be downloaded
+  again after the version bump. **Publish blocker found and fixed**: the first tag at `6f02de1`
+  failed because the de-branding sweep renamed GitHub Actions Secret keys to `APP_*` while the
+  repository secrets remain `FRAMEQ_*`; `33840fa` maps the neutral `APP_*` environment variables
+  back to those secrets, with regression tests and a naming-policy exception. Local gates: frontend
+  1591 passed / 1 skipped, worker 1332 / 4, server 375 / 1, Node scripts 58, Python scripts 1,
+  docs 0/0, six version sources consistent, all production builds green. Windows native WebView2
+  Collection acceptance passed 17 assertions in each of `en-US`, `zh-CN`, `zh-TW` (51 total).
+  `macos-intel-acceptance.yml` was dispatched (run `42990460341`, both architectures green).
+  Residual: macOS WKWebView pointer/keyboard acceptance still needs a real Mac; old-name redirects
+  are relied on for historical links. Plan:
+  `docs/exec-plans/completed/2026-11-10-v0.6.0-local-preparation-plan.md`.
+
+- [x] Prepare and publish Locus v0.5.1 desktop release (2026-11-09) — ✅ Tag `v0.5.1` at `36f1a6c`
+  (release run `42604242544`, Windows updater / macOS Intel / macOS Apple Silicon all green;
+  published `2026-11-09T11:36:10Z`). Ship set: a 20-minute execution budget for the `yt-dlp`
+  download child so a stalled download ends with a retryable `VIDEO_DOWNLOAD_FAILED` instead of
+  waiting for the 45-minute idle watchdog; Douyin share-page retries recorded in the exported
+  desktop log as `worker.douyin.share_page.retry`; Windows installer free-space and writability
+  preflight with a Chinese failure message and a step log at `%TEMP%\install.log`; the
+  MarkdownSplitter child-process test waits on child signals instead of `join(4)`. Gates: Script
+  `42601635850`, Server `42601635862`, Native `42601635875` (its first macOS desktop job failed the
+  `TaskComposer` focus assertion; `gh run rerun --failed` was green, recorded as a new Medium debt);
+  local version consistency, Node scripts 57, Python scripts 1, docs ERROR/WARN zero, app lint and
+  build, frontend 1506 passed / 1 skipped, worker 1276 passed / 4 skipped, `cargo check` (8m59s),
+  site build, `git diff --check`. Assets: 8, names identical to v0.5.0 after normalization, both
+  `latest.json` Windows signatures equal the uploaded 416-byte `.sig`, and the three installer URLs
+  answered `206` from the deployment server. Site: remote backup `webroot-20261109-193649.tar.gz`,
+  3 uploads / 0 deletes, re-run dry-run 15 unchanged / 0 diffs, three public pages byte-identical to
+  `site/dist`, `v0.5.0` replaced by `v0.5.1` with all three asset links. Residual risk: macOS
+  real-device graphical acceptance, ad-hoc signing without notarization, the public signed-update
+  path still untested end to end, `macos-intel-acceptance.yml` needs a manual dispatch, PyTorch
+  runtime components re-download for upgraders, a very slow large download can hit the 20-minute
+  budget, and the installer's interactive failure dialog was not exercised by hand.
+- [x] Prepare and publish Locus v0.5.0 desktop release (2026-11-05, re-published 2026-11-06 and 2026-11-07) — ✅ Tag `v0.5.0` at
+  `6857d97` (release run `42048599641`, all three platform jobs green). Ship set: a redesigned
+  desktop workspace with draggable split panes, notes, collections and local data management;
+  the processing composition with real progress and three stages; webpage links saved as local
+  notes through the system WebView with no extra browser download; a unified data storage
+  setting with staged, cancellable migration and merge into an existing directory; transcript
+  footer cleanup (duplicate export removed, copy button renamed); macOS native host incremental
+  stdin reads and explicit storage-lock release. Gates on the bump commit: Native `42044874583`
+  attempt 2 (all four jobs), Script `42044874636`, Server `42044874570`; local version
+  consistency, Node scripts 57, Python scripts 1, docs ERROR/WARN zero, app lint and build,
+  `cargo check`, site build, `git diff --check`. The first Native attempt had one Windows Worker
+  failure in `test_markdown_splitter_advances_past_sentence_separator` (a four-second spawn
+  join under runner load); the case passed locally and the rerun was green. Assets (8, all
+  `uploaded`) match v0.4.3 after normalizing the version: `Locus_0.5.0_x64-setup.exe`
+  (212,087,502 bytes), `Locus_0.5.0_x64.dmg` (349,847,885), `Locus_0.5.0_aarch64.dmg`
+  (302,211,133), three `pytorch-runtime-*.zip`, `latest.json` and the `.sig`. Both
+  Windows updater signatures in `latest.json` equal the uploaded `.sig` byte for byte (416
+  bytes); the three download URLs answered `206` to `range: 0-0` from the deployment server.
+  Published 2026-11-05 23:51 +08:00 (`2026-11-05T15:51:03Z`):
+  https://github.com/jiabai/FrameQ/releases/tag/v0.5.0. Release notes:
+  `docs/releases/v0.5.0.md`; the live body differs from the source by one trailing blank line.
+  The marketing site was backed up (`webroot-20261105-225950.tar.gz`), deployed with 3 uploads
+  / 0 deletes, re-checked with 16 unchanged, and its three pages match `site/dist` byte for
+  byte with only `v0.5.0` on the public download page. Residual risks: macOS graphical
+  interaction, Gatekeeper/permission prompts and specialized WebView canaries remain
+  unverified; macOS builds are ad-hoc signed without notarization; the complete public
+  signed-update path was not exercised; `macos-intel-acceptance.yml` was not dispatched for
+  this tag; the optional PyTorch runtime component is version-bound, so upgraders on that
+  model download about 140 MB again; `yt-dlp` still has no external timeout.
+
+  Re-published under the same `v0.5.0` tag on 2026-11-06 14:52 +08:00
+  (`2026-11-06T06:52:07Z`) after the transcript-polish too-long notice fix. The first tag
+  target `6857d97` (run `42048599641`) and its release were deleted; annotated tag `827fcbc`
+  was re-created at `86a255c` (run `42172311942`, Windows updater, macOS Intel and Apple Silicon
+  jobs all green). Fixes `6315846`, `3d68fc0`, `86a255c`: `POLISH_TRANSCRIPT_TOO_LONG` now shows
+  a localized notice with the ~48,000-character / 24-chunk limit instead of a raw error code,
+  with controller and workspace render coverage. Gates: worker 1265 passed / 4 skipped, frontend
+  1506 passed / 1 skipped, server 399 passed / 1 skipped, Node scripts 57 and Python scripts 1,
+  app lint and production build, site build, `check-release-version.mjs 0.5.0`, docs ERROR/WARN
+  zero, `git diff --check`; hosted Script/Native green on `86a255c`, Script/Server green on
+  `c0718b1`, `ef1c92a`, `c7b08bf`. Assets (8, all `uploaded`) match v0.4.3 after normalizing the
+  version, including the three `pytorch-runtime-*.zip`; both Windows updater signatures in
+  `latest.json` equal the uploaded 416-byte `.sig` byte for byte; the three installer URLs
+  answered `206` to `range: 0-0` from the deployment server. The reviewed body
+  `docs/releases/v0.5.0.md` is live and differs from the read-back by one trailing blank line.
+  Marketing site: backup `webroot-20261106-141754.tar.gz`, 1 upload / 0 deletes, re-run dry-run
+  16 unchanged, three live pages match `site/dist` by SHA-256, zero `v0.4.3` strings and three
+  `v0.5.0` download links on the live page. Residual risks: `macos-intel-acceptance.yml` still
+  needs a manual dispatch; the local `cargo test` suite reports 54 permission-related failures in
+  real-filesystem cases, with no Rust source changed and hosted Native ProcessSupervisor green on
+  `86a255c`; anyone who installed the first `6857d97` build must reinstall manually because the
+  updater does not offer the same version. Release link:
+  https://github.com/jiabai/FrameQ/releases/tag/v0.5.0
+
+  Re-published a second time under the same `v0.5.0` tag on 2026-11-08 00:40 +08:00
+  (`2026-11-07T16:40:51Z`) with two fixes: `cc85a65` routes `xhslink.cn` short links through the
+  Xiaohongshu media flow (admission, short-link hosts, fallback dispatch, source identity and URL
+  support contract), and `4b43677` classifies HTTP 200 login redirects as
+  `WEB_PAGE_ACCESS_RESTRICTED` in both Windows and macOS native web hosts. The 11-06 release and
+  annotated tag `827fcbc` were deleted; new annotated tag `8e374a1` points at `4b43677`
+  (run `42387388050`, Windows updater, macOS Intel and Apple Silicon jobs all green). Gates:
+  worker 1270 passed / 4 skipped, frontend 1507 passed / 1 skipped, server 399 passed / 1 skipped,
+  Node scripts 57 and Python scripts 1, app lint and production build, site build,
+  `check-release-version.mjs 0.5.0` consistent, docs ERROR/WARN zero, `git diff --check`.
+  Hosted Script/Server green; Native ProcessSupervisor attempt 2 has all four jobs green (the
+  first macOS Desktop checks attempt failed on the known four-second spawn timeout in
+  `test_markdown_splitter_advances_past_sentence_separator`, 1 failed / 1273 passed); the macOS
+  Swift build and `--test-protocol` steps succeeded in `Cargo tests (macos-latest)`. Assets (8,
+  all `uploaded`) match the previous normalized name set; both Windows updater signatures in
+  `latest.json` equal the   uploaded 416-byte `.sig` byte for byte; the reviewed body
+  `docs/releases/v0.5.0.md` is live and differs from the read-back by one trailing blank line.
+  Follow-up completed 2026-11-08: the three installer URLs answered `206` with `Content-Range`
+  totals matching the asset sizes (checked locally and again from the deployment server with
+  `range: 0-0`); the user provided the deploy key
+  (`~/.ssh/id_rsa_aws`, key-based SSH to `ubuntu@49.234.56.225`), and the marketing site was
+  redeployed with backup `webroot-20261107-165710.tar.gz`, 1 upload / 0 deletes
+  (`download/index.html` only), re-run dry-run 15 unchanged, and the live download page SHA-256
+  equals `site/dist/download/index.html` with `/health/live` green. A real WebView2
+  end-to-end acceptance also ran on 2026-11-08: driving `app-webview-host.exe` over its
+  stdin/stdout protocol with Stable WebView2 Runtime 157.0.4341.42 and public Internet,
+  `http://frameq.8xf.pro/login` (301 to HTTPS `/login`, final 200) emitted
+  `WEB_PAGE_ACCESS_RESTRICTED` in 12.5 s before any article event, while the control
+  `https://example.com/` still extracted `Example Domain` in 14.6 s; a direct 200 `/login`
+  without a redirect extracted `Locus Login` as an article, confirming the documented
+  `navigations > 1` boundary. Residual risks: anyone who
+  installed a
+  2026-11-05 or 2026-11-06 v0.5.0 build must reinstall manually because the updater does not
+  offer the same version; `macos-intel-acceptance.yml` was dispatched manually on 2026-11-08 and
+  its two DMG jobs (arm64 / x64) are green (run `42394922085`; attempt 1 failed on a transient
+  truncated runtime-archive download, rerun succeeded); macOS
+  graphical interaction, notarization and the complete public signed-update path remain
+  unverified; the same real WKWebView login-redirect acceptance still needs a macOS machine.
+  Release link:
+  https://github.com/jiabai/FrameQ/releases/tag/v0.5.0
+
+- [x] Remove the duplicated export action from the transcript review footer (2026-10-30) — ✅ Reported
+  from the v0.4.3 result screen: the review footer「导出」and the artifact toolbar「定位文字稿」both
+  called `exportTranscript`, which only runs `revealItemInDir` on the same `transcript.txt`, so two
+  buttons in one panel did exactly the same thing, and「导出」promised a saved copy that never
+  happened. The footer now keeps only「复制当前内容」and「保存」, locating stays in the toolbar trio
+  (video / audio / transcript), and the unused `review.export` key is gone from all three locales.
+  The bottom copy button was renamed from「复制」to「复制当前内容」(zh-TW「複製目前內容」, en
+  `Copy Current Text`) so it no longer reads like the toolbar's「复制文字稿」. Validation:
+  a new panel case asserts the action bar exposes exactly two buttons, the workspace localization
+  case now asserts the toolbar locate label per locale, frontend 86 files / 868 tests, lint and
+  i18n literal checks, docs governance all pass. Docs: the originating spec
+  `2026-10-20-transcript-locate-action.md` carries the revision note and `DESIGN.md` states that the
+  transcript panel has no export entry. Not yet in a desktop release.
+
+- [x] Fix the polish button that stayed on「复制文字稿」after saving an edited original (2026-10-30) — ✅
+  Reported from the v0.4.3 real-installer smoke: editing the official transcript and saving
+  left the toolbar on「复制文字稿」until the task was reopened, so a click in that window copied the
+  pre-edit polished body. `saveTranscriptDocument` updated only `text` and `has_original_backup` and
+  never re-read `polished_text`. The save path now awaits the existing
+  `refreshPolishedTranscript()` (which replaces only the polished field and leaves an unsaved
+  editor draft intact), and the callback dependency list carries it. Validation: a new vitest case
+  asserts the second `loadTranscriptDetail` call and `polished_text` turning null inside the same
+  save; frontend 86 files / 867 tests, lint and i18n literal checks, and docs governance all pass.
+  Product spec, `ARCHITECTURE.md`, and `DESIGN.md` now state that the switch happens inside that
+  save. Shipped by re-tagging `v0.4.3` (see the release entry below).
+
+- [x] Prepare and publish Locus v0.4.3 desktop release (2026-10-30) — ✅ Tag target `a8b8907`
+  tagged `v0.4.3`. Ship set: a results-toolbar transcript polish action (`retry_insights` gains a
+  `transcript` target; the worker chunks the official transcript through one server-managed
+  checkout and writes `transcript/polished.txt` plus a SHA-256 meta file, the original
+  `transcript.txt` is untouched, the button switches between "整理文字稿" and "复制文字稿", and the
+  polished copy is invalidated when the original is edited), the worker/desktop task-artifact
+  destination set aligned on the single contract so a discarded recovery journal no longer makes a
+  task vanish from history, the first transcript segment no longer auto-highlights, drafts reload
+  from disk on reopen, LLM configuration errors reported inside the insight error type, and a
+  bounded extraction output with the X entry dropped from the short-video form, plus the polish
+  button fix described above. First tag target `e80c8bd` built in run `40924535944` (all jobs
+  green); after the real-installer smoke surfaced the polish-button defect the tag and release were
+  deleted and `v0.4.3` was re-tagged at `a8b8907`, rebuilt in run `40989202026` (all jobs green).
+  Assets match v0.4.2 after normalizing the version:
+  `Locus_0.4.3_x64-setup.exe` (210,791,734 bytes), `Locus_0.4.3_x64.dmg` (348,061,958),
+  `Locus_0.4.3_aarch64.dmg` (300,595,679), three `pytorch-runtime-*.zip`, and
+  `latest.json`; every asset reports `uploaded`, and both Windows updater signatures in
+  `latest.json` matched the uploaded `.sig` byte for byte (416 bytes each, fetched through the API
+  channel). Gates: Worker 1162 passed / 3 skipped, frontend 86 files / 867 tests (866 on the first
+  tag target), app lint and production build, Rust 354 passed including every watchdog and
+  task-recovery case, server 401 passed / 1 skipped, scripts 52, version consistency
+  (`check-release-version.mjs 0.4.3`), ruff and docs governance clean. Published 2026-10-30
+  02:28 +08:00 (re-tagged build 10:40 +08:00):
+  https://github.com/jiabai/FrameQ/releases/tag/v0.4.3. Release notes:
+  `docs/releases/v0.4.3.md`. The `macos-intel-acceptance.yml` workflow is
+  `workflow_dispatch`-only, so it did not run on the tag; it was dispatched manually on
+  `953af94` afterwards and passed all 14 steps (artifact `app-macos-intel-6-953af9418be5`,
+  339,497,834 bytes). `953af94` differs from the final tag target `a8b8907` only in the polish
+  button fix and its tests/docs, so both builds were checked against the same packaging code.
+  Residual risks: both macOS builds are ad-hoc signed without notarization; the diagnostic ZIP
+  export still lacks macOS native save-dialog evidence; `yt-dlp` still runs without an external
+  timeout and is tracked as debt; release asset URLs cannot be range-checked from this machine
+  because its proxy rejects GitHub download URLs, so the manifest and signature were verified
+  through the API channel, and the same URLs answered `206` to a `range: 0-0` request issued from
+  the deployment server during the marketing-site rollout; reusing the `v0.4.3` version number
+  means anyone who installed the `e80c8bd` build keeps the polish-button defect until they
+  reinstall manually, because the updater does not offer the same version. The polish → copy →
+  restart-recovery three-state flow was hand-run in a real installer on the `e80c8bd` build (that
+  is where the defect was found); the fixed build carries automated coverage only.
+
+- [x] Prepare and publish Locus v0.4.2 desktop release (2026-10-23) — ✅ Tag target `41d2bd1`
+  tagged `v0.4.2`, rebuilt the same day after the first release (tag target `950377c`, run
+  `39814037035`) so the installer also carries the transcript file copy action. Ship set: the
+  Douyin fallback download no longer presents as a frozen task (media streams to disk, a
+  candidate is abandoned after 60 seconds without new bytes, resumed once from the received
+  byte offset through the CDN's byte-range support before switching, truncated transfers are
+  rejected, and received bytes drive the existing in-stage progress), plus a results-toolbar
+  action that copies the saved `transcript.txt` body independent of unsaved editor edits.
+  Three-platform release run `39904496623` green on all jobs. Assets match v0.4.1 after
+  normalizing the version: `Locus_0.4.2_x64-setup.exe` (210,829,825 bytes),
+  `Locus_0.4.2_x64.dmg` (348,094,090), `Locus_0.4.2_aarch64.dmg` (300,592,634), three
+  `pytorch-runtime-*.zip`, and `latest.json`; every asset reports `uploaded` and both
+  Windows updater signatures matched the uploaded `.sig` byte for byte. Gates: Worker 1021
+  passed with two skips, frontend 83 files / 857 tests, app lint and production build, Rust 338
+  passed with no failures (unchanged by this rebuild), packaging smoke plus a real Douyin
+  download through the packaged runtime (75,395,272 bytes, byte-identical to the source video),
+  version consistency, ruff and docs governance clean. Published 2026-10-23 14:01 +08:00:
+  https://github.com/jiabai/FrameQ/releases/tag/v0.4.2. Release notes:
+  `docs/releases/v0.4.2.md`. Residual risks: `macos-intel-acceptance.yml` is
+  `workflow_dispatch`-only and did not run; both macOS builds are ad-hoc signed without
+  notarization; this machine's proxy rejects GitHub download URLs, so the release URLs were
+  range-checked from the deployment server instead and answered 206; the packaged-runtime
+  acceptance stopped at `ASR_MODEL_NOT_READY` because the harness does not configure the model
+  directory, which is a harness difference rather than a product failure; `yt-dlp` still runs
+  without an external timeout and is tracked as debt; reusing the v0.4.2 version number means
+  anyone who installed the first build will not receive the copy action through the updater.
+
+- [x] Deploy the v0.4.3 marketing site (2026-10-30) — ✅ `site/dist` synced in place over SFTP to
+  `ubuntu@49.234.56.225:/home/ubuntu/FrameQ/site` with `site/scripts/deploy-sftp.py`; a sha256 dry
+  run before the upload reported 3 changed files (`index.html`, `download/index.html`,
+  `privacy/index.html`) and 0 deletes. The previous tree is kept at
+  `/home/ubuntu/FrameQ/backups/webroot-20261030-083341.tar.gz` (5.2 MB). The deploy script gained
+  an `FQ_SSH_KEY` path so it authenticates with a private key as well as a password. Verification:
+  a second dry run reported 16 unchanged / 0 upload / 0 delete; all three live pages are byte
+  identical to `site/dist` by SHA-256; the live pages carry zero `0.4.2` occurrences and the
+  download page exposes the three v0.4.3 asset links; every release asset and `latest.json`
+  answered `206` to a `range: 0-0` request issued from the server, which also closes the
+  "release URLs were not range-checked" residual risk recorded for the desktop release above. The
+  re-tagged build needed one more sync: after rebuilding with the polish-button note, a dry run
+  reported a single changed file (`download/index.html`) and 0 deletes, the upload applied it with
+  15 skipped, a second dry run reported 16 unchanged / 0 / 0, the live page is byte identical to
+  `site/dist` by SHA-256, and the page carries the fix entry with zero `0.4.2` occurrences. The
+  pre-deploy tree is kept at `/home/ubuntu/FrameQ/backups/webroot-20261030-104143.tar.gz` (5.2 MB).
+
+- [x] Deploy the v0.4.2 marketing site (2026-10-23) — ✅ `site/dist` synced to
+  `ubuntu@frameq.8xf.pro:/home/ubuntu/FrameQ/site` through a temporary directory and an atomic
+  directory swap; the previous tree is kept at
+  `/home/ubuntu/FrameQ/site.bak.20261023T005949Z`. Live checks from the server: `/`,
+  `/download/` and `/privacy/` answer 200, the download page carries `0.4.2` 21 times with zero
+  `0.4.1` asset URLs and three links pointing at the v0.4.2 GitHub assets, and
+  `/video/app-demo.mp4` answers 206 with `accept-ranges: bytes`.
+
+- [x] Prepare and publish Locus v0.4.1 desktop release (2026-10-22) — ✅ Tag target `219d716`
+  tagged `v0.4.1`; fixes the settings template that kept fresh installs on
+  `iic/SenseVoiceSmall` after the PyTorch runtime had been externalized, adds a
+  schema-versioned one-time migration that moves existing settings to
+  `iic/SenseVoiceSmall-onnx` while preserving a later explicit PyTorch choice, aligns
+  `.env.example` with the installer template, and binds the vite dev server to 127.0.0.1 so
+  the webview can load. Three-platform release run `39740146660` green on all jobs. Assets
+  match v0.4.0 after normalizing the version: `Locus_0.4.1_x64-setup.exe` (210,808,182
+  bytes), `Locus_0.4.1_x64.dmg` (348,107,096), `Locus_0.4.1_aarch64.dmg` (300,694,422),
+  three `pytorch-runtime-*.zip`, and `latest.json`; every asset reports `uploaded`
+  and the Windows updater signature matched the uploaded `.sig` byte for byte. Gates:
+  frontend 83 files / 851 tests, Worker 1013 passed with two known symlink environment
+  failures, Rust lib 330 passed with four known symlink failures plus two load-sensitive
+  watchdog cases that pass when rerun alone, version consistency, ruff and docs governance
+  clean. Published 2026-10-22 16:23 +08:00:
+  https://github.com/jiabai/FrameQ/releases/tag/v0.4.1. Release notes:
+  `docs/releases/v0.4.1.md`. Residual risks: `macos-intel-acceptance.yml` is
+  `workflow_dispatch`-only and did not run; both macOS builds are ad-hoc signed without
+  notarization; this machine's proxy rejects GitHub download URLs, so the installer URL was
+  range-checked from the deployment server instead and answered 206, and the gh API reported
+  every asset as `uploaded`; the migration cannot distinguish a template-written PyTorch value
+  from an explicit user choice.
+
+- [x] Deploy the v0.4.1 marketing site (2026-10-22) — ✅ `site/dist` synced to
+  `ubuntu@frameq.8xf.pro:/home/ubuntu/FrameQ/site` through a temporary directory and an atomic
+  directory swap; the previous tree is kept at
+  `/home/ubuntu/FrameQ/site.bak.20261022T092543Z`. Live checks from the server: `/`,
+  `/download/` and `/privacy/` answer 200, the download page carries `0.4.1` 21 times and no
+  stale asset URL, `/video/app-demo.mp4` answers 200 with `accept-ranges: bytes`, and the
+  Windows installer URL answers 206.
+
+- [x] Prepare and publish Locus v0.4.0 desktop release (2026-10-21) — ✅ Tag target `d89c5ef`
+  tagged `v0.4.0`; installer runtime externalized (bundled Python runtime 16,810 files / 502 MB after
+  trimming, PyTorch runtime moved to an on-demand 140 MB component), default model switched to
+  `iic/SenseVoiceSmall-onnx`, model sheet gained the component download entry. Three-platform release
+  run `39622626442` green after three retags; assets include `Locus_0.4.0_x64-setup.exe` (210 MB),
+  `Locus_0.4.0_x64.dmg` (348 MB), `Locus_0.4.0_aarch64.dmg` (300 MB) and three
+  `pytorch-runtime-*.zip` (117 to 184 MB). updater signature matched `latest.json` and the
+  download URL answered 206. Gates: Worker 1013/2 skipped, frontend 851/851, Rust lib 328 passed with
+  six known environment failures. Residual risks: macOS Intel acceptance workflow not run; macOS builds
+  are ad-hoc signed; mac build inputs now come from osxexperts and python-build-standalone. Release
+  notes: `docs/releases/v0.4.0.md`.
+
+- [x] Prepare and publish Locus v0.3.8 desktop release (2026-09-19) — ✅ Tag target `fc83df9`
+  committed to `main` and tagged `v0.3.8` (`909c232` yt-dlp fix, `3711aeb` version display,
+  `e5c16c4` release prep, `fc83df9` docs correction); local release gates passed (Worker 858/2
+  skipped, Ruff clean, frontend 766/766, app lint and build, Server 292/1 skipped, Server build,
+  scripts 50, docs governance 0 errors/0 warnings), hosted macOS ProcessSupervisor passed on
+  `e5c16c4` (the only Rust compile evidence available, since this workstation has no cargo), and
+  Desktop Release run `35445817959` finished green on all three platform jobs. The draft carried
+  five assets identical to v0.3.7 after normalizing the version; the `latest.json` Windows signature
+  was cross-checked byte-for-byte against the uploaded `.sig` (416 chars each), and build logs
+  confirm every bundled runtime installed `yt-dlp-2026.8.19` before its `import yt_dlp` smoke test.
+  Content: the bundled `yt-dlp` moved from the locked `2026.7.4` to `2026.8.19` in `uv.lock` — the
+  only source the installer resolves runtime dependencies from — because YouTube's player change
+  made the old version receive expired media URLs and fail every download with HTTP 403; and
+  Settings > App Updates now shows the compile-time version next to the update status. Release notes:
+  `docs/releases/v0.3.8.md`; plan: `docs/exec-plans/completed/2026-09-19-v0.3.8-desktop-release-plan.md`.
+  Stable Release was published at 2026-09-19 22:10:06 +08:00:
+  https://github.com/jiabai/FrameQ/releases/tag/v0.3.8. Residual risk: the workflow still does not
+  set the release body, so it must be written from `docs/releases/<tag>.md` after publishing;
+  `macos-intel-acceptance.yml` remains `workflow_dispatch`-only so it did not run on this tag push;
+  clean-machine Windows and macOS native UI smoke was not repeated; macOS builds remain ad-hoc signed
+  without notarization; `403`/`429` platform rejections still fall into the generic
+  `YOUTUBE_DOWNLOAD_FAILED` copy that tells the user to check a healthy network; public-platform
+  availability and deployed server capability remain external dependencies.
+
+- [x] Prepare and publish Locus v0.3.7 desktop release (2026-09-19) — ✅ Release commit `9a0cd65`
+  committed to `main` and tagged `v0.3.7`; local release gates passed (Worker 858/2 skipped,
+  Douyin-focused 147, Ruff clean, frontend 762/762, Server 292/1 skipped, scripts 50, docs
+  governance 0 errors/0 warnings), and Desktop Release run `35434877136` finished green on all three
+  platform jobs. The draft carried five assets identical in shape to v0.3.6; the `latest.json`
+  signature was cross-checked byte-for-byte against the uploaded `.sig`. Includes the bounded Douyin
+  share-page retry with a randomized 3 to 10 second wait and its `douyin.page.retrying` progress
+  event and the neutralized activation-panel title in three locales (`5c9e974`, `5dc08e8`); the
+  marketing-site privacy/FAQ terminology cleanup is recorded in `e49f8bf` (the `site/` tree is
+  gitignored, so the copy change itself is not a commit). Release notes: `docs/releases/v0.3.7.md`; plan:
+  `docs/exec-plans/completed/2026-09-19-v0.3.7-desktop-release-plan.md`. Stable Release was
+  published at 2026-09-19 18:22:07 +08:00:
+  https://github.com/jiabai/FrameQ/releases/tag/v0.3.7. Two things to note for the next release:
+  the workflow does not set the release body, so it must be written from `docs/releases/<tag>.md`
+  after publishing (the v0.3.7 draft initially showed the generic `tauri-action` placeholder), and
+  `macos-intel-acceptance.yml` is `workflow_dispatch`-only so it does not run on a tag push.
+  Residual risk: clean-machine Windows and macOS native UI smoke was not repeated; macOS builds
+  remain ad-hoc signed without notarization; the share-page retry emits no distinct diagnostic event,
+  so an exported bundle cannot tell a first-attempt success from a retried one; public-platform
+  availability and deployed server capability remain external dependencies.
+
+- [x] Prepare and publish Locus v0.3.6 desktop release (2026-09-06) — ✅ Current desktop source was
+  committed to `main` (`9fc7834`) and tagged `v0.3.6`; local release gates passed (Worker 854/2
+  skipped, frontend 762, Server 291/1 skipped, Rust 315, scripts 37), hosted Server CI and macOS
+  ProcessSupervisor passed, and Desktop Release built the Windows updater/installer, `latest.json`,
+  Intel DMG, and Apple Silicon DMG. Includes Xiaohongshu platform subtitle reuse with numeric
+  `format: 0`, self-service activation client support, and post-v0.3.5 fixes. Release notes:
+  `docs/releases/v0.3.6.md`; plan:
+  `docs/exec-plans/completed/2026-09-05-v0.3.6-desktop-release-plan.md`. Stable Release was
+  published at 2026-09-06 18:16:35 +08:00:
+  https://github.com/jiabai/FrameQ/releases/tag/v0.3.6. Residual risk: clean-machine Windows and
+  macOS native UI smoke was not separately repeated for this release; public-platform availability
+  and deployed server capability remain external dependencies.
+
+- [x] Implement self-service email activation codes (2026-08-25) — ✅ Inactive or expired signed-in
+  desktop accounts can request an account-bound activation code by email, manually redeem it for a
+  fresh 31-day entitlement plus 20 AI Credits, and repeat after every expiry without stacking active
+  entitlement. Server rollout is kill-switch guarded by
+  `APP_SELF_SERVICE_ACTIVATION_ENABLED` (production explicit true/false, `0`/`1` compatible,
+  dev/test default false) and requires SMTP with no console fallback. New route
+  `POST /api/desktop/activation-codes/request` is auth-first, accepts only locale, returns
+  `status/retry_at/redeem_by`, and pairs with `GET /api/desktop/account.can_request_activation_code`.
+  `ActivationCode` now tracks source/bound account/delivery metadata; self-service rows fail closed
+  through `pending_delivery`, activate only after SMTP acceptance, supersede older active
+  self-service codes, and disable with `delivery_failed`, `activation_became_active`, or
+  `superseded` as needed. Migration chain reviewed:
+  `202608240001_self_service_email_activation`,
+  `202608240002_auth_rate_limit_self_service_purpose`,
+  `202608240003_self_service_active_unique`. Documentation gates and `git diff --check` passed.
+  ExecPlan: `docs/exec-plans/completed/2026-08-24-self-service-email-activation-code-plan.md`.
+
+- [x] Prepare and publish Locus v0.3.5 desktop feature release (2026-08-16) — ✅ Acceptance:
+  Motion interaction enhancement (processing stage, task state, ASR download progress, AI target
+  and history list animations; Account/Settings/History/ASR Model/AI Detail and confirmation
+  Sheet lifecycle; reduced-motion respect) plus Windows app-local VC++ runtime staging and
+  worker startup preflight fixes; five version sources synchronized at 0.3.5, annotated tag
+  `v0.3.5` (commit `2ce6706`) pushed to origin, Desktop Release workflow built Windows
+  updater/Intel DMG/Apple Silicon DMG, stable release published
+  (https://github.com/jiabai/FrameQ/releases/tag/v0.3.5) with reviewed notes from
+  `docs/releases/v0.3.5.md`. Windows desktop smoke passed (model download startup path and
+  restart-new-task interaction). Release plan:
+  `docs/exec-plans/completed/2026-08-16-v0.3.5-desktop-feature-release-plan.md`.
+
+- [x] Prepare and publish Locus v0.3.4 icon release (2026-08-16) — ✅ Acceptance: updated desktop
+  app icon and Windows/macOS bundle icon resources; version source unified at 0.3.4, annotated
+  tag `v0.3.4` (commit `1e20aec`) pushed to origin, Desktop Release workflow generated Windows
+  updater/Intel DMG/Apple Silicon DMG, stable release published
+  (https://github.com/jiabai/FrameQ/releases/tag/v0.3.4) with notes from
+  `docs/releases/v0.3.4.md`. No transcription, model download, task processing, or local data
+  behavior changed. Release plan:
+  `docs/exec-plans/completed/2026-08-16-v0.3.4-icon-release-plan.md`.
+
+- [x] Prepare and publish Locus v0.3.3 desktop feature release (2026-08-15) — ✅ Acceptance:
+  Windows VC++ 2015-2022 runtime self-check with runtime-missing guidance, import-stage
+  structured diagnostic fallback, and the model-download stability hardening batch (ONNX staging
+  cleanup, streamed custom-source download with timeout/size limit/retry, disk-space precheck,
+  cache integrity re-download, log rotation, event throttling); five version sources synchronized
+  at 0.3.3, annotated tag `v0.3.3` (commit `3735d04`) pushed after restoring third-party version
+  ranges in package-lock, Desktop Release workflow built all three platform artifacts, stable
+  release published (https://github.com/jiabai/FrameQ/releases/tag/v0.3.3) with reviewed notes
+  from `docs/releases/v0.3.3.md`. Packaged-worker byte equality and bundled runtime DLL
+  assertions added to release CI (`scripts/verify-packaged-worker.mjs`); clean-Windows smoke
+  passed. Local watchdog `taskkill` Access-denied residue is environment-only, not a feature
+  failure. Release plan:
+  `docs/exec-plans/completed/2026-08-15-v0.3.3-desktop-feature-release-plan.md`.
+
+- [x] Prepare and publish Locus v0.3.2 desktop diagnostic export release (2026-08-10) — ✅ Acceptance:
+  merged
+  `codex/desktop-diagnostic-export` into `main`, synchronized five version sources at 0.3.2, and
+  added release notes. Hosted CI/Desktop Release passed, annotated tag `v0.3.2` was pushed, and
+  stable release publication completed. Release plan:
+  `docs/exec-plans/completed/2026-08-10-v0.3.2-desktop-diagnostic-export-release-plan.md`.
+
+- [x] Prepare and publish Locus v0.3.1 desktop feature release (2026-08-05) — ✅ Acceptance: five
+  version sources synchronized at 0.3.1, `scripts/tests/release-version.test.mjs` asserts
+  `0.3.1`, local release gates pass (scripts 28/29 with pre-existing Windows fs.rm env failure;
+  app lint/test 73 files/699/build; worker Ruff + pytest 690/2 sandbox-symlink env failures;
+  server build + tests 201/1; cargo fmt; governance; diff; packaged-worker mirror equality),
+  server gates pass (hosted Server CI incl. rehearsed isolated restore smoke; fresh-DB migration
+  deploy + backup/restore `integrity_check` ok), annotated tag `v0.3.1` created and pushed after
+  explicit approval, Desktop Release workflow built all three platform artifacts from one tagged
+  commit (run 31022512026 success), reviewed `docs/releases/v0.3.1.md` notes replaced the generic
+  generated body, and Draft published as stable non-prerelease
+  (https://github.com/jiabai/FrameQ/releases/tag/v0.3.1). Gate-fixed contract-v7 regressions:
+  `worker/worker_core/desktop_contract.py` 6→7, `build-installer.test.mjs` 6→7, 7 frontend
+  fixtures missing `dissection_source_status`. Residual risk: Inspiration Profile v2 packaged
+  launch, Web session no IP/UA binding (transcript dissection real paid-supplier smoke 已于
+  2026-08-23 真实付费烟测闭合，见 v0.3.0 条目). Product
+  spec: `docs/product-specs/2026-08-05-v0.3.1-desktop-feature-release.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-08-05-v0.3.1-desktop-feature-release-plan.md`.
+  `secureCookies` 生产部署验证已于 2026-08-06 在 `frameq.8xf.pro` 完成。macOS watchdog
+  运行时、locale/layout、本地媒体导入、ONNX VAD 流式已于 2026-08-06 在真实 macOS 主机
+  完成实测验收。
+
+- [x] Prepare and publish Locus v0.3.0 desktop feature release (2026-08-03) — ✅ Acceptance: five
+  version sources synchronized at 0.3.0, `scripts/tests/release-version.test.mjs` asserts `0.3.0`,
+  complete local release gates pass (scripts, app tests/lint/build, Rust tests/rustfmt, worker
+  tests/Ruff, server tests/build, governance, diff, refreshed packaged-worker SHA-256 equality,
+  Tauri `--no-bundle`), annotated tag `v0.3.0` created and pushed after explicit approval, Desktop
+  Release workflow builds all three platform artifacts from one tagged commit, reviewed
+  `docs/releases/v0.3.0.md` notes replace the generic generated body, and Draft published as stable
+  non-prerelease (https://github.com/jiabai/FrameQ/releases/tag/v0.3.0). Residual risk: macOS
+  watchdog runtime, macOS locale/layout, macOS local-media import, macOS ONNX VAD streaming
+  (已于 2026-08-06 在真实 macOS 主机完成实测验收，不再为残余),
+  transcript dissection real paid-supplier smoke
+  (已于 2026-08-23 真实付费烟测闭合：SiliconFlow + deepseek-ai/DeepSeek-V3.2 完整链路
+  map→reduce→repair 266.8s 通过；同步修复 highlight 逐字引用强约束与 JSON 弯引号解析，
+  见 commit ef236bf), and native packaged cross-platform UX
+  (前者 macOS 项已闭合，其余仍未验证；macOS 实测清单已备
+  `docs/references/2026-08-23-macos-native-ux-smoke-checklist.md`，待目标 Mac 执行);
+  Windows evidence is recorded for the corresponding gates.
+  Product spec:
+  `docs/product-specs/2026-08-03-v0.3.0-desktop-feature-release.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-08-03-v0.3.0-desktop-feature-release-plan.md`.
+
+- [x] Implement transcript dissection generation and persistence (2026-08-01) — ✅ added the third
+  current `工作间` tool with explicit bounded-call confirmation, contract v5, deterministic
+  UTF-8 source provenance, managed per-call checkout, strict structured generation, atomic
+  `ai/dissection.json` + `ai/dissection.md`, Rust-validated History restoration, stale-safe source
+  location, copy/export, three locales, and preservation of the former report on failed reruns.
+  Automated evidence: worker 661 passed / 2 platform skips, frontend 664 passed, Rust 233 passed,
+  scripts 29 passed, Ruff/lint/rustfmt/build/governance/diff gates passed. Live paid-supplier and
+  native packaged cross-platform UX remain explicit release residuals. Design:
+  `docs/design-docs/2026-07-31-transcript-dissection-feature.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-07-31-transcript-dissection-plan.md`.
+
+- [x] Harden the real ONNX VAD result contract and remove full-audio ONNX fallback (2026-07-29) — ✅ Acceptance:
+  stream bounded chunks through bundled `Fsmn_vad_online`, collect its stateful endpoint events,
+  require one `ndarray` per SenseVoiceSmall-ONNX call, make every VAD/audio/block preparation
+  failure terminal, and remove all whole-audio VAD/ASR paths. ✅ Retained 95-minute acceptance:
+  571 VAD calls (10.0 s max, one state, one final), 808 ndarray-only ASR calls (20.01 s max), 808
+  transcript segments, 21,774 characters, 202.015 s elapsed. Focused tests 20/20, full worker
+  626 passed / 2 skipped, frontend 640 passed, Ruff/lint/build/docs/diff gates passed, and packaged
+  worker source matched. Design:
+  `docs/design-docs/2026-07-29-onnx-vad-result-contract-hardening.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-07-29-onnx-vad-result-contract-hardening-plan.md`.
+
+- [x] Harden SenseVoiceSmall-ONNX segmented inference (2026-07-28) — ✅ pass each prepared VAD
+  block to ONNX independently and make a block failure terminal instead of retrying long audio as
+  one full-audio inference. Focused ONNX tests 5/5, full worker tests 611 passed / 2 skipped, ruff,
+  governance, and diff gates passed. ExecPlan:
+  `docs/exec-plans/completed/2026-07-28-onnx-segment-inference-hardening-plan.md`.
+
+- [x] Add selectable SenseVoiceSmall-ONNX and selected-model on-demand installation (2026-07-27) — preserved the default PyTorch model, added the ModelScope-only `funasr_onnx` runtime/cache validation, and downloads only a missing frozen task model before automatically resuming URL/local-media intent. ✅ Automated acceptance: startup does not download; cancellation/failure creates no task; ONNX never calls `funasr.AutoModel`. Live network/package-platform checks remain release residuals. Product spec: `docs/product-specs/2026-07-27-selectable-asr-model-on-demand-download.md`; ExecPlan: `docs/exec-plans/completed/2026-07-27-selectable-asr-model-on-demand-download-plan.md`.
+
+- [x] Close general Tauri IPC runtime-decoding gaps (2026-07-24) — ✅ Account, History,
+  remaining settings, transcript detail, and Locus-owned update command runners return
+  `Promise<unknown>`; each domain decodes closed top-level/nested DTOs before state mutation;
+  malformed/accessor/symbol/exotic values fail through stable non-echoing `IpcProtocolError` codes;
+  worker/local-media specialized parsers and valid behavior remain unchanged. ✅ Focused App 64/64,
+  full App 637/637, Rust 223/223, repository scripts 27/27, lint, build, rustfmt, governance, and
+  diff gates pass. Design:
+  `docs/design-docs/2026-07-24-tauri-ipc-runtime-decoding-boundary.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-07-24-tauri-ipc-runtime-decoding-plan.md`.
+
+- [x] Split the frontend transcript-detail controller by responsibility (2026-07-23) — ✅
+  Acceptance: preserve the existing flat `TranscriptDetailController` surface and all App/view
+  consumers while extracting private artifact-detail, task-document, and audio-review owners;
+  retain stale task guards, edit/playback/save/deletion semantics, fixed localized notices, IPC,
+  paths, and local-first security boundaries. Design:
+  `docs/design-docs/2026-07-23-frontend-transcript-controller-split.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-07-23-frontend-transcript-controller-split-plan.md`. Facade
+  126 lines; private owners 139/199/250 lines; facade 19/19, ownership 1/1, selected Chromium 4/4,
+  App 583/583, scripts 25/25, lint/build/governance/diff gates passed. Native Tauri smoke was not
+  rerun because native IPC, asset scope, permissions, and packaged runtime were unchanged.
+
+- [x] Close broad-release atomic persistence blocker (2026-07-22) — ✅ Acceptance: every
+  authoritative transcript, AI, preference, manifest, and Rust transcript-edit file uses reviewed
+  same-directory atomic replacement; existing-task multi-file updates recover through the closed
+  prepared/committed journal to one complete revision; paths, schemas, content bytes, History,
+  Credits, and local-media planning remain unchanged. ExecPlan:
+  `docs/exec-plans/completed/2026-07-22-atomic-persistence-hardening-plan.md`. ✅ Merged to `main`
+  at `61d489a`; Worker 563 passed / 2 skipped, App 551 passed, Windows Rust 185 passed, scripts 25
+  passed, packaged-worker 63-file equality and Tauri `--no-bundle` passed. macOS/Unix native
+  permission/symlink/forced-exit and real Tauri transcript/AI smoke remain recorded residual risks,
+  not unverified pass claims.
+
+- [x] Close broad-release worker watchdog blocker (2026-07-22) — ✅ Acceptance: every supervised
+  worker has a Rust-owned fixed absolute deadline, progress-capable jobs also have a validated-idle
+  deadline, timeout terminates/reaps the matching process tree, structured-result/cancellation race
+  rules remain truthful, and AI is never automatically retried. ExecPlan:
+  `docs/exec-plans/completed/2026-07-22-worker-watchdog-plan.md`. ✅ Rust 208/208, App 567/567,
+  worker 563 passed / 2 skipped, scripts 25/25, Chromium smoke 28/28, lint/Ruff/rustfmt/build and
+  Tauri `--no-bundle` passed; native Windows parent/descendant timeout cleanup passed. macOS runtime
+  execution remains unverified while the portable fixture is enforced by the hosted workflow.
+
+- [x] Close broad-release server authentication/quota concurrency blocker (2026-07-23) — ✅
+  Acceptance: purpose-scoped OTP dispatch/attempt/artifact and ticket/session exchange commit through
+  semantic Store transactions; AI Credit checkout uses one conditional quota update plus the unique
+  request event; independent Prisma clients on one real temporary SQLite file prove single-use,
+  capacity, idempotency, bounded conflict retry, and injected rollback. Design:
+  `docs/design-docs/2026-07-22-server-auth-quota-operations-hardening.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-07-22-server-auth-quota-concurrency-hardening-plan.md`. Implemented
+  with reviewed baseline/forward migrations, MemoryStore parity, independent-client SQLite tests,
+  failure injection, fixed non-echoing HTTP outcomes, 97/97 server tests, TypeScript build, and
+  Prisma generation. Broad publication unblocked (2026-07-25): production operations accepted below.
+
+- [x] Close broad-release server production-operations blocker (2026-07-25) — ✅ Acceptance:
+  production required config/SMTP fails closed; console OTP is explicit non-production only;
+  redacted structured logs, loopback-only trusted proxy, live/ready endpoints, bounded SIGTERM
+  drain/disconnect, reviewed migrations, backup/restore rehearsal, deployment runbook, and dedicated
+  hosted server CI all pass without secret-bearing evidence. ExecPlan:
+  `docs/exec-plans/completed/2026-07-22-server-production-operations-hardening-plan.md`. Local: Server
+  142 passed / 1 Windows POSIX-signal skip, scripts 25/25, Prisma generation, TypeScript build,
+  migration/status/preflight/restore, governance, and diff checks. Hosted CI: repaired and passed
+  (commit 00e4832, run 30112001870, 1m3s). Production: SMTP configured and delivering real codes,
+  Nginx/systemd deployed and verified, off-host restore smoke rehearsed with integrity check
+  confirmed. All hard gates from `EXECUTION_GATES.md` §40-45 met.
+
+- [x] Replace the false process-video request with strict contract v3 (2026-07-18) - ✅ Acceptance:
+  React sends only URL intent; Rust alone resolves app-local ASR configuration and sends exact
+  `contract_version + url + asr_model` worker input; Python rejects legacy/additional/mismatched
+  requests without echo; local-media planning advances to contract v4. ExecPlan:
+  `docs/exec-plans/completed/2026-07-18-process-video-request-contract-v3-plan.md`. ✅ App 491,
+  Rust 143, worker 392, focused cross-language contract suites, Ruff, lint/build, docs, static-schema,
+  and diff gates passed.
+
+- [x] Reuse exact generic Chinese YouTube/Bilibili subtitles before ASR (2026-07-18) — ✅ Acceptance:
+  request and prefer exact `zh` after script-specific Chinese, avoid `zh.*` translated-caption
+  expansion, retain malformed/missing subtitle ASR fallback, pass worker/Ruff/docs/diff gates, and
+  confirm `dGzm8O95tdc` selects `zh / vtt` without downloading media. ✅ Focused RED produced 3
+  failures/32 passes, GREEN passed 35/35, worker passed 364/364, and Ruff/docs/diff/live simulation
+  passed. ExecPlan: `docs/exec-plans/completed/2026-07-18-youtube-generic-chinese-subtitle-plan.md`.
+
+- [x] Prepare and publish Locus v0.2.17 desktop i18n release (2026-07-25) — ✅ Acceptance: five version
+  sources synchronized at 0.2.17, app lint gate restored, Gatekeeper-first release notes reviewed, local
+  release validation passed (app 637/637, server 146/1skip, worker 576/2env, build, governance 0/0).
+  All broad-release blockers resolved: atomic persistence ✅, worker watchdog ✅, server auth/quota
+  concurrency ✅, server production operations ✅. Tag `v0.2.17` pushed, Desktop Release workflow built
+  all three platform artifacts (34m54s), Draft published as stable non-prerelease with reviewed notes.
+  ExecPlan: `docs/exec-plans/completed/2026-07-17-v0.2.17-desktop-i18n-release-plan.md`.
+  Residual risk: macOS watchdog runtime, macOS locale/layout physical acceptance, macOS local-media
+  acceptance (Windows verified). Local-media import remains outside this release.
+
+- [x] Add single-file local video/audio import (2026-07-16) — ✅ Acceptance: accept MP4/M4V/MOV/MKV/AVI/WMV/WebM
+  and MP3/WAV/M4A/AAC/FLAC/OGG/Opus/WMA through a Rust-owned native picker and opaque selection
+  token; preserve video containers, normalize every source to 16 kHz mono 16-bit PCM WAV, create no
+  video artifact for audio tasks, keep full paths out of React/persistence/logs/cloud, and extend
+  strict schema-v3 History with a closed local-source variant. ExecPlan:
+  `docs/exec-plans/completed/2026-07-16-local-media-file-import-plan.md`.
+  Contract foundation completed 2026-07-20: global v4 now declares the independent local source,
+  token-only frontend/IPC metadata, exact Rust/Python worker request, fixed progress/errors, and
+  path/token secrecy while URL `process_video` remains v3.
+  Runtime vertical slice implemented through TDD on 2026-07-23: Rust owns selection tokens, native
+  picking, revalidation, strict IPC, and the supervised task lane; Python stages under generic
+  task-owned names, probes/normalizes local sources, preserves video containers, and reuses ASR;
+  manifest/History/workspace/frontend use closed source unions; and the three-locale composer keeps
+  complete paths out of React.
+  Archived 2026-07-25: Windows Tauri acceptance confirmed (MP4/WMV/MP3/WAV decoding + picker/path,
+  artifact WAV 16 kHz mono 16-bit PCM, progress, cancellation, History, no path leaks, WMV from
+  packaged FFmpeg). Final automated gates: App 68 files / 637 tests, Rust 226/226, Worker 601 passed
+  / 2 skipped, scripts 26/27 (1 unrelated Windows tar env failure), governance 0/0, lint/rustfmt/
+  Ruff/diff/Tauri no-bundle all passed. macOS acceptance is unverified residual risk. No real AI
+  Credits were consumed.
+
+- [x] Add desktop i18n and confirmation-time AI output language (2026-07-15) — ✅ Acceptance: bundle `zh-CN`,
+  `zh-TW`, and `en-US`; persist `system | locale` in app-local `ui-preferences.json`; localize UI,
+  progress, accessibility, known errors, and History navigation/chrome; require strict contract-v2
+  `output_language` for new summary/mindmap/insights requests without translating ASR, subtitles,
+  historical user content, or existing AI artifacts and without extra LLM calls or AI Credits. ExecPlan:
+  `docs/exec-plans/completed/2026-07-15-desktop-i18n-ai-output-language-plan.md`. ✅ App 488,
+  browser 25, Rust 134, worker 363, scripts 22, build/Tauri/docs/diff gates, Windows native
+  WebView language switching/restart, and 28-file packaged-worker equality passed. macOS native
+  behavior and real-provider language adherence remain explicitly unverified residual risks.
+
+- [x] Upgrade GitHub Actions from Node.js 20-era runtimes (2026-07-12) ✅ Checkout v5, setup-node
+  v5, setup-uv v8.3.2, and upload-artifact v6 now use Node.js 24. ✅ Focused workflow contracts
+  passed 6/6, the complete script suite passed 15/15, hosted ProcessSupervisor run `29199050303`
+  and Intel acceptance run `29199051507` passed at `04b2a92` without Node.js 20 annotations, and no
+  Desktop Release was triggered. ExecPlan:
+  `docs/exec-plans/completed/2026-07-12-github-actions-node24-upgrade-plan.md`.
+
+- [x] Publish Locus v0.2.16 open-source stable release (2026-07-12) — ✅ Version-drift TDD,
+  complete local gates, Windows/Intel/Apple Silicon hosted builds, runtime/Deno/codesign evidence,
+  local DMG SHA-256 matching, reviewed Gatekeeper disclosure, and explicit final publication
+  confirmation all passed. Release: `https://github.com/jiabai/FrameQ/releases/tag/v0.2.16`.
+  ExecPlan: `docs/exec-plans/completed/2026-07-12-v0.2.16-open-source-release-plan.md`.
+
+- [x] Add permanent History task deletion (2026-07-12) — Delete one explicitly confirmed supported History vNext task, its video/audio/transcript/AI artifacts, and per-task playback cache to release disk space immediately. Active processing, AI generation, cancellation, transcript save, legacy tasks, and linked storage remain ineligible. Partial filesystem deletion remains an accepted and explicitly reported residual risk. ✅ Windows/local gates passed app 256, Rust 104, worker 231, server 57, scripts 11, builds, Ruff, docs and diff checks; hosted Intel macOS run `29187106602` passed Cargo 103/103 and produced checksum-verified internal DMG artifact `app-macos-intel-2-eb5ed4122c0c`. ExecPlans: `docs/exec-plans/completed/2026-07-12-history-task-permanent-deletion-plan.md` and `docs/exec-plans/completed/2026-07-12-macos-intel-acceptance-artifact-plan.md`.
+
+- [x] Polish History height, typography rhythm, and toolbar grouping (2026-07-12) — Applied option A without changing short transcript height or product data flows. ✅ TDD and acceptance: History CSS RED/GREEN, short/long History geometry, toolbar 1366/720 alignment, browser 22/22, app 35 files / 244 tests, production build, docs 0/0, and diff check passed. ExecPlan: `docs/exec-plans/completed/2026-07-12-desktop-density-history-toolbar-polish-plan.md`.
+
+- [x] Refine task-workspace visual hierarchy (2026-07-12) — Applied the approved restrained option A: grouped transcript and AI rows, scoped status ownership, Chinese-only workspace headings, quiet pre-confirmation AI actions, and distinct transcript playback/edit/focus states. ✅ TDD and acceptance: app 35 files / 240 tests, serial Chromium 20/20, refreshed 1366px/900px screenshots, production build, docs 0/0, and diff check passed. ExecPlan: `docs/exec-plans/completed/2026-07-12-task-workspace-visual-hierarchy-plan.md`.
+
+- [x] Correct AI balance terminology to AI Credits (2026-07-11) — Replaced misleading available-generation counts with AI Credits balances and explicit variable-cost disclosure across AI target cards, confirmations, account summary, and account sheet. Internal `llmQuota*` fields and per-call accounting remain unchanged. ✅ TDD: shared copy, target-card, account-copy, and browser-smoke RED assertions preceded implementation; app 236 tests, production build, docs validation, and diff checks passed. ExecPlan: `docs/exec-plans/completed/2026-07-11-ai-credits-terminology-plan.md`.
+- [x] Remove the retired process-video automatic-AI contract (2026-07-11) — Deleted `generate_insights` from frontend, strict Rust IPC/stdin DTO, Python request model/parser, service and local pipeline; explicit legacy payloads fail safely; `retry_insights` remains the only AI client, checkout, quota and artifact path. ✅ TDD: frontend contract RED, Rust strict-deserialization RED and Python parser/service RED preceded implementation; final gates passed App 230, Rust 92, worker 230, server 57, scripts 9, Ruff, builds, docs and diff checks. ExecPlan: `docs/exec-plans/completed/2026-07-11-local-transcript-ai-workspaces-plan.md`.
+- [x] Reorganize one task into local transcript and AI generation workspaces (2026-07-11) — Keep one task ID while separating local media/audio review/transcript correction from independently confirmed summary and inspiration targets. Preserve worker, quota, SourceIdentity, stdin, ProcessSupervisor, and strict History vNext boundaries. ExecPlan: `docs/exec-plans/completed/2026-07-11-local-transcript-ai-workspaces-plan.md`. ✅ Acceptance: App 230, Rust 92, worker 230, server 57, scripts 9 and all build/lint/docs/diff gates pass; 19 CDP smoke tests plus native Windows/WebView2 fresh-worker acceptance cover real audio/segment review, transcript save/revert, file reveal, dual-column/narrow layout, AI confirmation-before-call, cancellation placement, same-task history, and stale-save isolation.
+
+## Refactoring and Technical Debt
+
+- [x] Close the Python worker application-facade and CLI boundary (completed 2026-07-24) — ✅
+  Acceptance:
+  preserve all five fixed CLI modes, bounded stdin, progress/result/exit behavior, platform-aware
+  short-link defaults, ASR/AI/model-download injection seams, task persistence, artifacts,
+  failures, output language, Credits, contracts, and packaged-worker behavior; keep
+  `worker_service.py` as an exact five-function stable facade; extract private URL, local-media,
+  source-identity, AI-retry, and model-download handlers plus one defaults owner; make AI retry use
+  `TaskPaths`; remove CLI compatibility exports and `*args/**kwargs`; add characterization and
+  exact AST/dependency/package gates before closure. Design:
+  `docs/design-docs/2026-07-24-python-worker-application-facade.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-07-24-python-worker-application-facade-plan.md`. Implemented in
+  seven TDD commits: `cli.py` is a 176-line process adapter, `worker_service.py` is a 25-line exact
+  facade, and seven private application files own defaults plus five handlers. Worker 600 passed /
+  2 skipped, Ruff, scripts 27/27, Tauri release `--no-bundle`, governance, diff, and 70-file
+  canonical/mirror byte equality passed.
+
+- [x] Close the ASR model-download raw process capability (completed 2026-07-24) — ✅ Acceptance:
+  keep model availability and app-local `.env` parsing in `asr_model.rs`, but allow it to submit
+  only an opaque `AsrModelDownloadJob` containing the four existing allowlisted override values;
+  move bundled Python/argv/stdin/env/removal/cwd construction into `worker_runtime::command`;
+  preserve the separate model-download lane, progress, cancellation, watchdog, result/error
+  mapping, CLI bytes, `.env` schema, model files, network behavior, and public protocols; make
+  `WorkerCommandSpec` runtime-private and add a RED/GREEN source-ownership gate. Design:
+  `docs/design-docs/2026-07-24-asr-model-download-job-capability-boundary.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-07-24-asr-model-download-job-capability-plan.md`. Implemented in
+  three TDD slices: command 7/7, ASR 7/7, runtime 63/63, Rust 226/226, App 637/637, scripts 27/27,
+  frontend build, rustfmt, governance, diff, and Tauri release `--no-bundle` passed. The unchanged
+  Windows process-tree tests require permission outside the restricted sandbox; the same exact
+  cancellation test proved 30.07-second sandbox failure versus 0.17-second privileged success.
+
+- [x] Split the Server Store/PrismaStore adapters by transaction responsibility (completed 2026-07-23) — ✅
+  Acceptance: keep `store.ts` and `prismaStore.ts` as the stable import roots and
+  retain one full Store instance; preserve every Store/class method, Memory fixture field,
+  override-injection seam, closed outcome, query/conditional write, transaction member, retry
+  rule, schema, migration, and independent-client invariant. Extract private Memory/Prisma
+  authentication, billing, entitlement/accounting, LLM-config, and backend-specific
+  atomic/concurrency owners; narrow each service/route helper with consumer-owned type-only Store
+  capabilities; add no public repository, Unit of Work, generic transaction callback, dependency,
+  schema/product behavior, or production-readiness claim. Design:
+  `docs/design-docs/2026-07-23-server-store-prisma-module-split.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-07-23-server-store-prisma-module-split-plan.md`. Implemented as
+  2-line `store.ts` and 269-line `prismaStore.ts` stable roots, 305/346-line contracts/Memory root,
+  and private Memory owners 84/399/176/246/30 plus Prisma owners 175/391/256/309/22 lines. Exact
+  ownership and 12-capability gates passed; Server 25 files / 146 passed / one Windows POSIX-signal
+  skip, scripts 25/25, TypeScript build, Prisma generation, two-migration deploy/status, current
+  preflight, copied-database restore smoke, governance 0/0, protected-scope and diff gates passed.
+  Hosted Linux Server CI, production SMTP/staging, off-host restore, and live providers were not
+  run and remain separate residual evidence.
+
+- [x] Split the Rust worker runner by private responsibility (completed 2026-07-23) — ✅
+  Acceptance: preserve `runner.rs` as the sole `WorkerLane` lifecycle orchestrator and preserve
+  every current caller/type path, spawn/register/stdin/read/wait/finish/classify order, matching
+  instance cleanup, structured-result-first terminal precedence, fixed timeout policy,
+  validated-progress-only activity, supervisor-only OS signalling, and non-echoing diagnostics;
+  extract private process-I/O, watchdog, progress, and terminal owners plus topic-focused tests.
+  Add characterization and an exact ownership/dependency RED/GREEN gate before moving production
+  code; add no public lifecycle entry, facade/state-machine framework, dependency, contract, product
+  behavior, local-media runtime, or platform-evidence claim. Design:
+  `docs/design-docs/2026-07-23-rust-worker-runner-module-split.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-07-23-rust-worker-runner-module-split-plan.md`. ✅ Final root/private
+  owners: 415 / 108 / 273 / 195 / 71 lines; test owners all <= 390 lines. RED/GREEN ownership gate,
+  runner 28/28, Rust 210/210, App 583/583, scripts 25/25, lint/build/rustfmt/governance/scope and
+  Tauri `--no-bundle` passed. Windows native process-tree fixtures passed; the unchanged macOS
+  hosted workflow was not run for these commits and remains residual platform evidence.
+
+- [x] Split the Python worker pipeline by responsibility (2026-07-21) — ✅ Acceptance: keep
+  `worker_core.pipeline` as the sole stable production import surface and direct-reexport the
+  exact current objects; move shared path/progress/failure policy, subtitle/ASR stages,
+  official-transcript AI generation, and URL task/media/finalization orchestration into private
+  `pipeline_runtime/shared.py`, `transcript.py`, `insights.py`, and `orchestration.py` owners behind
+  an empty initializer. Preserve signatures/defaults, eager compatibility imports, errors,
+  artifacts, progress order/args, task finalization, official-transcript checks, target/language/
+  preference behavior, Credits calls, CLI/worker-service callers, contracts, schemas, and packaged
+  worker behavior. Add behavior characterization plus exact tree/identity/dependency RED/GREEN
+  gates first; add no facade class, generic stage framework, local-media runtime, CLI cleanup,
+  dependency, product behavior, or product-spec change. Design:
+  `docs/design-docs/2026-07-21-worker-pipeline-module-split.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-07-21-worker-pipeline-module-split-plan.md`. Accepted by the user
+  on 2026-07-22: stable root 39 lines; private owners 68/250/152/159 lines; characterization 56/56,
+  ownership 11/11, Worker 531/531, App 549/549, normal-Windows Rust 175/175, scripts 23/23,
+  recursive worker mirror 61/61, Ruff, lint/build, rustfmt, Tauri no-bundle, governance, scope, and
+  diff gates passed.
+
+- [x] Split the Rust task-manifest trust module by responsibility (2026-07-21) — ✅ Acceptance:
+  keep `task_manifest.rs` as the sole crate-visible import surface; move canonical SourceIdentity
+  policy, pure manifest/error/artifact/Insight schema policy, configured storage/path effects, and
+  `SupportedTask` / `TaskScan` / `TaskEditSession` capability orchestration into private
+  `source_identity`, `schema`, `storage`, and `access` owners, with characterization in a separate
+  test file. Preserve every root constant/type/function/method, raw-manifest privacy, schema-v3
+  bytes, URL-only support predicate, scan isolation, artifact/link/reparse checks, safe errors,
+  unknown fields, edit save ordering, and all caller paths. Add characterization plus an ownership
+  RED/GREEN gate first; add no Facade, dependency, product behavior, local-media source union,
+  migration, network/log path, or atomic-write claim. Design:
+  `docs/design-docs/2026-07-21-task-manifest-module-split.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-07-21-task-manifest-module-split-plan.md`. Implemented as a
+  26-line stable root plus private source/schema/storage/access owners and separate tests; focused
+  15/15, normal Windows Rust 175/175, App 549/549, scripts 23/23, lint/build/rustfmt/governance,
+  Tauri no-bundle, scope, and diff gates passed.
+
+- [x] Split the Fastify server routes by capability (2026-07-21) — ✅ Acceptance: keep
+  `ServerDependencies` and `buildServer()` as the sole stable composition surface; keep Fastify,
+  service/config construction, release-manifest resolution, and the exact-raw-body JSON parser in
+  `server.ts`; extract administrator, desktop auth/account/LLM/update, and billing/webhook HTTP
+  mapping into narrow private registrars. Preserve all 20 method/path pairs, schemas, statuses,
+  responses, cookies/CSRF, bearer hashing, LLM secrets/quota, update 204, disabled WeChat behavior,
+  raw signature bytes, and Store/Prisma transaction ownership. Add behavior characterization and
+  AST/source ownership RED/GREEN gates first; add no Fastify plugin, facade class, dependency,
+  provider enablement, product behavior, or public API. Design:
+  `docs/design-docs/2026-07-21-server-route-module-split.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-07-21-server-route-module-split-plan.md`. Implemented and verified:
+  `server.ts` is a 112-line stable root; eight private route/support files own the six capabilities;
+  boundary 6/6, server 65/65, app 549/549, native Windows Rust 173/173, worker 515/515, scripts
+  23/23, server build, app lint, governance, scope, and diff gates passed. No live provider smoke
+  was run; the existing duplicate administrator-session `Set-Cookie` remains a documented
+  compatibility residual.
+
+- [x] Split the Python ASR application module by failure boundary (2026-07-20) — ✅ Acceptance: keep
+  `worker_core.asr` as the sole stable production import surface; move errors/data/protocol,
+  registry/cache/factory policy, Qwen integration, SenseVoice normalization/VAD/WAV behavior, and
+  transcript artifact writing into five private `asr_runtime/` owners. Preserve exact root
+  definition/function identities, constant values, signatures/defaults, model order/default/cache
+  behavior, lazy SDK imports, provider errors, optional-VAD fallback, source validation before
+  filesystem mutation, filenames/bytes,
+  pipeline/contracts/local-media behavior, and canonical packaged-worker ownership. Add behavior
+  characterization and AST/import-boundary RED/GREEN tests before extraction; add no class facade,
+  model/download change, network/log path, product behavior, or artifact transaction claim. Design:
+  `docs/design-docs/2026-07-20-asr-module-split.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-07-20-asr-module-split-plan.md`. Implemented, verified, and
+  accepted on 2026-07-21: root 52 lines, private owners 95/77/316/113/132 lines,
+  boundary 9/9, focused 32/32, worker 515/515, app 549/549, native Windows Rust 173/173, scripts
+  23/23, installer scripts 5/5, Ruff/rustfmt/lint/build/Tauri no-bundle, and recursive 56/56 worker
+  mirror equality passed.
+
+- [x] Split the Rust transcript-detail module by failure boundary (2026-07-20) — ✅ Acceptance: keep
+  `transcript_detail.rs` as the stable Tauri command/DTO/composition root; move validated audio
+  playback/cache preparation, tolerant segment codec behavior, and official transcript edit
+  persistence into private `audio_playback`, `segments`, and `edit_storage` owners; move broad
+  characterization to a private test module. Preserve exact command/DTO/error, fixed official
+  paths, one-time backups, Markdown prefix, segment fallback/write, hard-link/symlink/reparse,
+  cache, task-manifest, and local-media behavior. Continue entering task storage only through
+  `SupportedTask` / `TaskEditSession`; add no Facade, raw manifest consumer, network/log path,
+  product behavior, or contract/schema change. Design:
+  `docs/design-docs/2026-07-20-transcript-detail-module-split.md`. Implemented as a 134-line root,
+  three private owners (160/99/191 lines), and a separate 791-line test module. Three behavior
+  matrices and one RED/GREEN ownership gate preceded extraction; focused 14/14, full Rust 173/173,
+  app 549/549, scripts 23/23, rustfmt, TypeScript/i18n lint, production build, and Tauri no-bundle
+  passed. Real Tauri transcript load/play/save smoke was not rerun. ExecPlan:
+  `docs/exec-plans/completed/2026-07-20-transcript-detail-module-split-plan.md`.
+
+- [x] Split the Douyin public-video fallback by failure boundary (2026-07-20) — ✅ Acceptance:
+  retain `worker_core.douyin_fallback` as the sole stable production/test adapter; separate shared
+  types, source/short-link policy, Router Data parsing, stream/ratio-probe policy, and
+  CookieJar/HTTP/atomic-download effects into a private `douyin/` package. Preserve exact accepted
+  inputs, one process-local anonymous client, request/probe policy, candidate order/deduplication,
+  fixed errors, four root-owned progress events, prior-MP4 preservation, fallback order, and root
+  identities. Add characterization and AST/import-boundary tests before extraction; add no login,
+  browser-cookie input, CAPTCHA/private-content bypass, generic platform framework, facade class,
+  contract, or UI behavior. Implemented as a 132-line root plus empty initializer and five private
+  owners. Characterization and RED ownership tests preceded extraction; focused 205/205, worker
+  501/501, app 549/549, normal-permission Windows Rust 169/169, scripts 23/23, Ruff, rustfmt,
+  TypeScript/i18n lint, builds, Tauri no-bundle, governance, diff, and recursive 50/50 packaged
+  worker equality passed. One unchanged Python `audioop` deprecation warning remains; live Douyin
+  and macOS runtime smoke are unverified. Design:
+  `docs/design-docs/2026-07-20-douyin-fallback-module-split.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-07-20-douyin-fallback-module-split-plan.md`.
+
+- [x] Split the Xiaohongshu public-video fallback by failure boundary (2026-07-20) — ✅ Acceptance:
+  kept the 169-line `worker_core.xiaohongshu_fallback` as the stable production/test adapter and
+  separated types, source/short-link, page-state, stream-policy, and CookieJar/transport ownership
+  into a private `xiaohongshu/` package. Public note/share/short-link and transient `xsec_token`, one
+  process-local anonymous CookieJar, decode/state/ranking, nested primary/backup attempts,
+  atomic/resumable MP4 replacement, fixed errors, progress, and root identities remain covered; no
+  login/browser-cookie, image/Live Photo, generic fallback framework, facade class, contract, or UI
+  behavior was added. Focused 222/222, worker 477/477, app 549/549, Rust 169/169, scripts 23/23,
+  Ruff/rustfmt/lint/build, Tauri no-bundle, and recursive 44/44 packaged-worker equality pass.
+  Credential-free live platform and macOS runtime smoke were not run and remain residual risks.
+  Design: `docs/design-docs/2026-07-20-xiaohongshu-fallback-module-split.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-07-20-xiaohongshu-fallback-module-split-plan.md`.
+
+- [x] Split the Bilibili public-video fallback by failure boundary (2026-07-20) — ✅ Acceptance:
+  kept the 137-line `worker_core.bilibili_fallback` as the stable production/test adapter and
+  separated types, source, playback, transport, and artifact responsibilities into a private
+  `bilibili/` package. URL/API/DASH selection, fallback order, fixed errors/progress, resumable
+  download, `.m4s`/merge cleanup, previous/final MP4 behavior, and root type identities remain
+  covered; no login/cookie/DRM bypass, generic downloader framework, facade class, or UI change was
+  added. Focused 183/183, worker 450/450, app 549/549, Rust 169/169, scripts 23/23, Ruff/rustfmt,
+  lint/build, 6/6 packaged-worker hashes, Tauri no-bundle, docs, and diff gates pass. Credential-free
+  live platform smoke was not run and remains a residual risk. Design:
+  `docs/design-docs/2026-07-20-bilibili-fallback-module-split.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-07-20-bilibili-fallback-module-split-plan.md`.
+
+- [x] Split the remaining video-processing application hotspot by workflow boundary (2026-07-20) — ✅ Acceptance:
+  kept `video_processing.rs` as a 68-line Tauri adapter/cancellation owner; extracted strict AI retry, model-aware
+  URL cache, and URL process/config/preflight orchestration into focused private child modules.
+  The complete 4-case source-preflight matrix preceded implementation; command paths, contract v3,
+  cache/result/diagnostic/cancellation behavior remain unchanged, with no new facade or local-media
+  placeholder. Retry 6/6, cache 5/5, URL/preflight 9/9, task-result 4/4, complete Rust 163/163, App
+  542/542, scripts 23/23, dependency scans, rustfmt, lint/build, Tauri no-bundle release build,
+  docs/diff gates passed.
+  Design: `docs/design-docs/2026-07-20-video-processing-module-split.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-07-20-video-processing-module-split-plan.md`.
+
+- [x] Extract video-processing task-result adaptation behind a focused private module (2026-07-19) — ✅
+  Implemented and accepted in `1fa2f37`:
+  - Keep `video_processing.rs` as the Tauri/application orchestrator while moving only typed worker
+    outcome classification and fixed synthetic task failures into
+    `video_processing/task_result.rs`. Preserve process-video and retry status/stage/error shapes,
+    cancellation precedence, closed terminal validation, diagnostics, cache/preflight behavior, and
+    contract v3. No dead local-media variant or additional execution facade was added. Four adapter
+    tests, all 20 `video_processing` tests, the dependency boundary, rustfmt, app 542, scripts 23,
+    lint/build, docs, diff, and scope gates pass; the native-permission Rust suite passes 159/159,
+    including blocked-stdin Windows cancellation. Contract, worker, manifest, command, and
+    user-visible behavior remain unchanged. Design:
+    `docs/design-docs/2026-07-19-video-processing-task-result-boundary.md`. ExecPlan:
+    `docs/exec-plans/completed/2026-07-19-video-processing-task-result-boundary-plan.md`.
+
+- [x] Cover App composition-root deep-link and artifact-location lifecycles (2026-07-19) - ✅
+  Acceptance: extend the existing real Chromium-rendered App smoke rather than adding a mocked DOM stack;
+  assert startup `complete_auth_flow`, exact task artifact opener routing, localized outcomes, and
+  absence of runtime exceptions. Design:
+  `docs/design-docs/2026-07-19-app-composition-integration-coverage.md`. ✅ Deep-link RED/GREEN,
+  browser 27/27, app 542/542, scripts 23/23, lint/build/docs/diff gates passed with no production
+  source or dependency change. ExecPlan:
+  `docs/exec-plans/completed/2026-07-19-app-composition-integration-coverage-plan.md`.
+
+- [x] Close worker terminal-result contracts across Python, Rust, and TypeScript (2026-07-19) - ✅
+  Acceptance: declare operation-specific closed result families in the canonical v3 contract;
+  require exactly one terminal stdout JSON line; reject unknown/missing fields, wrong nested types,
+  unsafe codes, incoherent statuses, and operation mismatches at both Rust and TypeScript runtime
+  boundaries; preserve cancellation precedence and valid cache/synthetic behavior; never echo a
+  rejected payload; and remove unused `model_dir` from model-download results. Design:
+  `docs/design-docs/2026-07-19-closed-worker-terminal-results.md`. ✅ TDD and full gates passed:
+  worker 411/411, Rust 157/157, app 540/540, scripts 23/23, Ruff, lint/build, rustfmt, packaged
+  worker 32-file SHA-256 equality, docs, and diff checks. ExecPlan:
+  `docs/exec-plans/completed/2026-07-19-closed-worker-terminal-results-plan.md`.
+
+- [x] Make worker media and task JSON writes crash-safe (2026-07-19) - ✅ Acceptance: stage task
+  video, normalized WAV, manifest, and preference snapshot beside their official destinations;
+  validate media before atomic replacement; preserve previous committed files on failure; register
+  only committed ordinary artifacts; and pass focused/full Worker, Ruff, docs, and diff gates. ✅
+  Focused 14/14, Worker 406/406, Ruff, governance, and diff checks passed; contract v4 and local
+  source variants subsequently completed in the archived feature plan.
+  Design: `docs/design-docs/2026-07-19-worker-atomic-artifact-commit.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-07-16-local-media-file-import-plan.md`.
+
+- [x] Centralize Rust video-worker execution policy behind a typed facade (2026-07-19) - ✅
+  The prerequisite introduced `WorkerJob + VideoWorkerFacade`; the local-media vertical slice later
+  atomically renamed it to `TaskWorkerFacade` and added `ProcessLocalMedia` with its real Python CLI
+  consumer. It now uniquely derives CLI invocation, lifecycle operation, progress route, retry-only
+  LLM material, and the private task lane; model download uses a separate semantic runtime method,
+  while `WorkerLane` remains the sole child-lifecycle owner. Original TDD and
+  gates: expected compile RED, focused policy 3/3, Rust 149/149, app 491/491 + production build,
+  worker 394/394, Ruff, scripts 23/23, rustfmt, docs 0/0, and diff check passed. Existing Vite bundle
+  size and Python `audioop` deprecation warnings remain non-blocking. Design:
+  `docs/design-docs/2026-07-19-typed-worker-job-facade.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-07-19-typed-worker-job-facade-plan.md`.
+
+- [x] Unify Rust worker runtime lifecycle ownership (2026-07-18) - ✅ Acceptance: route process
+  video, AI retry, source-identity preflight, and ASR model download through one private supervised
+  runner; preserve register-before-stdin, finish-before-reader-join, matching-instance cleanup,
+  structured-result-first cancellation, closed progress validation, and safe diagnostics; remove
+  direct spawn/wait/finish/terminate access from application modules without changing Tauri/worker
+  contracts or user-visible behavior. Design:
+  `docs/design-docs/2026-07-18-rust-worker-runtime-lifecycle.md`. ExecPlan:
+  `docs/exec-plans/completed/2026-07-18-rust-worker-runtime-lifecycle-refactor-plan.md`. ✅ Windows
+  Rust 141/141, app 491/491, Node contracts 23/23, lint/build/rustfmt/docs/diff gates, hosted macOS
+  140/140 with the real parent-child process-group fixture, and user-confirmed native Windows
+  cancellation/URL-retention/second-task stale-callback regression all passed.
+
+- [x] Invert the worker SourceIdentity dependency (2026-07-18) - ✅ Acceptance: importing core
+  models/source identity loads no platform fallback; short-link infrastructure is injected from the
+  CLI composition root; direct/short identities, canonical persistence, cache keys, privacy
+  sanitization, and external worker errors remain unchanged. ExecPlan:
+  `docs/exec-plans/completed/2026-07-18-source-identity-dependency-inversion-plan.md`. ✅ RED
+  exposed all three fallback imports; focused tests passed 57/57, worker passed 376/376, Ruff/docs/
+  diff gates passed, and all 30 canonical worker files matched the packaged mirror by SHA-256.
+
+- [x] P2 worker pipeline/media 结构性重构已收口（2026-07-10）✅ `run_worker_pipeline` 已拆为高层编排，媒体下载/选择、视频校验、音频准备和字幕/ASR finalize 下沉到阶段函数；原可选 AI finalize 后续已删除，AI 仅由 `retry_insights` 进入。`media.py` 下载 fallback 由 `DownloadStrategy` + `FALLBACK_DOWNLOAD_STRATEGIES` 驱动，保持 Douyin -> Xiaohongshu -> Bilibili 顺序和 YouTube 原失败分类路径。阶段审查通过 `uv run pytest worker\tests`（154 tests）、`uv run ruff check worker` 和 `git diff --check`。真实平台 smoke、未来新增平台前是否抽 `download_strategies.py`、Python 3.13 `pydub/audioop` 风险已登记在 `docs/exec-plans/tech-debt-tracker.md`。
+
+- [x] P2 orchestration hooks 错误分支测试已补强（2026-07-10）✅ 新增 `useInsightGenerationController` 关键错误分支和 `useSettingsController` load/save/cache/location/profile 错误分支覆盖；阶段审查通过 `npm --prefix app test`（27 files / 184 tests）、`npm --prefix app run build` 和 `git diff --check`。剩余 `useHistoryController` 并发/重复打开场景与轻量 hook harness 限制已登记在 `docs/exec-plans/tech-debt-tracker.md`。
+
+- [x] P2 orchestration hooks 主路径测试已补强（2026-07-09）✅ 新增 `useHistoryController`、`useSettingsController`、`useInsightGenerationController` hook 级单测，覆盖主路径和关键 gate；阶段审查通过 `npm --prefix app test`（27 files / 170 tests）、`npm --prefix app run build` 和 `git diff --check`。下一轮建议优先补 `useInsightGenerationController` preference 读取/保存/retry/profile save-skip 错误分支，其次补 `useSettingsController` load/save/cache/location/profile 错误分支；剩余测试债已登记在 `docs/exec-plans/tech-debt-tracker.md`。
+
+- [x] Close P2 God Component refactor (2026-07-09) ✅ Split `app/src/App.tsx` into focused account, workflow, transcript detail, settings, history, window chrome, and insight generation controllers. Final state: `App.tsx` is a composition root with `actionNotice`, startup/deep-link glue, `openCard` / `locateArtifact`, and Sheet/Flow composition retained. Validation passed: `npm --prefix app test`, `npm --prefix app run build`, and `git diff --check`. Remaining risks and next-stage priorities are tracked in `docs/exec-plans/tech-debt-tracker.md`.
+
+## Account and Billing
+
+- [x] Verify post-deploy acceptance on an isolated database (2026-11-08) ✅ 用一次性 harness
+  在**与生产同 schema 的隔离 SQLite**（按全部 9 条迁移新建，不含任何生产行）上起真实 HTTP
+  服务：真实 `PrismaStore` + loopback 端口 + fake OTP / 激活码 / LLM 供应商 sender，
+  不发真实邮件、不调付费供应商、不碰生产库。11 项断言全通过：health 200；OTP 启动与验证
+  生成 `flt_` ticket；ticket 交换得到 session 且重放同一 ticket 被 400 拒绝（单次消费）；
+  激活码首次申领 200 `status=sent` + ISO `retry_at`；一分钟内二次申领 429
+  `ACTIVATION_REQUEST_RATE_LIMITED` + `retry_at` + `Retry-After: 60`；激活码兑换授予权益；
+  `POST /api/desktop/llm/checkouts` 用同一 `request_id` 两次均 200 且 `quota_remaining`
+  保持 19（幂等，不重复扣减），换新 `request_id` 后降到 18（对照）。harness 与报告用后
+  删除，未进仓库。边界：这是 runbook 的 fake 测试路径验收。生产真实邮箱的申领→收信→兑换→
+  权益主链路已于 2026-09-19 闭环（证据见 `docs/exec-plans/tech-debt-tracker.md` 的
+  Live Activation Email Path）；仍缺的是管理员登录、真实登录后的动态日志脱敏复核与
+  Admin Web 激活码元数据核对，本 fake 路径不替代。
+
+- [x] Remove the unused WeChat Pay integration (2026-11-08) ✅ 该通道从未启用（生产
+  `WECHAT_PAY_ENABLED=0`），前端无 UI 调用方。已删除 server 的 `wechat.ts` / `billing.ts` /
+  `routes/billing.ts` / `prismaStore/billing.ts` / `memory/billing.ts`、`WECHAT_*` 运行时配置、
+  exact-raw-body JSON parser、`Order` 与 `WebhookEvent` Prisma 模型及 Store 方法；桌面端删除
+  `create_wechat_checkout` / `get_checkout_status` 两个 Tauri 命令与前端 accountClient 对应类型、
+  解析与测试；清理 `.env.example`、nginx 回调 location、部署手册与当前产品/架构/安全/设计文档描述。
+  新增破坏性迁移 `202611080001_remove_wechat_billing`（`DROP TABLE "Order"` 与
+  `DROP TABLE "WebhookEvent"`）。历史发布说明、归档计划与旧设计文档按史实保留。本地门禁：server
+  37 文件 375 项、前端 136 文件 1506 项、脚本 57 项、tsc 与前端 build、文档治理 0 错误 0 警告。
+  生产部署（用户授权）：备份 `20261108T113054Z`（两表均 0 行、sha256 清单、`integrity_check` ok、
+  隔离 restore-smoke 7 项、异地 ACL 副本）→ 12 KB 增量 bundle 送到 `5657c1e` → `npm ci` →
+  prisma generate → 376 项测试 → tsc → 第 9 条迁移（两表已消失、13 个用户保留、
+  `migrate status` 9 条 up to date）→ 新代码 preflight 7 项 ok → start/restart 双通道 health 200。
+  线上探针：`/api/wechat/notify` 与两条 billing 路由均 404，auth-first 路由 401；生产 `.env` 已删净
+  `WECHAT_*`（剩 13 个有效键），nginx `app-server.conf` 的回调 location 已删除并 reload
+  （`nginx -t` 通过、备份 `*.bak-remove-wechat-<STAMP>`），`/download/` 与 `/health/*` 仍 200。
+  部署文件哈希（LF 归一化）与本地 main 一致。残余风险：DROP TABLE 不可逆，回滚须整套恢复
+  代码 + 迁移前数据库 + 匹配 `.env`（备份内已含两者）。
+
+- [x] Deploy the 2026-10-28/29 server fixes to production (2026-11-08) ✅ 用户授权后按
+  `deploy/server-deployment.md` 把生产 `app-server` 从 `30934a4`（2026-10-20）部署到
+  `bf92310`：停服后 WAL 合并为单一 `app.sqlite`，旧代码 `db:preflight --mode current`
+  7 项 ok；备份 `20261108T103403Z`（sha256 清单、`integrity_check`、隔离 restore-smoke 7 项、
+  `migrate status` 7 条 up to date），异地副本存于本机受 ACL 收紧的站外目录。随后 fetch → checkout → `npm ci`（136 包）→ `prisma generate` →
+  `npm test`（39 文件 400 项通过）→ `tsc --noEmit` → `db:migrate:deploy` 应用第 8 条
+  `202610290001_remove_entitlement_status` → `migrate status` 8 条 up to date → 新代码
+  preflight 7 项 ok → 启动与 restart，`/health/live`、`/health/ready` 直连/nginx 双通道 200。
+  线上探针：`GET /api/desktop/updates/latest` 404 Fastify 三件套，`GET /api/desktop/account`
+  与两条 POST 路由 auth-first 401；部署文件 sha256（LF 归一化）与 main 一致。
+  三个计划已归档 `docs/exec-plans/completed/`。后续补记：ticket 交换、幂等额度结账与
+  429 `retry_at` 已于 2026-11-08 在隔离库 HTTP 验收中闭环（见下一条，runbook 要求的
+  fake/provider-approved 测试路径，不涉及真实付款）；生产真实邮箱的申领/兑换链路已于
+  2026-09-19 跑通，仍待真机的是管理员登录、动态日志脱敏复核与 Admin Web 元数据核对。
+  回滚必须整套恢复代码 + 迁移前数据库 + 匹配 `.env`。
+
+- [x] Roll out self-service email activation to the production server (2026-09-19) ✅ 生产
+  `https://frameq.8xf.pro` 已从 `1afb925` 快进部署到 `5c9e974`，三条 20260824 迁移全部应用
+  （共 6 条，`Database schema is up to date!`），`APP_SELF_SERVICE_ACTIVATION_ENABLED=true`，
+  `.env` 权限 600，服务 `active (running)` 且 `Result=success`。两阶段灰度：Phase A（开关 false）
+  探针报 `ROLLOUT_STATE=route_registered`，回归面全绿（`/health/live`、`/health/ready` 200，
+  `/login` 200、`/admin/login` 200、`/dashboard` 302、营销站 `/`、`/privacy`、`/download` 200，
+  桌面 API 形状不变）；Phase B（开关 true）重启换 PID，健康仍 200/200，真实配置解析器确认
+  `environment: production` 且 `selfServiceActivationEnabled: true`。零数据丢失：十张表行数迁移
+  前后完全一致（11 users、11 activation codes、128 usage events），11 条历史激活码回填
+  `issuanceSource='admin'`；备份 `20260919T045124Z` 含 `SHA256SUMS` 校验通过，并已拉取站外副本。
+  隔离副本预演（种子测试账号、未发信）已端到端复现开关语义：关= `can_request_activation_code=false`
+  + `404 FEATURE_NOT_AVAILABLE`；开= 无权益用户 `true`、有权益用户 `false` + `409 ENTITLEMENT_ACTIVE`、
+  限流 `429 ACTIVATION_REQUEST_RATE_LIMITED`、坏 locale/多余字段/空体 `400 INVALID_REQUEST`，且
+  未产生任何激活码行。生产库零预演残留。执行计划：
+  `docs/exec-plans/completed/2026-09-19-self-service-activation-server-rollout-plan.md`。
+  后续补记（2026-11-09 核对）：真机认证冒烟的请求→收信→兑换→权益主链路已于 2026-09-19 用真实
+  测试邮箱在生产跑通，证据见 `docs/exec-plans/tech-debt-tracker.md` 的 Live Activation Email Path；
+  本条当时的「尚未执行」口径已过时。残余风险收窄为：Admin Web 激活码元数据/无明文核对、
+  409/429 与 `Retry-After` 真机验证、管理员登录及真实登录后的动态日志脱敏复核。
+  SMTP 接受不等于送达。
+
+- [x] Make payment settlement, activation-code redemption, and administrator compensation transactional (2026-07-10) ✅ Store semantic transaction boundaries now commit all related state together; administrator quota grants use the same audited additive adjustment and have no remaining-quota bypass; verified webhook replays recover only deterministic old payment states, while ambiguous old activation/admin states require audited `manual_repair`. WeChat billing remains disabled/unintegrated. Server/worker/app/Rust/docs/diff gates passed.
+
+- [x] Add server-managed LLM config and monthly insight quota (2026-06-22) ✅ Admin Web owns encrypted dedicated Locus client LLM config and per-user quota editing; desktop accounts quota per cloud LLM API call attempt; settings no longer exposes LLM fields; server/app/Rust/worker/docs gates passed.
+
+- [x] Use administrator-issued activation codes as the visible entitlement unlock path (2026-06-21) ✅ Admin OTP login, hash-only one-time 31-day activation codes, desktop redemption, entitlement reuse, Admin Web list/create flow, and client-side processing gate; server/app/Rust/docs gates passed.
+
+- [x] Add account login and entitlement foundation (2026-06-21) ✅ TypeScript Fastify service with Prisma SQLite, email OTP login, desktop deep-link session exchange, entitlement model, and client-side processing gate; server/app/Rust/docs gates passed.
+
+## 进行中
+
+- [ ] Close the remaining activation acceptance gaps (2026-09-19) — ✅ 生产真机主链路已完成：
+  2026-09-19 用真实测试邮箱跑通 OTP 登录 → 申领 → 收信 → 兑换 → 权益（31 天 / 20 Credits），
+  台账 0→1 条 `self_service_email`，消费后重放与未知码均 400；证据见
+  `docs/exec-plans/tech-debt-tracker.md` 的 Live Activation Email Path 与 `docs/exec-plans/index.md`。
+  部署与隔离预演见 `## Account and Billing` 与
+  `docs/exec-plans/completed/2026-09-19-self-service-activation-server-rollout-plan.md`。
+  仍待验收：人工确认三语邮件模板与 31 天/20 Credits/不得转发提示；权益有效期内重复申领
+  `409 ENTITLEMENT_ACTIVE`、一分钟内二次申领 `429 ACTIVATION_REQUEST_RATE_LIMITED` 且带
+  `Retry-After`；Admin Web 激活码列表的来源/绑定账号/状态且无明文；管理员登录与真实登录后的
+  动态日志脱敏复核。记录纪律：只留 HTTP 状态码与错误码，不留邮箱、激活码、会话 token 或请求体。
+  阻塞原因：需真实测试邮箱与权益缺失/已过期的测试账号。
+
+- [ ] Implement user-initiated desktop diagnostic export (2026-08-09) — ✅ Implementation complete;
+  2026-11-08 在 Windows native Tauri build 上**脚本化跑通了真实系统 Save As 对话框的四项验收**，
+  macOS 仍未验。做法：给 WebView2 加 `--remote-debugging-port=9222` 打开 CDP（解除 8-10 记录的
+  「WebView 无 CDP/UIA 树」阻塞），CDP 调 `export_diagnostics`，再用 Win32 消息 + `SendInput`
+  绕过被安全策略拦住的 .NET UIA 驱动「另存为」对话框，全程无鼠标点击。四项结果：success →
+  `exported`，ZIP 真实落盘且只有 `diagnostics.json` + `desktop.log`、十字段闭合 manifest、
+  <= 5 MiB，5 个 seed 敏感标记与 3 个真实配置值全部 0 命中；cancel → `cancelled` 且不产生文件；
+  覆盖替换 → `exported`，确认框点「是」后目标被真实 ZIP 替换、旧 sentinel 消失、无 `.part`
+  残留、无 app-local 副本；目标失败 → 注入只读/独占锁/目录目标时 Common Item Dialog 在选文件
+  阶段即拒绝，返回 `cancelled`，原文件完好、无 `.part`、UI 稳定且无残留对话框。
+  同日另复跑门禁（Rust `diagnostics::` 50 + `diagnostic_export::tests` 8、worker 73、scripts 57、
+  前端 23、打包 worker 字节一致）并新增常驻回归测试 `real_zip_export_to_disk_rejects_forbidden_data`
+  （真实 `assemble_for_paths` + `atomic_write` 落盘、全条目脱敏扫描、`.env`/文字稿/模型缓存陷阱
+  不被读取）。**限制**：宿主二进制是 2026-11-05 native release build（内嵌 `app_version=0.4.3`），
+  **不是 NSIS 安装包**——diagnostic-export 模块自 8-10 未改动，但严格意义的 packaged
+  absence-of-forbidden-data 证据仍缺；目标失败只验到对话框层稳定拒绝，Rust `failed` 码仍由单测
+  `writer_failure_preserves_existing_destination_and_result_has_no_path` 覆盖；macOS 对话框与替换
+  行为仍缺真机。全程不碰生产、不发邮件、不调供应商，harness 与产物用后删除。Product spec:
+  `docs/product-specs/2026-08-09-desktop-diagnostic-export.md`. Design:
+  `docs/design-docs/2026-08-09-desktop-diagnostic-export.md`. ExecPlan:
+  `docs/exec-plans/active/2026-08-09-desktop-diagnostic-export-plan.md`.
+
+- [x] Desktop sidebar / Home / local Collections native acceptance (2026-10-30) — ✅ 2026-11-08
+  三项残余原生验收闭环。①**详情动作激活 13 项**：用真实指针/键盘输入打开 `大模型技术` 详情，
+  确认 `新建笔记` 与 `添加笔记到合集` 就位、外层管理动作不出现在详情、成员编辑区展开且搜索框
+  自动聚焦、真实勾选经 Rust IPC 写入 `collections.json` 再取消恢复、Escape 关闭并把焦点还回
+  来源按钮、`新建笔记` 打开主页 composer；前后 `collections.json` 字节一致。②**原生合集删除
+  14 项**：UI 创建临时合集并加入一条真实历史笔记，经外层管理器的确认框删除；合集条目消失，
+  该任务 6 个文件（`task.json`、`media/audio.wav`、`media/video.mp4`、
+  `transcript/segments.json`、`transcript/transcript.md`、`transcript/transcript.txt`）字节不变，
+  其余合集与 63 个任务文件均未变。③**新建笔记 → 真实处理 → 自动入集**：由用户手动操作完成，
+  从 0 篇的 `大模型技术` 点 `新建笔记`，提交公开文章
+  `https://mp.weixin.qq.com/s/uwOUu8X3OLQERlkv75mfrQ`，生成真实 `web_page` 任务
+  `20261108-145629-web-602ecab8a8b14291`（`status=completed`，`article/article.txt` 10,721 字节、
+  `article/article.md` 10,882 字节、`insights_count=0`、无 AI 生成），合集计数 0→1 且该 task id
+  已写入 `collections.json`；web 工作区正常清理、无付费供应商调用。前置修复：本机 11-05
+  native build 的 `resources/webview-host` 与 extractor 版本混用，导致 web 会话恒报
+  `WEB_STORAGE_FAILED` / `recovery_required`；清除孤立 `.app-system-webviews` 工作区并以
+  `tauri build --no-bundle` 重建（9m37s，exit 0）后 `dataAccess=ready`，属构建产物问题非产品
+  回归。**剩余边界**：membership-retry 失败提示与重试按钮未被触发（正常路径无失败），仍只有
+  组件测试覆盖；macOS 原生对话框与图形交互仍缺真机。证据见 `design-qa.md` 与
+  `docs/exec-plans/active/2026-10-30-desktop-sidebar-home-plan.md`。
+
+## 待办
+
+- [x] Prove the `yt-dlp` 2026.10.21 upgrade with a real YouTube download (2026-10-22) — ✅ Verified
+  2026-10-28 with a real download through the packaged worker path. The lock had moved from
+  `2026.8.19` to `2026.10.21` after `scripts/check-yt-dlp-drift.mjs` reported drift; before the next
+  desktop release, run one real download through the packaged worker path and record the result:
+
+  ```bash
+  PYTHONPATH=worker uv run python -c "
+  from pathlib import Path
+  from worker_core.media import download_video
+  result = download_video('https://www.youtube.com/watch?v=jNQXAC9IVRw', Path('build/ytdlp-smoke'))
+  print(result.returncode)
+  print((result.stdout or result.stderr)[:400])
+  "
+  ```
+
+  A non-zero return code blocks the release. The upgrade must not ship on the strength of the lock
+  diff alone.
+
+  2026-10-28 第二次尝试，仍然阻塞在网络层，不是 yt-dlp 的问题。证据三条：
+  1. 运行期版本已确认是锁里的 `2026.10.21`（`uv run python -c "import yt_dlp; print(yt_dlp.version.__version__)"`）。
+  2. 走代理（`HTTPS_PROXY=127.0.0.1:51825`）时 yt-dlp 三次重试全部 `Tunnel connection failed: 502 Bad Gateway`；
+     绕过代理直连（`--noproxy '*'`）时 `www.youtube.com` 返回 `000`，而同一条直连路径访问 `example.com` 返回 `200`，
+     说明机器本身有直连出口，只有 YouTube 被拦。
+  3. 本机 DNS（网关 `192.168.31.1`）把 `www.youtube.com` 解析到 `2001::1` 和 `174.132.167.252`，均非 YouTube 地址。
+  按上面的命令跑 worker 路径，结果是 `CommandExecutionError: YOUTUBE_DOWNLOAD_FAILED`，
+  与抽取器回归报的是同一个通用码，所以这条冒烟在这个网络环境下无法区分「网络被墙」和「yt-dlp 挂了」。
+
+  2026-10-28 第三次尝试，**通过**。前两次失败的原因是走错了代理：bash 环境里的
+  `HTTPS_PROXY` 被覆盖成 `127.0.0.1:51825`（WorkBuddy 内置代理，对 YouTube 返 502），
+  而 Windows 系统代理是 `127.0.0.1:7890`（`HKCU:\...\Internet Settings` 的 `ProxyServer`）。
+  显式指定 `HTTPS_PROXY=http://127.0.0.1:7890` 后 YouTube 返回 200，下载链路随即打通。
+
+  证据（`https://www.youtube.com/watch?v=uhd9Lgw_gGI`，34 分 23 秒）：
+  1. 运行期 `yt-dlp 2026.10.21`，与 `uv.lock` 一致。
+  2. `download_video()` 走完 worker 的完整命令（720p 格式选择器 + 合并 mp4 + 字幕参数）
+     返回 `returncode: 0`，耗时 39 秒，产物 `uhd9Lgw_gGI.mp4` 168,978,515 字节。
+  3. `ffprobe` 确认文件有效：1280x720 av1 视频 + aac 音频，duration 2063.35 秒。
+  4. 格式选择器命中 `bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]` → `398+140`，
+     正是 worker 期望的组合，没有退化到低画质或纯音频。
+  5. 产物里没有字幕文件不是回归：`--list-subs` 显示该视频既无手动字幕也无自动字幕。
+
+  上面第 2 条是在「本机 PATH 里没有 deno」的条件下跑的，日志里有
+  `n challenge solving failed: Some formats may be missing`（yt-dlp 只找到 node/bun，
+  且默认禁用远程组件下载）。**这条 caveat 已消除**：把仓库里打包好的
+  `app/src-tauri/resources/bin/`（内含 `deno.exe` 2.9.1）前置进 PATH —— 与 Rust
+  `worker_runtime/command.rs` 里 `prepend_to_path` 的生产行为等价 —— 重跑后：
+
+  - `download_video()` 同样 `returncode: 0`，产物 168,978,532 字节；
+  - **stderr 里 WARNING/ERROR 一行都没有**，`n challenge` 警告消失；
+  - worker 传的 4 个 `--js-runtimes`（deno/node/quickjs/bun）里 deno 优先生效，
+    输出仍然稳定命中 `398+140`。
+
+  结论：生产环境自带 deno，不需要给 `build_ytdlp_command` 补 `--remote-components`。
+  本地复验外部下载类问题时，**先把 `app/src-tauri/resources/bin` 前置进 PATH**，
+  否则会看到只在本机出现的假警告。
+
+- [x] Decide how the `yt-dlp` drift check runs on a schedule (2026-10-22) — ✅ A local weekly
+  automation named `yt-dlp 版本漂移检查` runs every Monday at 09:00 in this workspace and reports
+  exit code 0, 1, or 2 with the upgrade and verification steps attached. A local routine was chosen
+  over a CI job because the pin only matters right before a release and the check needs no secrets.
+  The script and its exit-code contract live in the repository; the schedule itself is per-machine
+  and must be recreated if this workstation is replaced.
+
+## 已完成
+
+- [x] 停止支持 macOS Intel（2026-11-16）— ✅ 发布目标收窄为 Windows x64 与 macOS Apple Silicon。`onnxruntime-node@1.29.0` 没有 `darwin/x64` 二进制，维持 Intel 需要换用 `1.20.1` 并长期并行 napi-v3 的第二套版本策略。改动：`desktop-release.yml` 删除 Intel 作业与 `build_macos_x64` 输入；`macos-intel-acceptance.yml` 收窄为 Apple Silicon 并改名 `macos-acceptance.yml`（测试同步改名）；`asr-spike-macos.yml` 去掉 Intel 矩阵；`build-installer.mjs` / `build-worker-ts.mjs` / `build-system-webview-host.mjs` / `make-macos-dmg.sh` 的 target 闭集只保留 `windows-x64` 与 `macos-arm64`，未支持目标在参数解析与查表处直接失败；Rust 删除 `macos-x64` 资源标识，`component_target` 在非受支持平台编译期失败；删除 Intel 验收设计文档并同步索引、README、产品规格与执行计划。门禁：`node --test scripts/tests/*.test.mjs` 171/171、`tauri-window-config.test.ts` 30/30、文档治理 0/0。残余：营销站下载页不在本仓库，需人工删除 Intel 下载入口；已有 Intel 用户停留在 v0.6.1，不再收到更新；`pyproject.toml` 里的 macOS x86_64 依赖标记随 Python 运行时的移除一并清理。
+- [x] 生产 checkout 与数据库文件去品牌化（2026-11-11 23:29）— ✅ `/home/ubuntu/FrameQ` → **`/home/ubuntu/app`**，`server/data/frameq.sqlite` → **`app.sqlite`**（就地 `mv`，同一文件系统瞬间完成）。
+  步骤：停服 → 新备份 `20261111T152758Z`（DB + `.env` + SHA256SUMS，异地副本 `C:/Users/bicho/frameq-server-backups/20261111T152758Z/`，两侧校验）→ 备份 unit 与 nginx 配置到 `/home/ubuntu/systemd-backups`、`/home/ubuntu/nginx-backups` → `mv` 目录 → `mv` 库文件 → `.env` 的 `DATABASE_URL` 改 `file:../data/app.sqlite` → unit 三处路径（`WorkingDirectory`/`ExecStart`/`ReadWritePaths`）改新前缀 → nginx `root` 改 `/home/ubuntu/app/site` + `nginx -t` + reload → `daemon-reload` → 启动。停机约 1 分钟。
+  验证：新路径 `db:preflight --mode current` ok、`migrate status` up to date；`/`、`/video/locus-launch-30s.mp4`、`/health/live`、`/health/ready` 全 200；`/admin` → `Locus Admin Login`、`/login` → `Locus Login`；`GET /api/desktop/account` 401；unit、nginx、`.env` 内已无 `/home/ubuntu/FrameQ`；站点从新 root 正常出图出视频。
+  仓库同步：`scripts/deploy-marketing.sh` 与 `site/scripts/deploy-sftp.py` 的默认远端路径、`deploy/nginx/locus-server.conf` 的 `root`、`deploy/marketing-deployment.md`、运行手册 §1a 表与全文库名（参考拓扑块里的 `/opt/frameq` 保留为参考示例）、命名规范「外部身份」表、改名规格与 active 计划状态行。
+  注意：`server/backups/` 随 checkout 一起搬到新路径，历史备份仍可用；异地副本目录名 `frameq-server-backups` 未改名（只是本机文件夹）。回滚 = `mv` 回旧名 + 恢复 unit/nginx 备份 + `.env` 改回 `frameq.sqlite`。
+
+- [x] 生产 systemd 服务改名 `frameq-server` → `locus-server`（2026-11-11 23:07）— ✅ 线上 unit 换成 `/etc/systemd/system/locus-server.service`（描述 `Locus account and activation server`，内容与旧 unit 逐行一致，仅改描述），旧 unit 停用、删除并 `daemon-reload`；`systemctl list-unit-files` 已无任何 `frameq` 单元，新服务 `enabled` + `active`。
+  停机窗口约 6 秒（stop 旧 → start 新）。回滚备份：`/home/ubuntu/systemd-backups/frameq-server.service.20261111T150716Z`。
+  `scripts/restart-server.sh`（服务器本地脚本）默认服务名与三个 `FRAMEQ_*` 变量改成 `LOCUS_*`，`bash -n` 通过并实跑一次重启成功。仓库侧同步：`deploy/systemd/frameq-server.service` → `locus-server.service`（描述改 Locus）、`deploy/README.md`、运行手册 §1a 表与五处 `systemctl` 命令、`scripts/check-self-service-rollout.mjs` 提示文案、`server/tests/deploymentContracts.test.ts` 路径、架构走查链接、改名规格与 active 计划的状态行，提交 `ed66617`。
+  **当时故意没改**：checkout `/home/ubuntu/FrameQ` 与库文件 `frameq.sqlite` 保留旧名（改名要动 nginx 站点 root、`DATABASE_URL`、备份路径与 systemd `ReadWritePaths`）；同日 23:29 已按用户要求一并迁移，见上一条。`security.ts` 限流哈希前缀仍然保留。
+  验证：`/health/live`、`/health/ready` 直连与 nginx 双 200；`/admin` → `Locus Admin Login`、`/login` → `Locus Login`；`GET /api/desktop/account` 401 `AUTH_REQUIRED`；8787 仅一个监听进程。
+
+- [x] 生产服务端部署到改名后的代码（2026-11-11 深夜）— ✅ 生产 `frameq-server` 从 `f473a86`（11-08 的代码）部署到 `3cfd451`，**`/admin`、`/login` 首次真正显示 Locus**（部署前线上 `<title>FrameQ Admin Login</title>`、页面 14 处 FrameQ，说明此前只改了 nginx 域名与营销站，Node 进程一直跑改名前的代码）。
+  同批必须做的配置迁移：生产 `server/.env` 的 `FRAMEQ_SERVER_HOST` / `FRAMEQ_SERVER_PORT` / `FRAMEQ_SELF_SERVICE_ACTIVATION_ENABLED` / `FRAMEQ_ADMIN_EMAIL` / `FRAMEQ_LLM_CONFIG_ENCRYPTION_KEY` 全部改成 `APP_*`——新代码只读 `APP_*`，漏改会在 production 下 fail-closed 起不来；改后逐行比对值未变（文件 538B → 523B，正好是 5 个键各少 3 字符）。
+  流程：停服 → 旧代码 `db:preflight --mode current` ok → 备份 `20261111T145359Z`（DB + `.env` + SHA256SUMS，异地副本 `C:/Users/bicho/frameq-server-backups/20261111T145359Z/`，两侧 sha256 均校验）→ 隔离副本 `db:restore-smoke` + `migrate status`（9 条 up to date）→ 743 KB 增量 bundle（服务器 fetch GitHub 仍慢，沿用 bundle 路线）→ checkout → env 改名 → `prisma:generate` / `build` / `npm test`（37 文件 376 通过）/ `db:migrate:deploy`（无待跑迁移）/ `preflight` ok → 启动。
+  验证：`/health/live`、`/health/ready` 直连与 nginx 双 200；`/admin` → `Locus Admin Login`、`/login` → `Locus Login`，两页 FrameQ 计数均为 0；`GET /api/desktop/account` 仍 401 `AUTH_REQUIRED`；`/api/wechat/notify` 404（微信链路确实已删）；`brand.ts`/`adminPage.ts`/`loginPage.ts` 生产与本地 LF 归一化哈希一致；`systemctl restart` 幂等通过。
+  残余：`security.ts` 限流哈希前缀仍是 `frameq:auth-rate-limit:v1`（改前缀会让现有计数失效，故意保留）；systemd 单元名与 `frameq.sqlite` 属既定生产身份，不在改名范围。回滚需整套「`f473a86` 代码 + 备份 DB + 备份里的旧 `.env`」，env 键名要一起回退。
+
+- [x] Add free-space and writability preflight plus a step log to the Windows installer (2026-11-09) — ✅
+  `app/src-tauri/windows/installer-hooks.nsh` 在首个负载写入前用 `${DriveSpace}` 量 `$INSTDIR` 所在卷
+  余量（要求 `ESTIMATEDSIZE` + 256 MB），再建探针文件验证可写；两项结果与安装步骤追加到
+  `$TEMP\install.log`（超 64 KB 先清空，写入失败一律忽略）。交互安装失败弹一条中文提示
+  （写明哪项失败、实测数字或路径、日志路径）并 `Abort` 回组件页；静默 / `/P` / `/UPDATE` 只记录
+  不阻断。2026-10-20 的安全软件提示仍在最前且保持建议性质。踩到的三个坑：模板在本文件 include
+  之后才 `!define ESTIMATEDSIZE`（回退必须写在宏展开处）、`FileOpen ... a` 不定位到末尾（需
+  `FileSeek $h 0 END`）、`${GetTime}` 会覆盖 `$R0`–`$R6`（日志文本须先固化到 `$R8`）。门禁：本机
+  Tauri 自带 `makensis` 编译无告警；脚手架按真实 include 顺序跑三条静默分支——可写目录
+  `writability result=ok`、`C:\Windows\System32\...` 下 `result=fail`（该目录已由 shell 确认不可写）、
+  `ESTIMATEDSIZE=999999999` 时 `freespace result=fail required_mb=976818`——均未阻断；余量数字与
+  PowerShell 一致（95,717 MB vs 95,718 MB）。另用 11-05 生成的真实 `installer.nsi`（v0.4.3 defines）
+  重编通过：209,808,676 字节 / 9m40s / 无告警，产物已删、未发布。技术债对应条目已移入
+  Completed / Resolved。未验证：交互弹窗与 `Abort` 分支需要人工在屏幕前，签名安装包仍由发布流程产出。
+
+- [x] Make Douyin share page retries visible in exported diagnostics (2026-11-09) — ✅ worker 早已通过封闭进度契约
+  上报 `douyin.page.retrying`，缺的是桌面端：进度事件不进诊断包，
+  `runner/progress.rs` 在路由已校验事件时识别该 message code，按固定文案追加桌面日志
+  `worker.douyin.share_page.retry`（detail 恒为 `stage=douyin_share_page`），
+  `diagnostics/export.rs` 的 `safe_desktop_event` 把它列入白名单输出为
+  `worker_douyin_share_page_retry`；导出包 `desktop.log` 中一条记录对应一次重试，
+  首次成功与重试后成功可区分。未改 `APP_DIAGNOSTIC` DTO、未 bump 契约版本、未改 worker，
+  普通 stderr 仍只在模型下载时才落盘。门禁：`cargo test --lib share_page` 2 项通过（含真实
+  `ProcessVideo` 运行与一条对照）；`cargo test --lib` 510 passed / 50 failed / 29 ignored，
+  同一命令在 `git stash` 回退的 HEAD 上为 508 passed / 50 failed / 29 ignored，失败全部落在
+  `data_storage`、`history_deletion`、`web_page` 的文件权限用例，progress/diagnostics/export
+  无失败，并已用 stash 复现同一失败确认与本次改动无关。技术债 Medium 对应条目已移入
+  Completed / Resolved。
+
+- [x] Remove the fixed four-second wait from the MarkdownSplitter child-process test (2026-11-09) — ✅
+  `worker/tests/test_insights.py` 改为两段事件等待：子进程先发 `started` 信号（30 秒预算，覆盖
+  `spawn` 解释器启动），再发结果（10 秒预算，只约束 splitter 本身）；任一超时都终止子进程并抛
+  `AssertionError`，保留「splitter 永不前进」的死锁检测。新增
+  `test_markdown_splitter_child_stall_is_reported_and_terminated` 用真实挂起子进程验证。本机实测
+  spawn 到首个信号 0.19–0.27 秒，而 CI `42044874583` attempt 1 在负载下超过 4 秒。门禁：ruff 通过；
+  聚焦 13 项；worker 全量 1276 passed / 4 skipped；Node 脚本 57 项；Python 脚本 1 项；文档治理
+  0 错误 0 警告。技术债 Medium 对应条目已移入 Completed / Resolved。顺带核对：另一条浏览器 flake
+  债务里描述的 locale-freeze 等待已随 `app-input.browser.test.ts` 重写而消失，当前文件是 5 项
+  storage 边界用例；`waitFor` helper 仍是 25 ms 轮询 + 8 秒预算，无正在失败的断言，事件驱动改造
+  列为可选，不再当作待修故障。
+
+- [x] Bound the `yt-dlp` download child process with an execution budget (2026-11-09) — ✅
+  `media.py` 的 `run_command` 对 `sys.executable -m yt_dlp ...` 形状命令施加 20 分钟
+  `subprocess.run` 预算；`ffprobe`、`ffmpeg` 与 B 站备用路径不受影响。`download_video` 在三个下载
+  结果入口判定 `VIDEO_DOWNLOAD_TIMEOUT`，命中后直接抛出 `CommandExecutionError`，跳过字幕重跑、
+  YouTube 单次重试与三个平台备用下载，经 `MediaPreparationFacade` 归入既有 `VIDEO_DOWNLOAD_FAILED`。
+  新增 5 项测试，其中 `test_run_command_terminates_a_hung_ytdlp_child` 用真实挂起子进程验证终止与
+  结果形状。门禁：ruff 通过；worker 聚焦 40 项、全量 1275 passed / 4 skipped；Node 脚本 57 项；
+  Python 脚本 1 项；文档治理 0 错误 0 警告；`git diff --check` 通过。真实 `yt-dlp 2026.10.21`
+  子进程在 1200 秒默认预算下 `returncode=0`。产品规格
+  `docs/product-specs/2026-11-09-bounded-ytdlp-download.md`，执行计划已归档
+  `docs/exec-plans/completed/2026-11-09-bounded-ytdlp-download-plan.md`，技术债 Medium 第一条已移入
+  Completed / Resolved。公网回归同日补跑通过：根因是 `uv run` 子进程读到 WorkBuddy 内置代理
+  `127.0.0.1:54717`（对 YouTube 返 502），shell 前缀设的 7890 未传导；在 Python 进程内改写小写
+  `https_proxy`/`http_proxy` 指向系统代理 7890、把 `app/src-tauri/resources/bin` 前置进 PATH 后，
+  `download_video('https://www.youtube.com/shorts/nnV9a4w2WjQ')` 返回 `returncode=0`，产物
+  1,557,058 字节 / 59.443084 秒，`ffprobe` 确认 av1 360x640 视频 + aac 音频。
+  Residual risk：Python 只终止 yt-dlp 父进程，合并阶段派生的 ffmpeg 可能残留至 `ProcessSupervisor`
+  终止整个 worker 进程树；固定预算在极慢网络下可能提前结束大文件下载。
+
+- [x] 清理营销站隐私页与 FAQ 的残留开发术语并上线（2026-09-19）— ✅ 已部署：`https://frameq.8xf.pro` 首页与
+  隐私页的 `LLM` / `ASR 权重` / `app-local data` / `server-managed` / `有界额度` 全部归零，线上三页经 nginx
+  回读的 sha256 与本地 `site/dist` **逐字节一致**，演示视频哈希未变。改动 6 个源文件共 22 处：
+  `pages/privacy.astro`（16 处）、`pages/index.astro`（meta）、`components/OutputPreview.astro`（有界额度→有额度上限）、
+  `consts.ts`（`TRUST_COPY` 云端 LLM→云端 AI）、`content/faq/01-asr-model-download.md`、`content/faq/03-ai-upload.md`。
+  **方法**：不自行造词，先定"目标口径基准"——首页 `TrustBoundary.astro` 三栏早已是目标语域
+  （「语音识别模型文件」「AI 服务密钥或云端 AI 模型」「统计代码、追踪脚本或第三方内容」），隐私页是唯一还在讲
+  开发词的一页，因此全部向三栏对齐、逐条可映射。**明确判定"不改"的三处**（防下轮重开）：下载页的
+  ASR / SenseVoiceSmall / `funasr_onnx`（与桌面端 i18n 一致，App 自己就叫「ASR 模型」）；`OutputPreview` 的格式
+  标签与模型名（该组件故意是产物格式预览，改了失真）；隐私页的 Google Analytics / Plausible / Hotjar 具名清单
+  （产品名，隐私语义需要保留）。部署证据：SFTP 按 sha256 比较，上传 2（`index.html`、`privacy/index.html`）、
+  删除 0、跳过 79，重跑 81/81 哈希一致（幂等）；部署前整站备份
+  `/home/ubuntu/FrameQ/backups/webroot-20260919T070137Z.tar.gz`（5.9 MB，87 条目，sha256 `91a2d3e6…`）。
+  **注意 FAQ 只渲染在首页**，下载页不变是正确的（其 `funasr_onnx` 来自 ASR 说明卡片而非 FAQ）。
+  `site/` 仍 gitignore，本条无对应提交。
+
+- [x] 重建营销站并把对外版本从 v0.3.3 更新到 v0.3.6（2026-09-19 发现并当日上线）— ✅ 已部署：站点源同步到
+  v0.3.6 并发布，线上 `https://frameq.8xf.pro` 三个页面的版本号全部为 v0.3.6、零处 v0.3.3，下载链接指向
+  `releases/download/v0.3.6/`，线上三页与本地 `site/dist` **逐字节一致**，演示视频哈希部署前后未变。
+  改动：`site/src/consts.ts` 的 `LATEST_VERSION` → `v0.3.6`、`RELEASE_NOTES_PATH` → `docs/releases/v0.3.6.md`，
+  并新增私有 `VERSION_NUMBER` 派生三个产物名与 footer 标签（此前版本号散在 5 处）；
+  `site/src/pages/download.astro` 的 Windows 安装步骤原先**再硬编码一份** `Locus_0.3.3_x64-setup.exe`，
+  改为从 `DOWNLOAD_ASSETS` 查找、缺失时构建期抛错；补齐 `site/src/content/release-notes/` 的
+  v0.3.4/v0.3.5/v0.3.6 三篇（去术语文案，素材取自 `docs/releases/`）。**动因**：自助激活的客户端 UI 随
+  v0.3.6 才发布，此前从官网安装的新用户拿到的是 v0.3.3、看不到申领按钮，服务端当日上线的能力对官网渠道不可达。
+  部署证据：本机无 `rsync`（Git Bash 不带），改用 SFTP 按 **sha256** 比较同步 —— 上传 3 个 HTML、删除 0、
+  跳过 78，重跑比对 81/81 哈希一致（幂等）。**教训**：本次 `0.3.3` → `0.3.6` 字符数相同，`index.html`
+  （41472 字节）与 `privacy/index.html`（19200 字节）的字节数前后**完全不变**，任何按大小判断的同步都会静默
+  漏更新，必须比内容哈希。部署前已整站备份
+  `/home/ubuntu/FrameQ/backups/webroot-20260919T060139Z.tar.gz`（6.2 MB，权限 600）。`site/` 仍 gitignore，
+  本条无对应提交。
+
+- [x] 实现 History vNext 严格边界（2026-07-11）— 仅接受当前安全 schema v3 manifest；列表只读 manifest，点击后按需读取单任务详情；移除 Rust/Python 后台迁移及旧 schema 兼容路径；旧目录只物理留存并与历史、缓存、详情、编辑和 retry 隔离。✅ 验收：临时探针 supported=1、ignored=1、list 1.687ms、约 1.8MB 单任务 detail 12.094ms；原生 app-local 验收 supported=5、ignored=1、list 1-7ms、detail 4-37ms 且历史打开不启动 Python；app 230、Rust 92、worker 230、server 57、scripts 9、ruff/build/docs/diff 全部通过。
+
+- [x] 补齐 React/UI 自动化 smoke（2026-07-11）✅ 复用现有 Vite + CDP 与 mock Tauri bridge，新增设置加载/失败/缓存清理、processing/retry/cancelling 历史只读、稳定恢复、延迟文字稿保存隔离和 summary/insights target 确认；focused 16/16 连续通过，app 211、Rust 90、worker 249、server 57、scripts 9 及构建/lint 门禁通过。真实 Tauri WebView、安装包和 OS 行为仍明确保留为残余风险。
+
+- [x] 移除原始 source URL 的 worker argv 暴露（2026-07-10，`8c968bf` 已推送）✅ process-video、source identity preflight 与 AI retry 统一使用 1 MiB 上限的一次性 stdin JSON；argv 仅保留固定模式旗标，环境变量、日志与错误不含请求载荷；PID/PGID 在写入前登记到 ProcessSupervisor，阻塞写入期间仍可取消并终止进程树。✅ Rust 90、worker 249、app 205、server 57、scripts 7、ruff/build/docs/diff 与打包 worker 26 文件 SHA-256 一致性门禁通过；仅保留进程内存/管道缓冲区和系统 crash dump 的本机残余风险，ExecPlan 已归档。
+- [x] 收口要点总结与启发灵感独立生成（2026-07-11 治理归档）✅ summary/mindmap 与 insights/preference 分目标生成，manifest 合并保留另一目标产物，本地转写与 AI 额度/配置 gate 分离；实现、文档与验证均已完成，ExecPlan 已归档。
+- [x] 修复历史任务恢复绕过 workflow controller 的竞争问题（2026-07-10）✅ workflow controller 成为任务身份的唯一入口；视频处理、AI retry 与 `cancelling` 时历史可只读浏览但条目禁用，绝不自动取消后切换；稳定恢复统一失效旧 operation、关闭详情/偏好 flow 并清理 notice，文字稿保存只在预期 task 仍为当前任务时更新。✅ app 205、Rust 85、worker 244、server 57、ruff、build、文档和 diff 门禁通过；历史列表并发加载的请求排序仍登记为技术债。
+
+- [x] 修复桌面端取消任务进程树与真实终态语义（2026-07-10）✅ `ProcessSupervisor` 统一视频 worker 与 ASR 模型下载的实例化、取消占用、失败回退和终态清理；Windows 使用受控 `taskkill /T /F`，Unix 条件实现独立进程组 TERM→KILL；前端只在确认取消后重置，取消失败和自然完成仍保留真实结果。Windows 自动化覆盖已通过；Unix 父子进程实测保留为 Unix 主机发布前验证。
+- [x] 取得 macOS ProcessSupervisor 原生主机 CI 证据（2026-07-11）✅ 只读 `macos-latest` workflow 在提交 `b3cc6b3` 的 run `29108659472` / job `86415372457` 完整通过 Rust 90/90，日志明确执行真实父子进程组取消夹具并返回 `ok`；Linux 明确不属于支持平台。技术债已关闭，ExecPlan 已归档。
+
+- [x] 实现桌面端一键升级（2026-06-23）— Tauri updater + GitHub Releases updater manifest/artifacts；客户端与 worker 整体升级，保留 app-local data，不打包 ASR 权重或私有配置。✅ 代码完成，自动化门禁全部通过（server 32、app 84、Rust 31、worker 99、ruff、build、docs）。✅ 2026-06-27 项目决策：因中国境内访问 GitHub Releases 速度过慢，不再执行旧版到新版的 GitHub updater 真实下载/安装测试；该项作为 v1 测试豁免，不再阻塞发布。
+
+- [x] Add manual audio playback cache management in settings (2026-07-07) - Settings shows `$APPLOCALDATA/outputs/.app-audio-review` size as `Audio playback cache: <size>` and provides `Clear audio playback cache`; clearing deletes only that app-local playback cache, preserves `<APP_OUTPUT_DIR>/tasks/<task_id>/` source artifacts, and allows cache regeneration when transcript detail is opened again. ✅ Acceptance: settings UI shows cache size, clear action calls a canonicalized Tauri cleanup command, source task audio remains untouched, and tests cover clear + regenerate-on-open.
+- [x] 完成干净 Windows VM 与 macOS arm64/x64 真实安装包验证（2026-07-08）— 用户确认 Windows 与 macOS 安装包验证已完成且无问题；轻量 runtime 安装包在无 Python/uv/ffmpeg 的干净机器完成首启模型下载、URL → 下载 → ASR 文字稿路径。✅ 验收：干净机器安装、首启模型下载、公开视频转写、app-local 数据保留和签名/公证状态记录完成；若最终公开分发 artifact 仍未签名/公证，需在 release note 中显式披露。
+- [x] 桌面端一键升级 GitHub updater 真实下载/安装测试豁免（2026-06-27）— 因中国境内访问 GitHub Releases 速度过慢，本项目 v1 不再把旧版到新版的 GitHub updater 实测作为验收或发布阻塞项。✅ 验收口径：自动化门禁、manifest/artifact 生成、Tauri 签名校验配置和直接分发新版安装包路径成立；未声明国内 GitHub 网络真实升级链路已实测通过。
+
+- [x] 实现 Web 用户控制台与桌面登录成功面板（2026-08-03）— ✅ `/dashboard` 邮箱 OTP cookie 会话（复用 `desktop_login` purpose 与 Admin Web 会话模型），账号/额度内容（邮箱、权益到期、AI Credits 限额/已用/剩余/重置、`can_process`/`can_generate_ai`、激活码前缀）；桌面登录成功后显示“登录成功”面板与“去到 Web Dashboard”入口；OTP 行在桌面票据与 Web 会话路径间原子消费一次；Web/桌面会话相互独立。桌面深链登录契约（`{ ticket, redirect_url }`）不变。✅ server 160 通过 / 1 skip，App 669，worker 669，边界/迁移/治理/构建门禁通过。残余风险：生产 `secureCookies` 部署验证（`frameq.8xf.pro`）、Web 会话无 IP/UA 绑定（90 天 TTL）。Spec: `docs/product-specs/2026-08-03-web-user-dashboard.md`. ExecPlan: `docs/exec-plans/completed/2026-08-03-web-user-dashboard-plan.md`.
+- [x] 实现 Server 页面 i18n（2026-08-04）— ✅ `/login`、`/dashboard`、`/admin/login`、`/admin` 四个页面新增 zh-CN（默认）/en/zh-TW 三 locale 切换按钮，`lang` cookie 记忆，`detectLocale` 按 `lang` cookie → `?lang=` 深链 → `Accept-Language` header → 默认 `zh-CN` 顺序解析，新 `server/src/i18n.ts` 模块；不涉及 desktop/worker/ASR/store/Prisma。✅ 29 i18n 单测 + 12 页面集成测试，server 全量 28 文件 / 201 通过 / 1 skip，TypeScript build 与治理验证通过。残余风险：`lang` cookie 非 `Secure`、真实浏览器点击未记录。Spec: `docs/product-specs/2026-08-04-server-page-i18n.md`. ExecPlan: `docs/exec-plans/completed/2026-08-04-server-page-i18n-plan.md`.
+- [x] 精简 Inspiration Profile 并拆清本次生成偏好边界（2026-08-05）— Profile v2 只保留六项长期背景，表达风格/避免方向仅归完整六步本次偏好；Tauri 将 v1 app-local 文件原子迁移到 schema v2，且只在没有完整默认偏好时保留一次性 edit-only seed；当前重试快照在 JSON/Rust/Python 边界严格闭合，历史任务快照保持不变。✅ 自动化门禁：App 692/692，Rust 252/252 且修复后 retry focused 9/9，Worker 689 passed / 2 skipped，scripts 29/29，lint/Ruff/rustfmt/docs/diff 通过，packaged worker 比较 73 个文件、0 个不匹配；原生交互式 packaged launch 因 sandbox 未执行，未消耗真实 AI Credit。Design: `docs/design-docs/2026-08-05-inspiration-profile-generation-preference-boundary.md`. ExecPlan: `docs/exec-plans/completed/2026-08-05-inspiration-profile-generation-preference-boundary-plan.md`.
+- [x] 实现启发话题点个性化偏好流程（2026-07-06）✅ 增加本地 `我的灵感档案`、本次 6 步生成偏好、AI整理确认摘要、偏好快照和个性化话题点 prompt；偏好只进入 `retry_insights` 并只影响启发话题点生成，summary/Mermaid 保持通用；结果改为结构化话题点并展示匹配理由、启发问题和适合用途；偏好快照作为任务本地产物保存，server 无新增偏好/文字稿/话题点持久化。✅ 自动化门禁通过：app 138、worker 141、Rust 50、ruff、前端 build；真实额度消耗的桌面手工回归未在本会话执行。
+- [x] 增加 YouTube/Bilibili 字幕优先 + ASR 兜底（2026-07-05）✅ 公开视频 `yt-dlp` 成功路径会优先复用 YouTube/Bilibili 平台字幕生成正式文字稿，保留视频/音频产物和音频回听；字幕缺失、解析失败或 Bilibili public fallback 路径静默降级到本地 ASR；manifest、历史记录和文字稿 metadata 记录来源，UI 只显示文字稿来源提示，不展示原始字幕文件；不引入登录、Cookie、绕过或下载中心。✅ worker/parser/manifest/Rust/frontend 自动化门禁通过；真实公网字幕样本 smoke 未在本会话执行，保留外部平台可用性残余风险。
+- [x] 增加 YouTube 公开视频下载能力（2026-06-29）✅ 支持 watch、youtu.be 和 Shorts 单视频链接，复用现有 yt-dlp → ffprobe → audio → ASR → AI整理流程；新增 720p 转写优先格式策略、`YOUTUBE_*` 失败文案和签名 media URL/cookie 提示脱敏；不做登录、Cookie、playlist 批量、live、会员/年龄/私有绕过或下载中心。✅ worker/app/Rust/build/docs/diff gates 通过；真实 YouTube live smoke 未执行，保留外部平台可用性残余风险。
+- [x] 完成 Bilibili 公开视频 fallback（2026-06-27）✅ 支持普通 BV/av 链接、有效 `b23.tv` 短链、`?p=N` 单分 P 选择、公开 `x/web-interface/view` 元数据、`x/player/playurl` DASH 流选择、视频/音频 `.m4s` 安全下载、备选 URL 重试、FFmpeg 合并和 `BILIBILI_*` UI 错误文案；保持转写优先，不做登录、SESSDATA、番剧/PGC、会员内容、DRM、批量下载或下载中心。✅ worker/app/Rust/build/docs/diff 门禁通过；真实公网 Bilibili BV/av/b23.tv smoke 未在本会话执行，保留平台可用性残余风险。
+- [x] 补完小红书公开视频 fallback（2026-06-27）✅ 支持分享文本、完整 `xiaohongshu.com` 笔记链接、直接 note_id、`xhslink.com`/`www.xhslink.com` 短链、`xsec_token` 保留、Brotli/gzip/deflate 页面解码、确定性视频流排序、streaming `.part`/Range/超时下载可靠性、fallback 输出路径优先选择和 `XHS_*` UI 错误文案；保持视频转写优先，不做图片 ZIP、登录、Cookie、代理或下载中心。✅ worker/app/Rust/build/docs/diff 门禁通过；真实公开视频 smoke 未执行，因本会话未提供稳定公开验收链接。
+- [x] 实现 Admin 手工权益补偿（2026-06-27）✅ Admin Web 支持按用户延长到期时间、增加 LLM API 调用次数，并记录 append-only 审计；桌面端继续通过现有账号状态接口看到更新后的到期时间和剩余额度。✅ server 测试覆盖延期、加次数、无权益创建、鉴权/CSRF/非法参数、审计记录和桌面账号状态刷新；`npm --prefix server test`、`npm --prefix server run build`、`npm --prefix server run prisma:generate` 通过；Admin Web 浏览器手工验收通过并已归档 ExecPlan。
+- [x] 增强 EasyDownload 转写优先下载可靠性（2026-06-26）✅ 新增 worker 安全 `.part` 原子写入校验；抖音支持分享文案、短链、note/slides/modal/aweme_id 解析；小红书支持公开视频分享文案和 `xhslink.com` fallback，图片笔记/登录受限内容返回结构化错误；worker/frontend/Rust/build/docs/diff 门禁全部通过。
+- [x] 实现抖音分享页 fallback 视频下载（2026-06-26）✅ yt-dlp 失败时自动降级为 iesdouyin.com/share/video 分享页解析 + play_addr ratio 探测 + 多候选流下载，支持 6 种分层错误码和流下载失败自动重试；worker/frontend/Rust 测试、构建、ruff、docs 门禁全部通过；线上烟雾测试通过（201.9 MB MP4, 2 streams, AAC 音频）。
+- [x] 增加文字稿要点总结与 Mermaid 思维导图（2026-06-25）✅ 二次确认后一次 AI整理生成 `summary.md`、`mindmap.mmd` 和既有启发话题点；UI 只展示总结和话题点，不展示 Mermaid 源码；worker/Rust/frontend 测试、前端构建和文档门禁通过。
+- [x] Expose four artifacts and split transcript/insight flow (2026-06-22) ✅ 主流程只下载视频、提取音频和生成文字稿；结果区提供视频/音频/文字稿/话题点入口；话题点由确认面板单独启动并消耗额度；app/Rust/worker 测试、前端构建和文档门禁通过。
+- [x] 改为轻量安装包 + 首启 ASR 模型下载（2026-06-19）✅ 安装包不再打入 `resources/models`；新增 SenseVoice Small / VAD 下载助手、Tauri 下载/取消命令、首启下载引导、缺模型 `ASR_MODEL_NOT_DOWNLOADED` 降级错误和可配置下载源；focused worker/Rust/frontend 测试通过
+- [x] 产出 Windows x64 full-bundle 内测安装包（2026-06-19，已被轻量方案取代）✅ 使用真实 Python standalone、ffmpeg/ffprobe 和 `D:\Github\Locus\models\models\iic\SenseVoiceSmall` 验证过旧 full-bundle resources；默认 release 依赖排除 `qwen-asr`、显式包含 `torch`，并裁剪 Python debug/cache/test/header 文件；`npm --prefix app run tauri -- build --target x86_64-pc-windows-msvc` 曾成功产出 `Locus_0.1.0_x64-setup.exe`（约 1055.5MB）
+- [x] 加固安装包发布门禁（2026-06-18，部分规则已被轻量方案取代）✅ 曾加入 full-bundle 模型资源检查；后续轻量方案改为首启下载模型并检查 app-local data 中的 `MODEL_VERSION.txt`、SenseVoice `model.pt` 和 VAD `model.pt`；macOS arm64/x64 构建显式传入 Tauri target triple；Cargo 发布元数据去除脚手架值；新增 Rust/Vitest 回归测试并通过聚焦验证
+- [x] 接入普通用户安装即用分发基础（2026-06-18）✅ Tauri release runtime 改为内置 Python/worker/bin resources，配置、历史、输出、cache 和模型缓存改入 app-local data；首启只检测本机 ASR/非 LLM 设置，LLM 就绪状态由 server 管理；release UI 只暴露 SenseVoice Small；补齐 installer distribution spec、active ExecPlan、Tauri resources 与 `scripts/build-installer.mjs`；自动化门禁全部通过
+- [x] 接入自定义窗口拖拽和红黄绿窗口按钮（2026-06-18）✅ 红/黄/绿按钮分别调用关闭、最小化、最大化/还原；补齐 Tauri window capability 最小权限；toolbar 拖动改为 Rust 位置更新 fallback 并通过真实窗口坐标验证；新增窗口 chrome 单元测试和浏览器回归断言
+- [x] 升级 macOS 桌面工具风格 UI（2026-06-18）✅ React UI 改为桌面窗口、toolbar、URL command panel、task monitor、result workspace 和 sheet 面板；新增浏览器回归测试；前端测试、web build、文档门禁和截图检查通过
+- [x] 简化首页为单输入卡片（2026-06-18）✅ 等待输入态只显示 `粘贴视频链接` 卡片；提交 URL 后才显示 task monitor 和结果工作区；浏览器回归测试覆盖状态切换
+- [x] 增加 LLM 话题分段规划策略（2026-06-18）✅ 话题点生成先让 LLM 输出 topic plan，再按话题段生成问题；planner 失败时 fallback 到直接生成策略；最终去重并限制总量；worker 测试覆盖 planner、fallback 和总量上限
+- [x] 对齐 InsightFlow 话题点 prompt 和生成参数（2026-06-18）✅ Locus prompt 同步参考服务的读者视角表达约束，直接生成 fallback 按约每 1000 字 1 个问题，OpenAI-compatible LLM 默认 `temperature=0.7`；worker 测试和 ruff 通过
+- [x] Route SenseVoice ModelScope cache into project models directory (2026-06-17) ✅ Worker maps `APP_MODEL_DIR` / project `models/` to `MODELSCOPE_CACHE` before building SenseVoice models; worker tests, ruff, and docs validation passed.
+- [x] Improve SenseVoice long-audio transcription parameters (2026-06-17) ✅ SenseVoice now enables `fsmn-vad`, long-audio merge parameters, and strips SenseVoice control tags before writing transcripts; worker tests and ruff passed.
+- [x] Harden Tauri worker stdout parsing (2026-06-17) ✅ Tauri now extracts the final structured worker JSON result even when ASR/LLM dependencies print logs to stdout; Rust tests and frontend tests passed.
+- [x] Reuse local media for repeat URL runs (2026-06-17) ✅ Kept yt-dlp invocation, selected downloaded video by URL video ID, and skipped ffmpeg when an existing WAV validates successfully; worker tests, ruff, and docs validation passed.
+
+- [x] 将默认 ASR 模型切换为 SenseVoice Small（2026-06-17）✅ 默认请求、设置默认值、Tauri 默认配置和 worker schema 均使用 `iic/SenseVoiceSmall`；Qwen3-ASR 仍保留为可选模型
+
+- [x] 增加可选 ASR 模型支持（2026-06-17）✅ 设置面板保存 `APP_ASR_MODEL`，worker 支持 Qwen3-ASR 和 `iic/SenseVoiceSmall`；worker/Rust/frontend 测试、文档门禁和 Tauri no-bundle 构建通过
+
+- [x] 增加历史任务查看和输出目录配置（2026-06-17，旧方案已被 task manifest 取代）✅ 曾采用本地 history 记录任务历史；当前任务库以 `task.json` 为准，设置面板仍保存 `APP_OUTPUT_DIR`
+
+- [x] 早期 UI 层 LLM 配置入口（2026-06-17，已废弃）✅ 曾支持桌面 UI 保存 OpenAI-compatible base URL、API key、model 和 timeout；当前已由 server-managed LLM 取代，桌面设置不再输入、保存或回显 LLM 信息。
+- [x] MVP 最终验收和残余风险整理（2026-06-17）✅ 真实 InsightFlow LLM retry smoke 返回 `completed` 且生成 8 个话题点；自动化测试、文档门禁和 Tauri no-bundle 构建均通过；高优先级技术债已关闭
+- [x] 早期取消任务语义（2026-06-17，已由 2026-07-10 ProcessSupervisor 方案取代）✅ 曾在 UI 点击后立即返回输入态；当前不再忽略可能先到的真实终态。
+- [x] 早期 `.env` LLM smoke（2026-06-16，已废弃）✅ 曾用项目根 `.env` 验证 OpenAI-compatible Chat Completions；当前桌面 worker 不再读取项目根或 app-local `.env` 中的 `APP_LLM_*`，LLM key/config 只由 Locus server 管理。
+- [x] 完善话题点重试交互（2026-06-16）✅ `部分完成` 状态的话题点卡片可重新触发 InsightFlow，保留既有文字稿并只重跑话题点生成
+- [x] 完善模型下载/加载进度展示（2026-06-16）✅ worker 进度事件经 Tauri 转发到 UI，展示下载、校验、音频提取、模型缓存、模型加载、转写和话题点生成文案
+- [x] 完善详情浮窗复制/导出交互（2026-06-16）✅ 复制使用当前 tab 文本，导出在文件管理器中定位生成的 transcript/insights 文件
+- [x] 运行真实 Qwen3-ASR 模型推理（2026-06-16）✅ `outputs/7524373044106677544_transcript.txt` 由真实 ASR 生成且非空，模型缓存位于 `models/`
+- [x] 用户完成桌面 UI 手工验证（2026-06-16）✅ `app.exe` 显示 Locus、提交后进入失败态、返回 `ASR_MODEL_NOT_READY`、失败态不显示取消按钮
+- [x] 完成安装器打包验证（2026-06-16）✅ 用户报告 `npm --prefix app run tauri -- build` 已成功
+- [x] 将 Rust/Cargo 加入持久 PATH（2026-06-16）✅ 用户报告 `cargo -V` / `rustc -V` 在新会话可用
+- [x] 连接 Tauri command、UI 进度与 worker CLI（2026-06-16）✅ `npm --prefix app run tauri -- build --no-bundle` 生成 `app.exe`，worker CLI 子进程烟测返回结构化 JSON
+- [x] 内置并适配 InsightFlow 话题点生成（2026-06-16）✅ `outputs/7524373044106677544_insights.json` 包含非空 `insights`
+- [x] 实现 ASR adapter 和 transcript writers（2026-06-16）✅ fake transcriber 生成非空 `outputs/7524373044106677544_transcript.txt` 与 `.md`
+- [x] 实现下载与媒体校验服务（2026-06-16）✅ 示例 URL 创建 `outputs/7524373044106677544.mp4` 且 ffprobe JSON 有视频/音频流
+- [x] 实现音频提取服务（2026-06-16）✅ 当前任务音频产物为 `tasks/<task_id>/media/audio.wav`，临时处理中间文件进入 `cache/`
+- [x] 初始化 `app/` Tauri + React + TypeScript 骨架（2026-06-16）✅ `npm --prefix app run build` 通过
+- [x] 添加前端工作流状态模型和初始 UI（2026-06-16）✅ `npm --prefix app test` 4 tests passed
+- [x] 初始化 `worker/` Python 包与 worker 入口（2026-06-16）✅ `uv run pytest worker\\tests` 5 tests passed
+- [x] 初始化项目本地 `.venv` 并安装开发依赖（2026-06-16）✅ `uv run pytest worker\\tests` 使用 Python 3.12.13 通过
+- [x] 用户确认首个 ExecPlan 并指定使用 `uv` 管理本项目环境（2026-06-16）✅ 用户回复“开始下一步吧”
+- [x] 读取根目录历史方案并建立项目治理核心集（2026-06-16；历史方案后续已迁移进 `docs/` 并删除）✅ `python scripts/validate_agents_docs.py --level ERROR` 通过

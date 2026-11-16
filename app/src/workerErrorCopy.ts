@@ -1,0 +1,212 @@
+import {
+  extractSafeTechnicalDetails,
+  type SafeTechnicalDetails,
+  type VideoDownloadReasonCode,
+} from "./safeTechnicalDetails";
+import type { WorkerErrorResult } from "./workflowState";
+
+export const WORKER_ERROR_MESSAGE_CODES = {
+  WEB_REQUEST_INVALID: "web.invalid",
+  WEB_PRIVATE_ADDRESS: "web.blocked",
+  WEB_PLATFORM_UNSUPPORTED: "web.unsupported",
+  WEB_PROTOCOL_INVALID: "web.hostInvalid",
+  WEB_HOST_FAILED: "web.hostInvalid",
+  WEB_RUNTIME_MISSING: "web.runtimeMissing",
+  WEB_RUNTIME_UNSUPPORTED: "web.unsupported",
+  WEB_RUNTIME_UNSAFE_CONFIGURATION: "web.runtimeUnsafe",
+  WEB_PREPARE_TIMEOUT: "web.timeout",
+  WEB_NETWORK_POLICY_TIMEOUT: "web.timeout",
+  WEB_URL_BLOCKED: "web.blocked",
+  WEB_NAVIGATION_FAILED: "web.loadFailed",
+  WEB_NAVIGATION_TIMEOUT: "web.timeout",
+  WEB_EXTRACTION_FAILED: "web.content",
+  WEB_EXTRACTION_TIMEOUT: "web.timeout",
+  WEB_PROCESS_FAILED: "web.loadFailed",
+  WEB_CLEANUP_FAILED: "web.cleanupFailed",
+  WEB_LOAD_FAILED: "web.loadFailed",
+  WEB_BROWSER_FAILED: "web.loadFailed",
+  WEB_TIMEOUT: "web.timeout",
+  WEB_RESOURCE_LIMIT: "web.limit",
+  WEB_CANCELLED: "worker.cancelled",
+  WEB_STORAGE_FAILED: "web.storageFailed",
+  WEB_ALREADY_RUNNING: "worker.alreadyRunning",
+  WEB_PAGE_NETWORK_BLOCKED: "web.blocked",
+  WEB_PAGE_RESOURCE_LIMIT: "web.limit",
+  WEB_PAGE_ACCESS_RESTRICTED: "web.restricted",
+  WEB_PAGE_HTTP_FAILED: "web.loadFailed",
+  WEB_PAGE_CONTENT_TYPE_INVALID: "web.content",
+  WEB_PAGE_DOM_LIMIT: "web.limit",
+  WEB_PAGE_SOURCE_CHANGED: "web.changed",
+  WEB_PAGE_CONTENT_UNSTABLE: "web.content",
+  WEB_PAGE_EXTRACTION_FAILED: "web.content",
+  WEB_PAGE_COMPONENT_INVALID: "web.hostInvalid",
+  WEB_PAGE_STORAGE_INVALID: "web.storageFailed",
+  WEB_PAGE_TIMEOUT: "web.timeout",
+  WEB_PAGE_REQUEST_OR_STORAGE_INVALID: "web.storageFailed",
+  WEB_PAGE_LOAD_FAILED: "web.loadFailed",
+  WEB_PAGE_PROCESS_FAILED: "web.loadFailed",
+  INVALID_REQUEST_JSON: "request.invalid",
+  INVALID_REQUEST_PAYLOAD: "request.invalid",
+  INVALID_RETRY_JSON: "request.invalid",
+  INVALID_RETRY_PAYLOAD: "request.invalid",
+  TITLE_GENERATION_FAILED: "noteTitle.generationFailed",
+  TITLE_OUTPUT_INVALID: "noteTitle.outputInvalid",
+  TITLE_SAVE_FAILED: "noteTitle.saveFailed",
+  TITLE_GENERATION_INTERRUPTED: "noteTitle.interrupted",
+  TITLE_TRANSCRIPT_REQUIRED: "noteTitle.transcriptUnavailable",
+  TITLE_TRANSCRIPT_UNAVAILABLE: "noteTitle.transcriptUnavailable",
+  TITLE_STATE_INVALID: "noteTitle.stateInvalid",
+  WORKER_STDIN_INVALID: "request.invalid",
+  VIDEO_DOWNLOAD_FAILED: "video.downloadFailed",
+  VIDEO_DOWNLOAD_OUTPUT_MISSING: "video.outputMissing",
+  MEDIA_VALIDATION_FAILED: "video.validationFailed",
+  AUDIO_EXTRACTION_FAILED: "audio.extractionFailed",
+  ASR_MODEL_NOT_READY: "asr.modelNotReady",
+  ASR_MODEL_NOT_DOWNLOADED: "asr.modelNotDownloaded",
+  ASR_MODEL_CACHE_UNAVAILABLE: "asr.modelCacheUnavailable",
+  ASR_DEPENDENCY_MISSING: "asr.dependencyMissing",
+  ASR_EMPTY_TRANSCRIPT: "asr.emptyTranscript",
+  ASR_ERROR: "asr.runtimeFailed",
+  ASR_RUNTIME_ERROR: "asr.runtimeFailed",
+  ASR_MODEL_UNSUPPORTED: "asr.modelUnsupported",
+  ASR_RUNTIME_COMPONENT_MISSING: "asr.runtimeComponentMissing",
+  ASR_RUNTIME_COMPONENT_STALE: "asr.runtimeComponentStale",
+  RUNTIME_COMPONENT_DOWNLOAD_FAILED: "asr.runtimeComponentDownloadFailed",
+  RUNTIME_COMPONENT_INVALID: "asr.runtimeComponentInvalid",
+  SOURCE_IDENTITY_UNAVAILABLE: "source.identityUnavailable",
+  TASK_STORAGE_UNAVAILABLE: "task.storageUnavailable",
+  TASK_MANIFEST_NOT_FOUND: "task.manifestNotFound",
+  TASK_ARTIFACT_COMMIT_FAILED: "task.artifactCommitFailed",
+  TASK_ARTIFACT_RECOVERY_FAILED: "task.artifactRecoveryFailed",
+  TRANSCRIPT_TEXT_PATH_INVALID: "transcript.pathInvalid",
+  TRANSCRIPT_TEXT_NOT_FOUND: "transcript.notFound",
+  TRANSCRIPT_MARKDOWN_NOT_FOUND: "transcript.notFound",
+  POLISH_EMPTY_TRANSCRIPT: "transcript.polishEmpty",
+  POLISH_TRANSCRIPT_TOO_LONG: "transcript.polishTooLong",
+  POLISH_FAILED: "transcript.polishFailed",
+  POLISH_LLM_EMPTY_RESULT: "transcript.polishEmptyResult",
+  POLISH_ARTIFACT_WRITE_FAILED: "transcript.polishWriteFailed",
+  AI_LLM_QUOTA_UNAVAILABLE: "insight.quotaUnavailable",
+  AI_LLM_AUTH_REQUIRED: "insight.authRequired",
+  AI_CONFIG_MISSING: "insight.configMissing",
+  AI_LLM_CONFIG_MISSING: "insight.configMissing",
+  LLM_CONFIG_MISSING: "insight.configMissing",
+  AI_LLM_CHECKOUT_FAILED: "insight.checkoutFailed",
+  AI_LLM_CHECKOUT_TIMEOUT: "insight.checkoutFailed",
+  AI_LLM_CHECKOUT_INVALID_RESPONSE: "insight.checkoutFailed",
+  AI_LLM_REQUEST_TIMEOUT: "insight.requestTimeout",
+  AI_LLM_REQUEST_FAILED: "insight.requestFailed",
+  AI_LLM_KEY_REJECTED: "insight.keyRejected",
+  AI_LLM_MODEL_UNAVAILABLE: "insight.modelUnavailable",
+  AI_LLM_RATE_LIMITED: "insight.rateLimited",
+  AI_LLM_NETWORK_FAILED: "insight.networkFailed",
+  AI_LLM_CONTENT_BLOCKED: "insight.contentBlocked",
+  AI_LLM_INVALID_RESPONSE: "insight.invalidResponse",
+  AI_EMPTY_RESULT: "insight.emptyResult",
+  AI_EMPTY_SUMMARY: "insight.emptySummary",
+  AI_INVALID_MINDMAP: "insight.invalidMindmap",
+  AI_EMPTY_TRANSCRIPT: "insight.emptyTranscript",
+  AI_DRAFT_REQUIRES_LOGIN: "insight.draftLoginRequired",
+  WORKER_CANCELLED: "worker.cancelled",
+  WORKER_ALREADY_RUNNING: "worker.alreadyRunning",
+  WORKER_IDLE_TIMEOUT: "worker.idleTimeout",
+  WORKER_EXECUTION_TIMEOUT: "worker.executionTimeout",
+  WORKER_REQUEST_TRANSPORT_FAILED: "worker.transportFailed",
+  WORKER_PROCESS_FAILED: "worker.processFailed",
+  WORKER_PROTOCOL_VIOLATION: "worker.processFailed",
+  TAURI_COMMAND_FAILED: "worker.processFailed",
+} as const;
+
+export const VIDEO_DOWNLOAD_REASON_MESSAGE_CODES = {
+  YOUTUBE_LOGIN_REQUIRED: "video.youtube.loginRequired",
+  YOUTUBE_AGE_RESTRICTED: "video.youtube.ageRestricted",
+  YOUTUBE_PRIVATE_OR_UNAVAILABLE: "video.youtube.privateOrUnavailable",
+  YOUTUBE_NO_PLAYABLE_STREAM: "video.youtube.noPlayableStream",
+  YOUTUBE_RATE_LIMITED: "video.youtube.rateLimited",
+  YOUTUBE_STREAM_FORBIDDEN: "video.youtube.streamForbidden",
+  YOUTUBE_DOWNLOAD_FAILED: "video.youtube.downloadFailed",
+  BILIBILI_DRM_PROTECTED: "video.bilibili.drmProtected",
+  BILIBILI_FFMPEG_MERGE_FAILED: "video.bilibili.mergeFailed",
+  BILIBILI_UNSUPPORTED_CONTENT: "video.bilibili.unsupportedContent",
+  BILIBILI_LOGIN_REQUIRED: "video.bilibili.unsupportedContent",
+  BILIBILI_ID_PARSE_FAILED: "video.bilibili.invalidLink",
+  BILIBILI_SHORT_LINK_RESOLVE_FAILED: "video.bilibili.invalidLink",
+  BILIBILI_VIDEO_INFO_UNAVAILABLE: "video.bilibili.unavailable",
+  BILIBILI_PART_NOT_FOUND: "video.bilibili.unavailable",
+  BILIBILI_NO_PLAYABLE_STREAM: "video.bilibili.noPlayableStream",
+  BILIBILI_DASH_DOWNLOAD_FAILED: "video.bilibili.noPlayableStream",
+  XHS_IMAGE_ONLY: "video.xiaohongshu.imageOnly",
+  XHS_NOTE_BLOCKED: "video.xiaohongshu.unavailable",
+  XHS_NOTE_NOT_FOUND: "video.xiaohongshu.unavailable",
+  XHS_RATE_LIMITED: "video.xiaohongshu.rateLimited",
+  XHS_NO_PLAYABLE_STREAM: "video.xiaohongshu.noPlayableStream",
+  XHS_INITIAL_STATE_MISSING: "video.xiaohongshu.parseFailed",
+  XHS_INITIAL_STATE_MALFORMED: "video.xiaohongshu.parseFailed",
+  XHS_RESPONSE_DECODE_FAILED: "video.xiaohongshu.parseFailed",
+  XHS_RESPONSE_TOO_LARGE: "video.xiaohongshu.parseFailed",
+  XHS_VIDEO_TOO_LARGE: "video.xiaohongshu.videoTooLarge",
+  XHS_DOWNLOAD_STALLED: "video.xiaohongshu.downloadStalled",
+  XHS_STREAM_DOWNLOAD_FAILED: "video.xiaohongshu.downloadFailed",
+  XHS_PAGE_UNAVAILABLE: "video.xiaohongshu.downloadFailed",
+  XHS_SHORT_LINK_RESOLUTION_FAILED: "video.xiaohongshu.downloadFailed",
+  XHS_ID_PARSE_FAILED: "video.xiaohongshu.downloadFailed",
+  XHS_URL_INVALID: "video.xiaohongshu.downloadFailed",
+  DOUYIN_NO_PLAYABLE_STREAM: "video.douyin.noPlayableStream",
+  DOUYIN_STREAM_DOWNLOAD_FAILED: "video.douyin.noPlayableStream",
+  DOUYIN_SHARE_PAGE_UNAVAILABLE: "video.douyin.noPlayableStream",
+  DOUYIN_ROUTER_DATA_MISSING: "video.douyin.noPlayableStream",
+  DOUYIN_ROUTER_DATA_MALFORMED: "video.douyin.noPlayableStream",
+  DOUYIN_ID_PARSE_FAILED: "video.douyin.invalidLink",
+} as const satisfies Record<VideoDownloadReasonCode, string>;
+
+type KnownWorkerMessageCode =
+  (typeof WORKER_ERROR_MESSAGE_CODES)[keyof typeof WORKER_ERROR_MESSAGE_CODES];
+type VideoReasonMessageCode =
+  (typeof VIDEO_DOWNLOAD_REASON_MESSAGE_CODES)[keyof typeof VIDEO_DOWNLOAD_REASON_MESSAGE_CODES];
+
+type WorkerErrorMessageKey =
+  | "generic"
+  | KnownWorkerMessageCode
+  | VideoReasonMessageCode;
+
+export type WorkerErrorMessageCode = `errors.${WorkerErrorMessageKey}`;
+
+export type WorkerErrorPresentation = Readonly<{
+  messageCode: WorkerErrorMessageCode;
+  technicalDetails: SafeTechnicalDetails;
+}>;
+
+export function presentWorkerError(error: WorkerErrorResult): WorkerErrorPresentation {
+  const technicalDetails = extractSafeTechnicalDetails({
+    errorCode: error.code,
+    stageCode: error.stage,
+    message: error.message,
+  });
+  const messageCode = resolveWorkerErrorMessageCode(error.code, technicalDetails.reasonCode);
+  return { messageCode, technicalDetails };
+}
+
+export function formatWorkerError(error: WorkerErrorResult): WorkerErrorMessageCode {
+  return presentWorkerError(error).messageCode;
+}
+
+function resolveWorkerErrorMessageCode(
+  errorCode: string,
+  reasonCode: VideoDownloadReasonCode | undefined,
+): WorkerErrorMessageCode {
+  if (errorCode === "VIDEO_DOWNLOAD_FAILED" && reasonCode) {
+    return qualifyErrorMessageCode(VIDEO_DOWNLOAD_REASON_MESSAGE_CODES[reasonCode]);
+  }
+  if (Object.prototype.hasOwnProperty.call(WORKER_ERROR_MESSAGE_CODES, errorCode)) {
+    return qualifyErrorMessageCode(
+      WORKER_ERROR_MESSAGE_CODES[
+        errorCode as keyof typeof WORKER_ERROR_MESSAGE_CODES
+      ],
+    );
+  }
+  return "errors.generic";
+}
+
+function qualifyErrorMessageCode(key: WorkerErrorMessageKey): WorkerErrorMessageCode {
+  return `errors.${key}`;
+}

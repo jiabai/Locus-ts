@@ -1,0 +1,186 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                            String        @id
+  email                         String        @unique
+  createdAt                     DateTime
+  updatedAt                     DateTime
+  sessions                      Session[]
+  entitlements                  Entitlement[]
+  issuedActivationCodes         ActivationCode[] @relation("ActivationCodeIssuedToUser")
+  redeemedCodes                 ActivationCode[] @relation("ActivationCodeRedeemedByUser")
+  adminEntitlementAdjustments AdminEntitlementAdjustment[]
+  userSessions  UserSession[]
+}
+
+model EmailOtp {
+  id         String    @id
+  purpose    String
+  email      String
+  state      String
+  codeHash   String
+  ip         String
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime
+
+  @@index([purpose, email, state, createdAt])
+}
+
+model AuthRateLimit {
+  id              String   @id
+  keyHash         String   @unique
+  purpose         String
+  scope           String
+  windowStartedAt DateTime
+  count           Int
+  nextAllowedAt   DateTime
+  updatedAt       DateTime
+
+  @@index([purpose, scope, nextAllowedAt])
+}
+
+model DesktopLoginTicket {
+  id         String    @id
+  ticketHash String    @unique
+  state      String
+  userId     String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime
+
+  @@index([state])
+}
+
+model Session {
+  id        String    @id
+  userId    String
+  tokenHash String    @unique
+  createdAt DateTime
+  expiresAt DateTime
+  revokedAt DateTime?
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Entitlement {
+  id            String   @id
+  userId        String
+  expiresAt     DateTime
+  llmQuotaLimit Int      @default(0)
+  llmQuotaUsed  Int      @default(0)
+  updatedAt     DateTime
+  user          User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId])
+}
+
+model LlmConfig {
+  id              String   @id
+  provider        String
+  baseUrl         String
+  model           String
+  encryptedApiKey String
+  apiKeyLast4     String
+  timeoutSeconds  Int
+  createdAt       DateTime
+  updatedAt       DateTime
+}
+
+model AnysearchConfig {
+  id              String   @id
+  mcpUrl          String
+  encryptedApiKey String
+  apiKeyLast4     String
+  createdAt       DateTime
+  updatedAt       DateTime
+}
+
+model LlmUsageEvent {
+  id            String   @id
+  userId        String
+  entitlementId String
+  requestId     String
+  createdAt     DateTime
+
+  @@unique([userId, requestId])
+  @@index([userId])
+}
+
+model ActivationCode {
+  id               String    @id
+  codeHash         String    @unique
+  codePrefix       String
+  status           String
+  issuanceSource   String
+  entitlementDays  Int
+  issuedToUserId   String?
+  redeemBy         DateTime
+  createdAt        DateTime
+  sentAt           DateTime?
+  redeemedAt       DateTime?
+  redeemedByUserId String?
+  disabledReason   String?
+  issuedToUser     User?     @relation("ActivationCodeIssuedToUser", fields: [issuedToUserId], references: [id])
+  redeemedByUser   User?     @relation("ActivationCodeRedeemedByUser", fields: [redeemedByUserId], references: [id])
+
+  // Partial unique index for one active self-service code per user is maintained in SQL migrations.
+  @@index([status])
+  @@index([issuedToUserId, issuanceSource, status])
+  @@index([redeemedByUserId])
+}
+
+model AdminSession {
+  id            String    @id
+  email         String
+  tokenHash     String    @unique
+  csrfTokenHash String
+  createdAt     DateTime
+  expiresAt     DateTime
+  revokedAt     DateTime?
+
+  @@index([email])
+}
+
+model UserSession {
+  id            String    @id
+  userId        String
+  email         String
+  tokenHash     String    @unique
+  csrfTokenHash String
+  createdAt     DateTime
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  user          User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([email])
+}
+
+model AdminEntitlementAdjustment {
+  id                    String   @id
+  adminEmail            String
+  userId                String
+  reason                String
+  note                  String?
+  beforeExpiresAt       DateTime?
+  afterExpiresAt        DateTime
+  beforeLlmQuotaLimit   Int
+  afterLlmQuotaLimit    Int
+  beforeLlmQuotaUsed    Int
+  afterLlmQuotaUsed     Int
+  createdAt             DateTime
+  user                  User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+}

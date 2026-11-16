@@ -1,0 +1,73 @@
+[project]
+name = "worker-core"
+version = "0.1.0"
+description = "Python worker for desktop video transcription workflows."
+requires-python = ">=3.11"
+dependencies = [
+    "brotli>=1.2.0",
+    "funasr-onnx==0.4.2",
+    "modelscope>=1.37.1",
+    "onnxruntime>=1.17.0",
+    # onnxruntime stopped publishing macOS x86_64 wheels at 1.24.0, so on Intel
+    # pip resolves the latest (e.g. 1.28.0) and fails with "No matching
+    # distribution found". Pin below 1.24 to keep the self-contained wheel;
+    # other platforms track modern onnxruntime.
+    "onnxruntime<1.24 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    # macOS Intel (x86_64) is pinned to torch 2.2.2 — the last release that ships
+    # macOS x86_64 wheels — which only publishes up to CPython 3.12 (cp312) and
+    # requires numpy<2. Keep APP_PYTHON_STANDALONE_URL_MACOS_X64 on CPython
+    # 3.11 or 3.12: a newer standalone (e.g. 3.13) has no torch==2.2.2 wheel, so
+    # the Intel build fails at pip install / the import smoke test in
+    # scripts/build-installer.mjs. The numpy<2 pin below keeps the bundled and
+    # component runtimes on the same numpy build, so the component may shadow
+    # it via sys.path without a version skew.
+    "numpy<2 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    # macOS Intel also pins numba/llvmlite (pulled in transitively by funasr) to
+    # the last releases that publish self-contained macOS x86_64 wheels: llvmlite
+    # 0.45.1 and numba 0.62.1. Newer versions (llvmlite >= 0.46, numba >= 0.63)
+    # have no Intel wheel, so pip would compile llvmlite from source, which needs
+    # a matching LLVM dev install the GitHub runner lacks (CMake "Could not find
+    # LLVM"). Other platforms keep the modern versions funasr resolves.
+    "llvmlite==0.45.1 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "numba==0.62.1 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    # cryptography (pulled in by the aliyun/oss2 chain) dropped its universal2 and
+    # x86_64 macOS wheels at 49.0.0 (arm64-only), so on Intel pip would build it
+    # from source and link Homebrew's OpenSSL (/usr/local/.../libssl.3.dylib).
+    # Pin mac-x64 below 49 to use the self-contained universal2 wheel instead.
+    "cryptography<49 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "yt-dlp>=2026.6.9",
+    "agent-runtime",
+    "jsonschema>=4.23.0",
+    # agent-runtime 0.1.1 imports ``mcp.client.streamable_http.streamablehttp_client``
+    # inside a try/except that only logs on failure, so mcp 2.x (which renamed it to
+    # ``streamable_http_client``) turns into a NameError at MCP connect time instead of
+    # an import error. Keep mcp on 1.x until agent-runtime ships a 2.x-compatible tag.
+    "mcp>=1.8.0,<2",
+]
+
+# The PyTorch ASR family runtime ships as a separate on-demand component, not in
+# the installer. `uv export --no-dev` (extras excluded) builds the bundled
+# runtime; `uv export --no-dev --extra pytorch` builds the component. See
+# docs/product-specs/2026-10-20-lightweight-installer-runtime-trim.md and the
+# externalization exec plan.
+[project.optional-dependencies]
+pytorch = [
+    "funasr>=1.2.7",
+    "torch==2.2.2 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "torch>=2.10.0 ; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    "torchaudio==2.2.2 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "torchaudio>=2.10.0 ; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.8",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["worker"]
+testpaths = ["worker/tests"]
+
+[tool.uv.sources]
+agent-runtime = { git = "https://github.com/ArMiku/agent-runtime-template.git", tag = "0.1.1" }

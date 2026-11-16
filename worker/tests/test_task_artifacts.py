@@ -1,0 +1,1155 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+from worker_core import media, task_transaction, worker_service
+from worker_core.asr import Transcript
+from worker_core.atomic_files import AtomicFileCommitError
+from worker_core.desktop_contract import (
+    CACHE_DIR_ENV,
+    OUTPUT_DIR_ENV,
+    PROCESS_VIDEO_CONTRACT_VERSION,
+)
+from worker_core.dissection_report import (
+    build_dissection_artifacts,
+    parse_dissection_report,
+)
+from worker_core.media import CommandResult
+from worker_core.models import Insight, JobStage, ProcessRequest, ProcessResult
+from worker_core.pipeline import run_worker_pipeline
+from worker_core.requests import parse_preference_snapshot
+from worker_core.summary_agent import write_summary_files
+from worker_core.task_store import TaskPaths, TaskStoreFacade
+from worker_core.topic_agent import write_insight_files
+from worker_core.transcript_chunks import MarkdownSplitter
+from worker_core.worker_application import url_processing
+from worker_core.worker_application.insight_retry import merge_existing_ai_artifacts
+from worker_core.worker_service import retry_insights_once
+
+
+class FakeTranscriber:
+    def transcribe(self, audio_path: Path, language: str = "Chinese") -> Transcript:
+        return Transcript(text="task transcript", language=language)
+
+
+def _video_probe_payload() -> str:
+    return json.dumps(
+        {
+            "format": {"duration": "12.3", "size": "12345"},
+            "streams": [
+                {"codec_type": "video", "codec_name": "h264"},
+                {"codec_type": "audio", "codec_name": "aac"},
+            ],
+        }
+    )
+
+
+def test_task_paths_expose_only_fixed_dissection_destinations(tmp_path: Path) -> None:
+    paths = TaskPaths(tmp_path / "outputs", tmp_path / "cache", "task-1")
+
+    assert paths.dissection_json == paths.task_dir / "ai" / "dissection.json"
+    assert paths.dissection_markdown == paths.task_dir / "ai" / "dissection.md"
+
+
+def test_dissection_finalization_publishes_json_markdown_and_manifest(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "outputs"
+    cache_root = tmp_path / "cache"
+    task_id = "20260731-120000-douyin-7524373044106677544"
+    task_dir = output_root / "tasks" / task_id
+    transcript_dir = task_dir / "transcript"
+    transcript_dir.mkdir(parents=True)
+    (transcript_dir / "transcript.txt").write_text(
+        "saved transcript\n", encoding="utf-8"
+    )
+    (task_dir / "task.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "source_privacy_migration_version": 2,
+                "source_privacy_quarantined": False,
+                "task_id": task_id,
+                "created_at": "2026-07-31T12:00:00Z",
+                "source_url": "https://www.douyin.com/video/7524373044106677544",
+                "source_identity": {
+                    "version": 1,
+                    "platform": "douyin",
+                    "stable_id": "7524373044106677544",
+                    "effective_part": None,
+                    "canonical_url": "https://www.douyin.com/video/7524373044106677544",
+                },
+                "platform": "douyin",
+                "status": "partial_completed",
+                "model": "iic/SenseVoiceSmall",
+                "artifacts": {"transcript_txt": "transcript/transcript.txt"},
+                "error": None,
+                "text_preview": "saved transcript",
+                "insights_count": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    transcript = (transcript_dir / "transcript.txt").read_bytes().decode("utf-8")
+    report = parse_dissection_report(
+        {
+            "overallNarrative": {
+                "openingHook": None,
+                "structureType": "statement",
+                "turningPoint": None,
+                "closingType": None,
+            },
+            "segments": [
+                {
+                    "id": 1,
+                    "title": "Statement",
+                    "sourceChunkIds": [1],
+                    "coreClaim": "saved transcript",
+                    "supportingPoints": [],
+                    "rhetoricalDevices": [],
+                    "rhythmNote": "Brief",
+                    "reusablePattern": "Direct statement",
+                    "riskFlags": [],
+                }
+            ],
+            "highlights": ["saved transcript"],
+            "reusableTemplate": {
+                "name": "Direct",
+                "skeleton": ["State", "Explain", "Close"],
+            },
+            "audienceFit": [],
+            "strengths": ["Direct"],
+            "weaknesses": ["Brief"],
+        },
+        transcript=transcript,
+        chunks=MarkdownSplitter().split(transcript),
+        source_language=None,
+    )
+    artifacts = build_dissection_artifacts(
+        report, output_dir=task_dir / "ai", output_language="en-US"
+    )
+    store = TaskStoreFacade(output_root, cache_root)
+    context = store.open(task_id).context
+    result = store.finalize(
+        context,
+        ProcessResult(
+            status=JobStage.COMPLETED,
+            text=transcript.strip(),
+            dissection=report.to_dict(),
+            artifact_payloads={
+                "ai/dissection.json": artifacts.json_bytes,
+                "ai/dissection.md": artifacts.markdown_bytes,
+            },
+        ),
+    ).to_dict()
+
+    assert result["status"] == "completed"
+    assert result["dissection"]["schemaVersion"] == 1
+    assert result["artifacts"]["dissection"] == "ai/dissection.json"
+    assert result["artifacts"]["dissection_md"] == "ai/dissection.md"
+    assert (task_dir / "ai" / "dissection.json").is_file()
+    assert (task_dir / "ai" / "dissection.md").is_file()
+    manifest = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
+    assert manifest["artifacts"]["dissection"] == "ai/dissection.json"
+    assert "preference_snapshot" not in manifest["artifacts"]
+
+    previous_json = (task_dir / "ai" / "dissection.json").read_bytes()
+    previous_markdown = (task_dir / "ai" / "dissection.md").read_bytes()
+    previous_mapping = dict(manifest["artifacts"])
+
+    failed = retry_insights_once(
+        json.dumps(
+            {
+                "task_id": task_id,
+                "target": "dissection",
+                "output_language": "en-US",
+            }
+        ),
+        project_root=tmp_path,
+        environ={
+            OUTPUT_DIR_ENV: output_root.as_posix(),
+            CACHE_DIR_ENV: cache_root.as_posix(),
+        },
+    )
+
+    assert failed["status"] == "partial_completed"
+    assert failed["dissection"] == result["dissection"]
+    assert (task_dir / "ai" / "dissection.json").read_bytes() == previous_json
+    assert (task_dir / "ai" / "dissection.md").read_bytes() == previous_markdown
+    failed_manifest = json.loads(
+        (task_dir / "task.json").read_text(encoding="utf-8")
+    )
+    assert failed_manifest["artifacts"] == previous_mapping
+
+
+def valid_preference_snapshot() -> dict[str, object]:
+    return {
+        "profile": None,
+        "profileSkipped": True,
+        "generationPreferences": {
+            "goal": "content_creation",
+            "scenario": "short_video",
+            "angles": ["topic_angle"],
+            "audience": "fans_readers",
+            "styles": ["grounded"],
+            "avoid": [],
+        },
+        "labelSnapshot": {
+            "profile": [],
+            "generationPreferences": [
+                {
+                    "field": "goal",
+                    "label": "本次目标",
+                    "values": [{"id": "content_creation", "label": "内容创作"}],
+                }
+            ],
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_code"),
+    [
+        (AtomicFileCommitError(), "TASK_ARTIFACT_COMMIT_FAILED"),
+        (
+            task_transaction.TaskArtifactRecoveryError(),
+            "TASK_ARTIFACT_RECOVERY_FAILED",
+        ),
+    ],
+)
+def test_worker_service_maps_persistence_failures_to_fixed_non_echoing_results(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: OSError,
+    expected_code: str,
+) -> None:
+    def fail_pipeline(**_kwargs: object) -> object:
+        raise failure from OSError("D:/private/customer/transcript.txt")
+
+    monkeypatch.setattr(url_processing, "run_worker_pipeline", fail_pipeline)
+
+    result = worker_service.run_worker_once(
+        json.dumps(
+            {
+                "contract_version": PROCESS_VIDEO_CONTRACT_VERSION,
+                "url": "https://www.douyin.com/video/7524373044106677544",
+                "asr_model": "iic/SenseVoiceSmall",
+            }
+        ),
+        project_root=tmp_path,
+    )
+
+    assert result["status"] == "failed"
+    assert result["error"] == {
+        "code": expected_code,
+        "message": (
+            "Task artifacts could not be recovered safely."
+            if expected_code == "TASK_ARTIFACT_RECOVERY_FAILED"
+            else "Task artifacts could not be stored safely."
+        ),
+        "stage": "failed",
+    }
+    assert "private" not in json.dumps(result)
+
+
+def test_worker_pipeline_writes_task_owned_artifacts_and_manifest(tmp_path: Path) -> None:
+    output_root = tmp_path / "outputs"
+    cache_root = tmp_path / "cache"
+
+    def runner(command: list[str]) -> CommandResult:
+        if "-m" in command and "yt_dlp" in command:
+            output_template = command[command.index("-o") + 1]
+            video_path = Path(
+                output_template.replace("%(id)s.%(ext)s", "7524373044106677544.mp4")
+            )
+            video_path.parent.mkdir(parents=True, exist_ok=True)
+            video_path.write_bytes(b"fake video")
+            return CommandResult(
+                command=command,
+                returncode=0,
+                stdout=video_path.as_posix(),
+                stderr="",
+            )
+        if command[0] == "ffprobe":
+            return CommandResult(
+                command=command,
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "format": {"duration": "12.3", "size": "12345"},
+                        "streams": [
+                            {
+                                "codec_type": "video",
+                                "codec_name": "h264",
+                                "width": 720,
+                                "height": 1280,
+                            },
+                            {"codec_type": "audio", "codec_name": "aac"},
+                        ],
+                    }
+                ),
+                stderr="",
+            )
+        if command[0] == "ffmpeg":
+            audio_path = Path(command[-1])
+            audio_path.parent.mkdir(parents=True, exist_ok=True)
+            audio_path.write_bytes(b"fake wav")
+            return CommandResult(command=command, returncode=0, stdout="", stderr="")
+        raise AssertionError(f"unexpected command: {command}")
+
+    result = run_worker_pipeline(
+        request=ProcessRequest(
+            url="https://www.douyin.com/video/7524373044106677544",
+            asr_model="iic/SenseVoiceSmall",
+        ),
+        project_root=tmp_path,
+        command_runner=runner,
+        transcriber=FakeTranscriber(),
+        allow_real_asr=True,
+        environ={
+            OUTPUT_DIR_ENV: output_root.as_posix(),
+            CACHE_DIR_ENV: cache_root.as_posix(),
+        },
+    ).to_dict()
+
+    assert result["status"] == "completed"
+    assert str(result["task_id"]).endswith("-douyin-7524373044106677544")
+    assert result["transcript"] == {
+        "source": "asr",
+        "language": None,
+        "engine": "iic/SenseVoiceSmall",
+    }
+    assert result["artifacts"] == {
+        "video": "media/video.mp4",
+        "audio": "media/audio.wav",
+        "transcript_txt": "transcript/transcript.txt",
+        "transcript_md": "transcript/transcript.md",
+    }
+    assert "preference_snapshot" not in result["artifacts"]
+
+    task_dir = Path(str(result["task_dir"]))
+    assert task_dir.parent == output_root / "tasks"
+    assert (task_dir / "media" / "video.mp4").is_file()
+    assert (task_dir / "media" / "audio.wav").is_file()
+    transcript = (
+        (task_dir / "transcript" / "transcript.txt")
+        .read_text(encoding="utf-8")
+        .strip()
+    )
+    assert transcript == "task transcript"
+    assert not list(output_root.glob("*.mp4"))
+
+    manifest = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
+    assert manifest["schema_version"] == 3
+    assert manifest["task_id"] == result["task_id"]
+    assert manifest["source_url"] == "https://www.douyin.com/video/7524373044106677544"
+    assert manifest["source_identity"] == {
+        "version": 1,
+        "platform": "douyin",
+        "stable_id": "7524373044106677544",
+        "effective_part": None,
+        "canonical_url": "https://www.douyin.com/video/7524373044106677544",
+    }
+    assert manifest["platform"] == "douyin"
+    assert manifest["status"] == "completed"
+    assert manifest["transcript"] == result["transcript"]
+    assert manifest["artifacts"] == result["artifacts"]
+    assert manifest["text_preview"] == "task transcript"
+
+
+def test_sensitive_xhs_download_url_never_crosses_local_process_boundary(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "outputs"
+    cache_root = tmp_path / "cache"
+    note_id = "64a1b2c3d4e5f67890123456"
+    secret = "review-secret"
+    raw_url = (
+        f"https://www.xiaohongshu.com/explore/{note_id}"
+        f"?xsec_token={secret}&source=web#comments"
+    )
+    canonical_url = f"https://www.xiaohongshu.com/explore/{note_id}"
+    download_commands: list[list[str]] = []
+
+    def runner(command: list[str]) -> CommandResult:
+        if "-m" in command and "yt_dlp" in command:
+            download_commands.append(command)
+            output_template = command[command.index("-o") + 1]
+            video_path = Path(output_template.replace("%(id)s.%(ext)s", f"{note_id}.mp4"))
+            video_path.parent.mkdir(parents=True, exist_ok=True)
+            video_path.write_bytes(b"fake video")
+            return CommandResult(
+                command=command,
+                returncode=0,
+                stdout=video_path.as_posix(),
+                stderr="",
+            )
+        if command[0] == "ffprobe":
+            return CommandResult(
+                command=command,
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "format": {"duration": "12.3", "size": "12345"},
+                        "streams": [
+                            {"codec_type": "video", "codec_name": "h264"},
+                            {"codec_type": "audio", "codec_name": "aac"},
+                        ],
+                    }
+                ),
+                stderr="",
+            )
+        if command[0] == "ffmpeg":
+            audio_path = Path(command[-1])
+            audio_path.parent.mkdir(parents=True, exist_ok=True)
+            audio_path.write_bytes(b"fake wav")
+            return CommandResult(command=command, returncode=0, stdout="", stderr="")
+        raise AssertionError(f"unexpected command: {command}")
+
+    result = run_worker_pipeline(
+        request=ProcessRequest(url=raw_url, asr_model="iic/SenseVoiceSmall"),
+        project_root=tmp_path,
+        command_runner=runner,
+        transcriber=FakeTranscriber(),
+        allow_real_asr=True,
+        environ={
+            OUTPUT_DIR_ENV: output_root.as_posix(),
+            CACHE_DIR_ENV: cache_root.as_posix(),
+        },
+    ).to_dict()
+
+    assert result["status"] == "completed"
+    assert len(download_commands) == 1
+    assert raw_url in download_commands[0]
+    assert result["summary"] == ""
+    assert result["insights"] == []
+    assert "summary" not in result["artifacts"]
+    assert "mindmap" not in result["artifacts"]
+    assert "insights" not in result["artifacts"]
+
+    task_dir = Path(str(result["task_dir"]))
+    transcript_md = (task_dir / "transcript" / "transcript.md").read_text(
+        encoding="utf-8"
+    )
+    assert canonical_url in transcript_md
+    assert raw_url not in transcript_md
+    manifest = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
+    assert manifest["source_url"] == canonical_url
+    assert manifest["source_identity"]["canonical_url"] == canonical_url
+    assert list((task_dir / "ai").iterdir()) == []
+    persisted = "\n".join(
+        path.read_text(encoding="utf-8", errors="ignore")
+        for path in task_dir.rglob("*")
+        if path.is_file()
+    )
+    serialized_result = json.dumps(result, ensure_ascii=False)
+    for value in (secret, "xsec_token", raw_url):
+        assert value not in persisted
+        assert value not in serialized_result
+
+
+def test_worker_pipeline_uses_platform_subtitle_before_asr_model_ready(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "outputs"
+    cache_root = tmp_path / "cache"
+
+    def runner(command: list[str]) -> CommandResult:
+        if "-m" in command and "yt_dlp" in command:
+            output_template = command[command.index("-o") + 1]
+            video_path = Path(output_template.replace("%(id)s.%(ext)s", "dQw4w9WgXcQ.mp4"))
+            video_path.parent.mkdir(parents=True, exist_ok=True)
+            video_path.write_bytes(b"fake video")
+            (video_path.parent / "dQw4w9WgXcQ.zh-Hans.srt").write_text(
+                "1\n00:00:01,000 --> 00:00:02,000\n字幕第一句\n\n"
+                "2\n00:00:02,500 --> 00:00:03,000\n字幕第二句\n",
+                encoding="utf-8",
+            )
+            return CommandResult(
+                command=command,
+                returncode=0,
+                stdout=video_path.as_posix(),
+                stderr="",
+            )
+        if command[0] == "ffprobe":
+            return CommandResult(
+                command=command,
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "format": {"duration": "12.3", "size": "12345"},
+                        "streams": [
+                            {"codec_type": "video", "codec_name": "h264"},
+                            {"codec_type": "audio", "codec_name": "aac"},
+                        ],
+                    }
+                ),
+                stderr="",
+            )
+        if command[0] == "ffmpeg":
+            audio_path = Path(command[-1])
+            audio_path.parent.mkdir(parents=True, exist_ok=True)
+            audio_path.write_bytes(b"fake wav")
+            return CommandResult(command=command, returncode=0, stdout="", stderr="")
+        raise AssertionError(f"unexpected command: {command}")
+
+    result = run_worker_pipeline(
+        request=ProcessRequest(
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            asr_model="iic/SenseVoiceSmall",
+        ),
+        project_root=tmp_path,
+        command_runner=runner,
+        transcriber=None,
+        allow_real_asr=False,
+        environ={
+            OUTPUT_DIR_ENV: output_root.as_posix(),
+            CACHE_DIR_ENV: cache_root.as_posix(),
+        },
+    ).to_dict()
+
+    assert result["status"] == "completed"
+    assert result["text"] == "字幕第一句\n字幕第二句"
+    assert result["transcript"] == {
+        "source": "subtitle",
+        "language": "zh-Hans",
+        "engine": None,
+    }
+
+    task_dir = Path(str(result["task_dir"]))
+    transcript_md = (task_dir / "transcript" / "transcript.md").read_text(encoding="utf-8")
+    assert "Transcript Source: Platform subtitle" in transcript_md
+    assert "Model:" not in transcript_md
+    assert (task_dir / "media" / "audio.wav").is_file()
+
+    manifest = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
+    assert manifest["schema_version"] == 3
+    assert manifest["model"] == "iic/SenseVoiceSmall"
+    assert manifest["transcript"] == result["transcript"]
+
+
+def test_xiaohongshu_platform_subtitle_skips_asr_and_stays_task_local(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_root = tmp_path / "outputs"
+    cache_root = tmp_path / "cache"
+    note_id = "0123456789abcdef01234568"
+    url = f"https://www.xiaohongshu.com/explore/{note_id}"
+    events: list[dict[str, object]] = []
+
+    def fake_xiaohongshu_download(
+        _url: str,
+        output_dir: Path,
+        *,
+        progress_callback: object | None = None,
+    ) -> Path:
+        del progress_callback
+        video_path = output_dir / f"{note_id}.mp4"
+        video_path.parent.mkdir(parents=True, exist_ok=True)
+        video_path.write_bytes(b"fake xhs video")
+        (output_dir / f"{note_id}.zh-CN.srt").write_text(
+            "1\n00:00:00,000 --> 00:00:01,000\n小红书平台字幕第一句\n\n"
+            "2\n00:00:01,000 --> 00:00:02,000\n小红书平台字幕第二句\n",
+            encoding="utf-8",
+        )
+        return video_path
+
+    def runner(command: list[str]) -> CommandResult:
+        if "yt_dlp" in command:
+            return CommandResult(command, 1, "", "ERROR: unsupported URL")
+        if command[0] == "ffprobe":
+            return CommandResult(command, 0, _video_probe_payload(), "")
+        if command[0] == "ffmpeg":
+            Path(command[-1]).write_bytes(b"fake wav")
+            return CommandResult(command, 0, "", "")
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(media, "download_xiaohongshu_video", fake_xiaohongshu_download)
+
+    result = run_worker_pipeline(
+        request=ProcessRequest(url=url, asr_model="iic/SenseVoiceSmall"),
+        project_root=tmp_path,
+        command_runner=runner,
+        transcriber=None,
+        allow_real_asr=False,
+        environ={
+            OUTPUT_DIR_ENV: output_root.as_posix(),
+            CACHE_DIR_ENV: cache_root.as_posix(),
+        },
+        progress_callback=events.append,
+    ).to_dict()
+
+    assert result["status"] == "completed"
+    assert result["text"] == "小红书平台字幕第一句\n小红书平台字幕第二句"
+    assert result["transcript"] == {
+        "source": "subtitle",
+        "language": "zh-CN",
+        "engine": None,
+    }
+    task_dir = Path(str(result["task_dir"]))
+    transcript_md = (task_dir / "transcript" / "transcript.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Transcript Source: Platform subtitle" in transcript_md
+    assert "Model:" not in transcript_md
+    manifest = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
+    assert manifest["model"] == "iic/SenseVoiceSmall"
+    assert manifest["transcript"] == result["transcript"]
+    download_dir = cache_root / "tasks" / str(result["task_id"]) / "download"
+    assert list(download_dir.glob("*.srt"))
+    assert "srt" not in manifest["artifacts"]
+    event_codes = [event["message_code"] for event in events]
+    assert event_codes.index("subtitle.detect.running") < event_codes.index(
+        "subtitle.detect.found"
+    )
+    assert not {
+        "asr.cache.preparing",
+        "asr.transcribe.starting",
+        "asr.transcribe.running",
+    } & set(event_codes)
+
+
+def test_xiaohongshu_platform_subtitle_miss_falls_back_to_asr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_root = tmp_path / "outputs"
+    cache_root = tmp_path / "cache"
+    note_id = "0123456789abcdef01234568"
+    url = f"https://www.xiaohongshu.com/explore/{note_id}"
+    transcribe_calls = 0
+
+    def runner(command: list[str]) -> CommandResult:
+        if "yt_dlp" in command:
+            output_template = command[command.index("-o") + 1]
+            video_path = Path(output_template.replace("%(id)s.%(ext)s", f"{note_id}.mp4"))
+            video_path.parent.mkdir(parents=True, exist_ok=True)
+            video_path.write_bytes(b"fake xhs video")
+            return CommandResult(command, 0, video_path.as_posix(), "")
+        if command[0] == "ffprobe":
+            return CommandResult(command, 0, _video_probe_payload(), "")
+        if command[0] == "ffmpeg":
+            Path(command[-1]).write_bytes(b"fake wav")
+            return CommandResult(command, 0, "", "")
+        raise AssertionError(f"unexpected command: {command}")
+
+    class TrackingTranscriber:
+        def transcribe(self, audio_path: Path, language: str = "Chinese") -> Transcript:
+            nonlocal transcribe_calls
+            del audio_path
+            transcribe_calls += 1
+            return Transcript(text="ASR fallback transcript", language=language)
+
+    monkeypatch.setattr(media, "download_xiaohongshu_subtitle", lambda *_args: None)
+
+    result = run_worker_pipeline(
+        request=ProcessRequest(url=url, asr_model="iic/SenseVoiceSmall"),
+        project_root=tmp_path,
+        command_runner=runner,
+        transcriber=TrackingTranscriber(),
+        allow_real_asr=False,
+        environ={
+            OUTPUT_DIR_ENV: output_root.as_posix(),
+            CACHE_DIR_ENV: cache_root.as_posix(),
+        },
+    ).to_dict()
+
+    assert result["status"] == "completed"
+    assert result["transcript"]["source"] == "asr"
+    assert transcribe_calls == 1
+    assert "Platform subtitle" not in (
+        Path(str(result["task_dir"])) / "transcript" / "transcript.md"
+    ).read_text(encoding="utf-8")
+    assert not list((cache_root / "tasks" / str(result["task_id"]) / "download").glob("*.srt"))
+
+
+def test_insights_finalization_updates_same_task_and_saves_local_preferences(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "outputs"
+    cache_root = tmp_path / "cache"
+    task_id = "20260705-153012-douyin-7524373044106677544"
+    task_dir = output_root / "tasks" / task_id
+    transcript_dir = task_dir / "transcript"
+    transcript_dir.mkdir(parents=True)
+    (transcript_dir / "transcript.txt").write_text(
+        "user edited official transcript\n",
+        encoding="utf-8",
+    )
+    (transcript_dir / "transcript.md").write_text(
+        "# Transcript\n\n## Metadata\n\n"
+        "- Source URL: https://example.test/video?xsec_token=review-secret\n\n"
+        "stale markdown transcript\n",
+        encoding="utf-8",
+    )
+    (task_dir / "task.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "source_privacy_migration_version": 2,
+                "source_privacy_quarantined": False,
+                "task_id": task_id,
+                "created_at": "2026-07-05T15:30:12Z",
+                "source_url": "https://www.douyin.com/video/7524373044106677544",
+                "source_identity": {
+                    "version": 1,
+                    "platform": "douyin",
+                    "stable_id": "7524373044106677544",
+                    "effective_part": None,
+                    "canonical_url": "https://www.douyin.com/video/7524373044106677544",
+                },
+                "platform": "douyin",
+                "status": "partial_completed",
+                "app_version": "app",
+                "worker_version": "app",
+                "model": "iic/SenseVoiceSmall",
+                "artifacts": {
+                    "transcript_txt": "transcript/transcript.txt",
+                    "transcript_md": "transcript/transcript.md",
+                },
+                "error": None,
+                "text_preview": "saved transcript",
+                "insights_count": 0,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    store = TaskStoreFacade(output_root, cache_root)
+    context = store.open(task_id).context
+    snapshot = parse_preference_snapshot(valid_preference_snapshot())
+    store.save_preference_snapshot(context, snapshot)
+    insights = [Insight(1, "retry question", "matched", ("next",), "content planning", 1)]
+    artifacts = write_insight_files(
+        insights, task_dir / "ai", "", "en-US", persist=False
+    )
+    assert not artifacts.json_path.exists()
+    assert not artifacts.md_path.exists()
+    result = store.finalize(
+        context,
+        ProcessResult(
+            status=JobStage.COMPLETED,
+            text="user edited official transcript",
+            insights=insights,
+            artifact_payloads={
+                "ai/insights.json": artifacts.json_bytes,
+                "ai/insights.md": artifacts.md_bytes,
+            },
+        ),
+        draft_seed_insight_id=None,
+    ).to_dict()
+
+    assert result["status"] == "completed"
+    assert result["task_id"] == task_id
+    assert "summary" not in result["artifacts"]
+    assert "mindmap" not in result["artifacts"]
+    assert result["artifacts"]["insights"] == "ai/insights.json"
+    assert result["artifacts"]["preference_snapshot"] == "ai/preference-snapshot.json"
+    assert not (task_dir / "ai" / "summary.md").exists()
+    assert not (task_dir / "ai" / "mindmap.mmd").exists()
+    assert (task_dir / "ai" / "insights.json").is_file()
+    preference_snapshot = json.loads(
+        (task_dir / "ai" / "preference-snapshot.json").read_text(encoding="utf-8")
+    )
+    assert preference_snapshot["generationPreferences"]["goal"] == "content_creation"
+    assert preference_snapshot["profileSkipped"] is True
+    assert "output_language" not in preference_snapshot
+    assert "review-secret" not in artifacts.json_bytes.decode("utf-8")
+    assert "xsec_token" not in artifacts.md_bytes.decode("utf-8")
+
+    manifest = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
+    assert manifest["status"] == "completed"
+    assert manifest["artifacts"] == result["artifacts"]
+    assert manifest["artifacts"]["preference_snapshot"] == "ai/preference-snapshot.json"
+    assert manifest["insights_count"] == 1
+    assert "output_language" not in manifest
+
+
+def test_retry_quarantined_task_never_returns_sensitive_task_id(tmp_path: Path) -> None:
+    output_root = tmp_path / "outputs"
+    task_id = "legacy-xiaohongshu-review-secret"
+    task_dir = output_root / "tasks" / task_id
+    task_dir.mkdir(parents=True)
+    (task_dir / "task.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "source_privacy_migration_version": 2,
+                "source_privacy_quarantined": True,
+                "task_id": task_id,
+                "source_url": "",
+                "platform": "xiaohongshu",
+                "status": "completed",
+                "artifacts": {},
+                "error": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = retry_insights_once(
+        json.dumps(
+            {
+                "task_id": task_id,
+                "target": "insights",
+                "output_language": "zh-CN",
+            }
+        ),
+        project_root=tmp_path,
+        environ={OUTPUT_DIR_ENV: output_root.as_posix()},
+    )
+
+    assert result["task_id"] is None
+    assert result["error"]["code"] == "TASK_MANIFEST_NOT_FOUND"
+    serialized = json.dumps(result)
+    assert "review-secret" not in serialized
+    assert task_id not in serialized
+
+
+def test_retry_rejects_linked_transcript_before_reading_or_persisting_target(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "outputs"
+    cache_root = tmp_path / "cache"
+    task_id = "20260710-120000-douyin-7524373044106677544"
+    task_dir = output_root / "tasks" / task_id
+    transcript_path = task_dir / "transcript" / "transcript.txt"
+    transcript_path.parent.mkdir(parents=True)
+    linked_target = tmp_path / "private-transcript.txt"
+    linked_target.write_text("linked target review-secret\n", encoding="utf-8")
+    try:
+        transcript_path.symlink_to(linked_target)
+    except OSError:
+        pytest.skip("Creating symlinks requires operating system support.")
+    manifest_path = task_dir / "task.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "source_privacy_migration_version": 2,
+                "source_privacy_quarantined": False,
+                "task_id": task_id,
+                "created_at": "2026-07-10T12:00:00Z",
+                "source_url": "https://www.douyin.com/video/7524373044106677544",
+                "source_identity": {
+                    "version": 1,
+                    "platform": "douyin",
+                    "stable_id": "7524373044106677544",
+                    "effective_part": None,
+                    "canonical_url": "https://www.douyin.com/video/7524373044106677544",
+                },
+                "platform": "douyin",
+                "status": "partial_completed",
+                "model": "iic/SenseVoiceSmall",
+                "artifacts": {"transcript_txt": "transcript/transcript.txt"},
+                "error": None,
+                "text_preview": "safe preview",
+                "insights_count": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = retry_insights_once(
+        json.dumps(
+            {
+                "task_id": task_id,
+                "target": "summary",
+                "output_language": "zh-CN",
+            }
+        ),
+        project_root=tmp_path,
+        environ={
+            OUTPUT_DIR_ENV: output_root.as_posix(),
+            CACHE_DIR_ENV: cache_root.as_posix(),
+        },
+    )
+
+    serialized_result = json.dumps(result)
+    persisted_manifest = manifest_path.read_text(encoding="utf-8")
+    assert result["error"]["code"] == "TRANSCRIPT_TEXT_PATH_INVALID"
+    assert "review-secret" not in serialized_result
+    assert "review-secret" not in persisted_manifest
+
+
+def test_summary_finalization_preserves_existing_insights_count(tmp_path: Path) -> None:
+    output_root = tmp_path / "outputs"
+    cache_root = tmp_path / "cache"
+    task_id = "20260705-153012-douyin-7524373044106677544"
+    task_dir = output_root / "tasks" / task_id
+    transcript_dir = task_dir / "transcript"
+    ai_dir = task_dir / "ai"
+    transcript_dir.mkdir(parents=True)
+    ai_dir.mkdir()
+    (transcript_dir / "transcript.txt").write_text("saved transcript\n", encoding="utf-8")
+    (transcript_dir / "transcript.md").write_text(
+        "# Transcript\n\nsaved transcript\n",
+        encoding="utf-8",
+    )
+    (ai_dir / "insights.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "insights": [
+                    {
+                        "id": 1,
+                        "topic": "existing insight",
+                        "matchReason": "matched",
+                        "followUpQuestions": ["next"],
+                        "suitableUse": "content planning",
+                        "sourceChunkId": 1,
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (ai_dir / "insights.md").write_text("# 启发灵感\n", encoding="utf-8")
+    (task_dir / "task.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "source_privacy_migration_version": 2,
+                "source_privacy_quarantined": False,
+                "task_id": task_id,
+                "created_at": "2026-07-05T15:30:12Z",
+                "source_url": "https://www.douyin.com/video/7524373044106677544",
+                "source_identity": {
+                    "version": 1,
+                    "platform": "douyin",
+                    "stable_id": "7524373044106677544",
+                    "effective_part": None,
+                    "canonical_url": "https://www.douyin.com/video/7524373044106677544",
+                },
+                "platform": "douyin",
+                "status": "completed",
+                "app_version": "app",
+                "worker_version": "app",
+                "model": "iic/SenseVoiceSmall",
+                "artifacts": {
+                    "transcript_txt": "transcript/transcript.txt",
+                    "transcript_md": "transcript/transcript.md",
+                    "insights": "ai/insights.json",
+                    "insights_md": "ai/insights.md",
+                },
+                "error": None,
+                "text_preview": "saved transcript",
+                "insights_count": 1,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    store = TaskStoreFacade(output_root, cache_root)
+    context = store.open(task_id).context
+    artifacts = write_summary_files(
+        "# summary\n\nKey findings", "mindmap\n  root((Findings))\n",
+        ai_dir, "", "en-US", persist=False,
+    )
+    assert not artifacts.summary_path.exists()
+    assert not artifacts.mindmap_path.exists()
+    result = store.finalize(
+        context,
+        merge_existing_ai_artifacts(
+            context.paths,
+            ProcessResult(
+                status=JobStage.COMPLETED,
+                text="saved transcript",
+                summary=artifacts.summary,
+                artifact_payloads={
+                    "ai/summary.md": artifacts.summary_bytes,
+                    "ai/mindmap.mmd": artifacts.mindmap_bytes,
+                },
+            ),
+        ),
+    ).to_dict()
+
+    assert result["status"] == "completed"
+    assert result["summary"].startswith("# summary")
+    assert result["insights"][0]["topic"] == "existing insight"
+    assert result["artifacts"]["summary"] == "ai/summary.md"
+    assert result["artifacts"]["mindmap"] == "ai/mindmap.mmd"
+    assert result["artifacts"]["insights"] == "ai/insights.json"
+    assert "preference_snapshot" not in result["artifacts"]
+
+    manifest = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
+    assert manifest["status"] == "completed"
+    assert manifest["artifacts"] == result["artifacts"]
+    assert manifest["insights_count"] == 1
+    assert "output_language" not in manifest
+
+
+def test_insights_finalization_preserves_existing_summary(tmp_path: Path) -> None:
+    output_root = tmp_path / "outputs"
+    cache_root = tmp_path / "cache"
+    task_id = "20260705-153012-douyin-7524373044106677544"
+    task_dir = output_root / "tasks" / task_id
+    transcript_dir = task_dir / "transcript"
+    ai_dir = task_dir / "ai"
+    transcript_dir.mkdir(parents=True)
+    ai_dir.mkdir()
+    (transcript_dir / "transcript.txt").write_text("saved transcript\n", encoding="utf-8")
+    (transcript_dir / "transcript.md").write_text(
+        "# Transcript\n\nsaved transcript\n",
+        encoding="utf-8",
+    )
+    (ai_dir / "summary.md").write_text("# existing summary\n", encoding="utf-8")
+    (ai_dir / "mindmap.mmd").write_text("mindmap\n  root((existing))\n", encoding="utf-8")
+    (task_dir / "task.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "source_privacy_migration_version": 2,
+                "source_privacy_quarantined": False,
+                "task_id": task_id,
+                "created_at": "2026-07-05T15:30:12Z",
+                "source_url": "https://www.douyin.com/video/7524373044106677544",
+                "source_identity": {
+                    "version": 1,
+                    "platform": "douyin",
+                    "stable_id": "7524373044106677544",
+                    "effective_part": None,
+                    "canonical_url": "https://www.douyin.com/video/7524373044106677544",
+                },
+                "platform": "douyin",
+                "status": "completed",
+                "app_version": "app",
+                "worker_version": "app",
+                "model": "iic/SenseVoiceSmall",
+                "artifacts": {
+                    "transcript_txt": "transcript/transcript.txt",
+                    "transcript_md": "transcript/transcript.md",
+                    "summary": "ai/summary.md",
+                    "mindmap": "ai/mindmap.mmd",
+                },
+                "error": None,
+                "text_preview": "saved transcript",
+                "insights_count": 0,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    store = TaskStoreFacade(output_root, cache_root)
+    context = store.open(task_id).context
+    snapshot = parse_preference_snapshot(valid_preference_snapshot())
+    store.save_preference_snapshot(context, snapshot)
+    insights = [Insight(1, "retry question", "matched", ("next",), "content planning", 1)]
+    artifacts = write_insight_files(
+        insights, ai_dir, "", "zh-TW", persist=False,
+    )
+    result = store.finalize(
+        context,
+        merge_existing_ai_artifacts(
+            context.paths,
+            ProcessResult(
+                status=JobStage.COMPLETED,
+                text="saved transcript",
+                insights=insights,
+                artifact_payloads={
+                    "ai/insights.json": artifacts.json_bytes,
+                    "ai/insights.md": artifacts.md_bytes,
+                },
+            ),
+        ),
+        draft_seed_insight_id=None,
+    ).to_dict()
+
+    assert result["status"] == "completed"
+    assert result["summary"] == "# existing summary"
+    assert result["insights"][0]["topic"] == "retry question"
+    assert result["artifacts"]["summary"] == "ai/summary.md"
+    assert result["artifacts"]["mindmap"] == "ai/mindmap.mmd"
+    assert result["artifacts"]["insights"] == "ai/insights.json"
+    assert result["artifacts"]["preference_snapshot"] == "ai/preference-snapshot.json"
+
+    manifest = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
+    assert manifest["status"] == "completed"
+    assert manifest["artifacts"] == result["artifacts"]
+    assert manifest["insights_count"] == 1
+    assert "output_language" not in manifest
+
+
+def test_finalization_rejects_invalid_payload_and_preserves_previous_artifacts(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "outputs"
+    cache_root = tmp_path / "cache"
+    task_id = "20260722-120000-youtube-dQw4w9WgXcQ"
+    task_dir = output_root / "tasks" / task_id
+    transcript_dir = task_dir / "transcript"
+    ai_dir = task_dir / "ai"
+    transcript_dir.mkdir(parents=True)
+    ai_dir.mkdir()
+    (transcript_dir / "transcript.txt").write_bytes(b"saved transcript\n")
+    (transcript_dir / "transcript.md").write_bytes(b"# Transcript\n\nsaved transcript\n")
+    summary_path = ai_dir / "summary.md"
+    mindmap_path = ai_dir / "mindmap.mmd"
+    summary_path.write_bytes(b"# Previous summary\n")
+    mindmap_path.write_bytes(b"mindmap\n  root((Previous))\n")
+    manifest_path = task_dir / "task.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "source_privacy_migration_version": 2,
+                "source_privacy_quarantined": False,
+                "task_id": task_id,
+                "created_at": "2026-07-22T12:00:00Z",
+                "source_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                "source_identity": {
+                    "version": 1,
+                    "platform": "youtube",
+                    "stable_id": "dQw4w9WgXcQ",
+                    "effective_part": None,
+                    "canonical_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                },
+                "platform": "youtube",
+                "status": "completed",
+                "app_version": "app",
+                "worker_version": "app",
+                "model": "iic/SenseVoiceSmall",
+                "transcript": {"source": "asr", "language": None, "engine": "model"},
+                "artifacts": {
+                    "transcript_txt": "transcript/transcript.txt",
+                    "transcript_md": "transcript/transcript.md",
+                    "summary": "ai/summary.md",
+                    "mindmap": "ai/mindmap.mmd",
+                },
+                "error": None,
+                "text_preview": "saved transcript",
+                "insights_count": 0,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    previous_manifest = manifest_path.read_bytes()
+    store = TaskStoreFacade(output_root, cache_root)
+    context = store.open(task_id).context
+    with pytest.raises(task_transaction.TaskArtifactCommitError):
+        store.finalize(
+            context,
+            ProcessResult(
+                status=JobStage.COMPLETED,
+                text="saved transcript",
+                summary="# Updated summary",
+                artifact_payloads={
+                    "ai/summary.md": b"# Updated summary\n",
+                    "ai/../mindmap.mmd": b"mindmap\n  root((Updated))\n",
+                },
+            ),
+        )
+    assert summary_path.read_bytes() == b"# Previous summary\n"
+    assert mindmap_path.read_bytes() == b"mindmap\n  root((Previous))\n"
+    assert manifest_path.read_bytes() == previous_manifest
+    assert not list(task_dir.rglob(".artifact-*"))

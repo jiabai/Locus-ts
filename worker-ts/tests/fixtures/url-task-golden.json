@@ -1,0 +1,865 @@
+{
+  "constants": {
+    "schema_version": 3,
+    "source_privacy_migration_version": 2,
+    "created_at": "2026-11-14T12:00:00Z",
+    "updated_at": "2026-11-14T12:34:56Z"
+  },
+  "cases": [
+    {
+      "label": "douyin direct",
+      "url": "https://www.douyin.com/video/7524373044106677544",
+      "asr_model": "iic/SenseVoiceSmall-onnx",
+      "identity": {
+        "version": 1,
+        "platform": "douyin",
+        "stable_id": "7524373044106677544",
+        "effective_part": null,
+        "canonical_url": "https://www.douyin.com/video/7524373044106677544"
+      },
+      "task_id": "20261114-120000-douyin-7524373044106677544",
+      "created_at": "2026-11-14T12:00:00Z",
+      "manifest": "{\n  \"schema_version\": 3,\n  \"source_privacy_migration_version\": 2,\n  \"source_privacy_quarantined\": false,\n  \"task_id\": \"20261114-120000-douyin-7524373044106677544\",\n  \"created_at\": \"2026-11-14T12:00:00Z\",\n  \"updated_at\": \"2026-11-14T12:34:56Z\",\n  \"source_url\": \"https://www.douyin.com/video/7524373044106677544\",\n  \"source_identity\": {\n    \"version\": 1,\n    \"platform\": \"douyin\",\n    \"stable_id\": \"7524373044106677544\",\n    \"effective_part\": null,\n    \"canonical_url\": \"https://www.douyin.com/video/7524373044106677544\"\n  },\n  \"platform\": \"douyin\",\n  \"status\": \"completed\",\n  \"app_version\": \"app\",\n  \"worker_version\": \"app\",\n  \"model\": \"iic/SenseVoiceSmall-onnx\",\n  \"transcript\": {\n    \"source\": \"asr\",\n    \"language\": null,\n    \"engine\": \"iic/SenseVoiceSmall-onnx\"\n  },\n  \"artifacts\": {\n    \"transcript_txt\": \"transcript/transcript.txt\"\n  },\n  \"error\": null,\n  \"text_preview\": \"视频文字稿示例\",\n  \"insights_count\": 0,\n  \"draft_path\": null,\n  \"has_draft\": false,\n  \"draft_seed_insight_id\": null\n}\n"
+    },
+    {
+      "label": "xiaohongshu note",
+      "url": "https://www.xiaohongshu.com/explore/abcdef0123456789abcdef01",
+      "asr_model": "iic/SenseVoiceSmall-onnx",
+      "identity": {
+        "version": 1,
+        "platform": "xiaohongshu",
+        "stable_id": "abcdef0123456789abcdef01",
+        "effective_part": null,
+        "canonical_url": "https://www.xiaohongshu.com/explore/abcdef0123456789abcdef01"
+      },
+      "task_id": "20261114-120000-xiaohongshu-abcdef0123456789abcdef01",
+      "created_at": "2026-11-14T12:00:00Z",
+      "manifest": "{\n  \"schema_version\": 3,\n  \"source_privacy_migration_version\": 2,\n  \"source_privacy_quarantined\": false,\n  \"task_id\": \"20261114-120000-xiaohongshu-abcdef0123456789abcdef01\",\n  \"created_at\": \"2026-11-14T12:00:00Z\",\n  \"updated_at\": \"2026-11-14T12:34:56Z\",\n  \"source_url\": \"https://www.xiaohongshu.com/explore/abcdef0123456789abcdef01\",\n  \"source_identity\": {\n    \"version\": 1,\n    \"platform\": \"xiaohongshu\",\n    \"stable_id\": \"abcdef0123456789abcdef01\",\n    \"effective_part\": null,\n    \"canonical_url\": \"https://www.xiaohongshu.com/explore/abcdef0123456789abcdef01\"\n  },\n  \"platform\": \"xiaohongshu\",\n  \"status\": \"completed\",\n  \"app_version\": \"app\",\n  \"worker_version\": \"app\",\n  \"model\": \"iic/SenseVoiceSmall-onnx\",\n  \"transcript\": {\n    \"source\": \"asr\",\n    \"language\": null,\n    \"engine\": \"iic/SenseVoiceSmall-onnx\"\n  },\n  \"artifacts\": {\n    \"transcript_txt\": \"transcript/transcript.txt\"\n  },\n  \"error\": null,\n  \"text_preview\": \"视频文字稿示例\",\n  \"insights_count\": 0,\n  \"draft_path\": null,\n  \"has_draft\": false,\n  \"draft_seed_insight_id\": null\n}\n"
+    },
+    {
+      "label": "bilibili part 3",
+      "url": "https://www.bilibili.com/video/BV1xx411c7mD/?p=3",
+      "asr_model": "iic/SenseVoiceSmall-onnx",
+      "identity": {
+        "version": 1,
+        "platform": "bilibili",
+        "stable_id": "BV1xx411c7mD",
+        "effective_part": 3,
+        "canonical_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3"
+      },
+      "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+      "created_at": "2026-11-14T12:00:00Z",
+      "manifest": "{\n  \"schema_version\": 3,\n  \"source_privacy_migration_version\": 2,\n  \"source_privacy_quarantined\": false,\n  \"task_id\": \"20261114-120000-bilibili-BV1xx411c7mD-p3\",\n  \"created_at\": \"2026-11-14T12:00:00Z\",\n  \"updated_at\": \"2026-11-14T12:34:56Z\",\n  \"source_url\": \"https://www.bilibili.com/video/BV1xx411c7mD?p=3\",\n  \"source_identity\": {\n    \"version\": 1,\n    \"platform\": \"bilibili\",\n    \"stable_id\": \"BV1xx411c7mD\",\n    \"effective_part\": 3,\n    \"canonical_url\": \"https://www.bilibili.com/video/BV1xx411c7mD?p=3\"\n  },\n  \"platform\": \"bilibili\",\n  \"status\": \"completed\",\n  \"app_version\": \"app\",\n  \"worker_version\": \"app\",\n  \"model\": \"iic/SenseVoiceSmall-onnx\",\n  \"transcript\": {\n    \"source\": \"asr\",\n    \"language\": null,\n    \"engine\": \"iic/SenseVoiceSmall-onnx\"\n  },\n  \"artifacts\": {\n    \"transcript_txt\": \"transcript/transcript.txt\"\n  },\n  \"error\": null,\n  \"text_preview\": \"视频文字稿示例\",\n  \"insights_count\": 0,\n  \"draft_path\": null,\n  \"has_draft\": false,\n  \"draft_seed_insight_id\": null\n}\n"
+    },
+    {
+      "label": "youtube watch",
+      "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "asr_model": "iic/SenseVoiceSmall-onnx",
+      "identity": {
+        "version": 1,
+        "platform": "youtube",
+        "stable_id": "dQw4w9WgXcQ",
+        "effective_part": null,
+        "canonical_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+      },
+      "task_id": "20261114-120000-youtube-dQw4w9WgXcQ",
+      "created_at": "2026-11-14T12:00:00Z",
+      "manifest": "{\n  \"schema_version\": 3,\n  \"source_privacy_migration_version\": 2,\n  \"source_privacy_quarantined\": false,\n  \"task_id\": \"20261114-120000-youtube-dQw4w9WgXcQ\",\n  \"created_at\": \"2026-11-14T12:00:00Z\",\n  \"updated_at\": \"2026-11-14T12:34:56Z\",\n  \"source_url\": \"https://www.youtube.com/watch?v=dQw4w9WgXcQ\",\n  \"source_identity\": {\n    \"version\": 1,\n    \"platform\": \"youtube\",\n    \"stable_id\": \"dQw4w9WgXcQ\",\n    \"effective_part\": null,\n    \"canonical_url\": \"https://www.youtube.com/watch?v=dQw4w9WgXcQ\"\n  },\n  \"platform\": \"youtube\",\n  \"status\": \"completed\",\n  \"app_version\": \"app\",\n  \"worker_version\": \"app\",\n  \"model\": \"iic/SenseVoiceSmall-onnx\",\n  \"transcript\": {\n    \"source\": \"asr\",\n    \"language\": null,\n    \"engine\": \"iic/SenseVoiceSmall-onnx\"\n  },\n  \"artifacts\": {\n    \"transcript_txt\": \"transcript/transcript.txt\"\n  },\n  \"error\": null,\n  \"text_preview\": \"视频文字稿示例\",\n  \"insights_count\": 0,\n  \"draft_path\": null,\n  \"has_draft\": false,\n  \"draft_seed_insight_id\": null\n}\n"
+    },
+    {
+      "label": "youtube short link",
+      "url": "https://youtu.be/dQw4w9WgXcQ?t=9",
+      "asr_model": "iic/SenseVoiceSmall-onnx",
+      "identity": {
+        "version": 1,
+        "platform": "youtube",
+        "stable_id": "dQw4w9WgXcQ",
+        "effective_part": null,
+        "canonical_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+      },
+      "task_id": "20261114-120000-youtube-dQw4w9WgXcQ",
+      "created_at": "2026-11-14T12:00:00Z",
+      "manifest": "{\n  \"schema_version\": 3,\n  \"source_privacy_migration_version\": 2,\n  \"source_privacy_quarantined\": false,\n  \"task_id\": \"20261114-120000-youtube-dQw4w9WgXcQ\",\n  \"created_at\": \"2026-11-14T12:00:00Z\",\n  \"updated_at\": \"2026-11-14T12:34:56Z\",\n  \"source_url\": \"https://www.youtube.com/watch?v=dQw4w9WgXcQ\",\n  \"source_identity\": {\n    \"version\": 1,\n    \"platform\": \"youtube\",\n    \"stable_id\": \"dQw4w9WgXcQ\",\n    \"effective_part\": null,\n    \"canonical_url\": \"https://www.youtube.com/watch?v=dQw4w9WgXcQ\"\n  },\n  \"platform\": \"youtube\",\n  \"status\": \"completed\",\n  \"app_version\": \"app\",\n  \"worker_version\": \"app\",\n  \"model\": \"iic/SenseVoiceSmall-onnx\",\n  \"transcript\": {\n    \"source\": \"asr\",\n    \"language\": null,\n    \"engine\": \"iic/SenseVoiceSmall-onnx\"\n  },\n  \"artifacts\": {\n    \"transcript_txt\": \"transcript/transcript.txt\"\n  },\n  \"error\": null,\n  \"text_preview\": \"视频文字稿示例\",\n  \"insights_count\": 0,\n  \"draft_path\": null,\n  \"has_draft\": false,\n  \"draft_seed_insight_id\": null\n}\n"
+    }
+  ],
+  "readback": [
+    {
+      "label": "unmodified manifest",
+      "manifest": {
+        "schema_version": 3,
+        "source_privacy_migration_version": 2,
+        "source_privacy_quarantined": false,
+        "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+        "created_at": "2026-11-14T12:00:00Z",
+        "updated_at": "2026-11-14T12:34:56Z",
+        "source_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3",
+        "source_identity": {
+          "version": 1,
+          "platform": "bilibili",
+          "stable_id": "BV1xx411c7mD",
+          "effective_part": 3,
+          "canonical_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3"
+        },
+        "platform": "bilibili",
+        "status": "completed",
+        "app_version": "app",
+        "worker_version": "app",
+        "model": "iic/SenseVoiceSmall-onnx",
+        "transcript": {
+          "source": "asr",
+          "language": null,
+          "engine": "iic/SenseVoiceSmall-onnx"
+        },
+        "artifacts": {
+          "transcript_txt": "transcript/transcript.txt"
+        },
+        "error": null,
+        "text_preview": "视频文字稿示例",
+        "insights_count": 0,
+        "draft_path": null,
+        "has_draft": false,
+        "draft_seed_insight_id": null
+      },
+      "accept": true
+    },
+    {
+      "label": "explicit url source kind",
+      "manifest": {
+        "schema_version": 3,
+        "source_privacy_migration_version": 2,
+        "source_privacy_quarantined": false,
+        "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+        "created_at": "2026-11-14T12:00:00Z",
+        "updated_at": "2026-11-14T12:34:56Z",
+        "source_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3",
+        "source_identity": {
+          "version": 1,
+          "platform": "bilibili",
+          "stable_id": "BV1xx411c7mD",
+          "effective_part": 3,
+          "canonical_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3"
+        },
+        "platform": "bilibili",
+        "status": "completed",
+        "app_version": "app",
+        "worker_version": "app",
+        "model": "iic/SenseVoiceSmall-onnx",
+        "transcript": {
+          "source": "asr",
+          "language": null,
+          "engine": "iic/SenseVoiceSmall-onnx"
+        },
+        "artifacts": {
+          "transcript_txt": "transcript/transcript.txt"
+        },
+        "error": null,
+        "text_preview": "视频文字稿示例",
+        "insights_count": 0,
+        "draft_path": null,
+        "has_draft": false,
+        "draft_seed_insight_id": null,
+        "source_kind": "url"
+      },
+      "accept": true
+    },
+    {
+      "label": "null source kind",
+      "manifest": {
+        "schema_version": 3,
+        "source_privacy_migration_version": 2,
+        "source_privacy_quarantined": false,
+        "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+        "created_at": "2026-11-14T12:00:00Z",
+        "updated_at": "2026-11-14T12:34:56Z",
+        "source_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3",
+        "source_identity": {
+          "version": 1,
+          "platform": "bilibili",
+          "stable_id": "BV1xx411c7mD",
+          "effective_part": 3,
+          "canonical_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3"
+        },
+        "platform": "bilibili",
+        "status": "completed",
+        "app_version": "app",
+        "worker_version": "app",
+        "model": "iic/SenseVoiceSmall-onnx",
+        "transcript": {
+          "source": "asr",
+          "language": null,
+          "engine": "iic/SenseVoiceSmall-onnx"
+        },
+        "artifacts": {
+          "transcript_txt": "transcript/transcript.txt"
+        },
+        "error": null,
+        "text_preview": "视频文字稿示例",
+        "insights_count": 0,
+        "draft_path": null,
+        "has_draft": false,
+        "draft_seed_insight_id": null,
+        "source_kind": null
+      },
+      "accept": true
+    },
+    {
+      "label": "local_file source kind",
+      "manifest": {
+        "schema_version": 3,
+        "source_privacy_migration_version": 2,
+        "source_privacy_quarantined": false,
+        "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+        "created_at": "2026-11-14T12:00:00Z",
+        "updated_at": "2026-11-14T12:34:56Z",
+        "source_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3",
+        "source_identity": {
+          "version": 1,
+          "platform": "bilibili",
+          "stable_id": "BV1xx411c7mD",
+          "effective_part": 3,
+          "canonical_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3"
+        },
+        "platform": "bilibili",
+        "status": "completed",
+        "app_version": "app",
+        "worker_version": "app",
+        "model": "iic/SenseVoiceSmall-onnx",
+        "transcript": {
+          "source": "asr",
+          "language": null,
+          "engine": "iic/SenseVoiceSmall-onnx"
+        },
+        "artifacts": {
+          "transcript_txt": "transcript/transcript.txt"
+        },
+        "error": null,
+        "text_preview": "视频文字稿示例",
+        "insights_count": 0,
+        "draft_path": null,
+        "has_draft": false,
+        "draft_seed_insight_id": null,
+        "source_kind": "local_file"
+      },
+      "accept": false
+    },
+    {
+      "label": "web_page source kind",
+      "manifest": {
+        "schema_version": 3,
+        "source_privacy_migration_version": 2,
+        "source_privacy_quarantined": false,
+        "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+        "created_at": "2026-11-14T12:00:00Z",
+        "updated_at": "2026-11-14T12:34:56Z",
+        "source_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3",
+        "source_identity": {
+          "version": 1,
+          "platform": "bilibili",
+          "stable_id": "BV1xx411c7mD",
+          "effective_part": 3,
+          "canonical_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3"
+        },
+        "platform": "bilibili",
+        "status": "completed",
+        "app_version": "app",
+        "worker_version": "app",
+        "model": "iic/SenseVoiceSmall-onnx",
+        "transcript": {
+          "source": "asr",
+          "language": null,
+          "engine": "iic/SenseVoiceSmall-onnx"
+        },
+        "artifacts": {
+          "transcript_txt": "transcript/transcript.txt"
+        },
+        "error": null,
+        "text_preview": "视频文字稿示例",
+        "insights_count": 0,
+        "draft_path": null,
+        "has_draft": false,
+        "draft_seed_insight_id": null,
+        "source_kind": "web_page"
+      },
+      "accept": false
+    },
+    {
+      "label": "web schema version",
+      "manifest": {
+        "schema_version": 4,
+        "source_privacy_migration_version": 2,
+        "source_privacy_quarantined": false,
+        "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+        "created_at": "2026-11-14T12:00:00Z",
+        "updated_at": "2026-11-14T12:34:56Z",
+        "source_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3",
+        "source_identity": {
+          "version": 1,
+          "platform": "bilibili",
+          "stable_id": "BV1xx411c7mD",
+          "effective_part": 3,
+          "canonical_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3"
+        },
+        "platform": "bilibili",
+        "status": "completed",
+        "app_version": "app",
+        "worker_version": "app",
+        "model": "iic/SenseVoiceSmall-onnx",
+        "transcript": {
+          "source": "asr",
+          "language": null,
+          "engine": "iic/SenseVoiceSmall-onnx"
+        },
+        "artifacts": {
+          "transcript_txt": "transcript/transcript.txt"
+        },
+        "error": null,
+        "text_preview": "视频文字稿示例",
+        "insights_count": 0,
+        "draft_path": null,
+        "has_draft": false,
+        "draft_seed_insight_id": null
+      },
+      "accept": false
+    },
+    {
+      "label": "missing source identity",
+      "manifest": {
+        "schema_version": 3,
+        "source_privacy_migration_version": 2,
+        "source_privacy_quarantined": false,
+        "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+        "created_at": "2026-11-14T12:00:00Z",
+        "updated_at": "2026-11-14T12:34:56Z",
+        "source_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3",
+        "platform": "bilibili",
+        "status": "completed",
+        "app_version": "app",
+        "worker_version": "app",
+        "model": "iic/SenseVoiceSmall-onnx",
+        "transcript": {
+          "source": "asr",
+          "language": null,
+          "engine": "iic/SenseVoiceSmall-onnx"
+        },
+        "artifacts": {
+          "transcript_txt": "transcript/transcript.txt"
+        },
+        "error": null,
+        "text_preview": "视频文字稿示例",
+        "insights_count": 0,
+        "draft_path": null,
+        "has_draft": false,
+        "draft_seed_insight_id": null
+      },
+      "accept": false
+    },
+    {
+      "label": "null source identity",
+      "manifest": {
+        "schema_version": 3,
+        "source_privacy_migration_version": 2,
+        "source_privacy_quarantined": false,
+        "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+        "created_at": "2026-11-14T12:00:00Z",
+        "updated_at": "2026-11-14T12:34:56Z",
+        "source_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3",
+        "source_identity": null,
+        "platform": "bilibili",
+        "status": "completed",
+        "app_version": "app",
+        "worker_version": "app",
+        "model": "iic/SenseVoiceSmall-onnx",
+        "transcript": {
+          "source": "asr",
+          "language": null,
+          "engine": "iic/SenseVoiceSmall-onnx"
+        },
+        "artifacts": {
+          "transcript_txt": "transcript/transcript.txt"
+        },
+        "error": null,
+        "text_preview": "视频文字稿示例",
+        "insights_count": 0,
+        "draft_path": null,
+        "has_draft": false,
+        "draft_seed_insight_id": null
+      },
+      "accept": false
+    },
+    {
+      "label": "source url mismatch",
+      "manifest": {
+        "schema_version": 3,
+        "source_privacy_migration_version": 2,
+        "source_privacy_quarantined": false,
+        "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+        "created_at": "2026-11-14T12:00:00Z",
+        "updated_at": "2026-11-14T12:34:56Z",
+        "source_url": "https://example.com/other",
+        "source_identity": {
+          "version": 1,
+          "platform": "bilibili",
+          "stable_id": "BV1xx411c7mD",
+          "effective_part": 3,
+          "canonical_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3"
+        },
+        "platform": "bilibili",
+        "status": "completed",
+        "app_version": "app",
+        "worker_version": "app",
+        "model": "iic/SenseVoiceSmall-onnx",
+        "transcript": {
+          "source": "asr",
+          "language": null,
+          "engine": "iic/SenseVoiceSmall-onnx"
+        },
+        "artifacts": {
+          "transcript_txt": "transcript/transcript.txt"
+        },
+        "error": null,
+        "text_preview": "视频文字稿示例",
+        "insights_count": 0,
+        "draft_path": null,
+        "has_draft": false,
+        "draft_seed_insight_id": null
+      },
+      "accept": false
+    },
+    {
+      "label": "empty source url",
+      "manifest": {
+        "schema_version": 3,
+        "source_privacy_migration_version": 2,
+        "source_privacy_quarantined": false,
+        "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+        "created_at": "2026-11-14T12:00:00Z",
+        "updated_at": "2026-11-14T12:34:56Z",
+        "source_url": "",
+        "source_identity": {
+          "version": 1,
+          "platform": "bilibili",
+          "stable_id": "BV1xx411c7mD",
+          "effective_part": 3,
+          "canonical_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3"
+        },
+        "platform": "bilibili",
+        "status": "completed",
+        "app_version": "app",
+        "worker_version": "app",
+        "model": "iic/SenseVoiceSmall-onnx",
+        "transcript": {
+          "source": "asr",
+          "language": null,
+          "engine": "iic/SenseVoiceSmall-onnx"
+        },
+        "artifacts": {
+          "transcript_txt": "transcript/transcript.txt"
+        },
+        "error": null,
+        "text_preview": "视频文字稿示例",
+        "insights_count": 0,
+        "draft_path": null,
+        "has_draft": false,
+        "draft_seed_insight_id": null
+      },
+      "accept": false
+    },
+    {
+      "label": "local source also present",
+      "manifest": {
+        "schema_version": 3,
+        "source_privacy_migration_version": 2,
+        "source_privacy_quarantined": false,
+        "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+        "created_at": "2026-11-14T12:00:00Z",
+        "updated_at": "2026-11-14T12:34:56Z",
+        "source_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3",
+        "source_identity": {
+          "version": 1,
+          "platform": "bilibili",
+          "stable_id": "BV1xx411c7mD",
+          "effective_part": 3,
+          "canonical_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3"
+        },
+        "platform": "bilibili",
+        "status": "completed",
+        "app_version": "app",
+        "worker_version": "app",
+        "model": "iic/SenseVoiceSmall-onnx",
+        "transcript": {
+          "source": "asr",
+          "language": null,
+          "engine": "iic/SenseVoiceSmall-onnx"
+        },
+        "artifacts": {
+          "transcript_txt": "transcript/transcript.txt"
+        },
+        "error": null,
+        "text_preview": "视频文字稿示例",
+        "insights_count": 0,
+        "draft_path": null,
+        "has_draft": false,
+        "draft_seed_insight_id": null,
+        "local_source": {
+          "display_name": "a.mp4"
+        }
+      },
+      "accept": false
+    },
+    {
+      "label": "web source also present",
+      "manifest": {
+        "schema_version": 3,
+        "source_privacy_migration_version": 2,
+        "source_privacy_quarantined": false,
+        "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+        "created_at": "2026-11-14T12:00:00Z",
+        "updated_at": "2026-11-14T12:34:56Z",
+        "source_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3",
+        "source_identity": {
+          "version": 1,
+          "platform": "bilibili",
+          "stable_id": "BV1xx411c7mD",
+          "effective_part": 3,
+          "canonical_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3"
+        },
+        "platform": "bilibili",
+        "status": "completed",
+        "app_version": "app",
+        "worker_version": "app",
+        "model": "iic/SenseVoiceSmall-onnx",
+        "transcript": {
+          "source": "asr",
+          "language": null,
+          "engine": "iic/SenseVoiceSmall-onnx"
+        },
+        "artifacts": {
+          "transcript_txt": "transcript/transcript.txt"
+        },
+        "error": null,
+        "text_preview": "视频文字稿示例",
+        "insights_count": 0,
+        "draft_path": null,
+        "has_draft": false,
+        "draft_seed_insight_id": null,
+        "web_source": {
+          "title": "x"
+        }
+      },
+      "accept": false
+    },
+    {
+      "label": "identity extra key",
+      "manifest": {
+        "schema_version": 3,
+        "source_privacy_migration_version": 2,
+        "source_privacy_quarantined": false,
+        "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+        "created_at": "2026-11-14T12:00:00Z",
+        "updated_at": "2026-11-14T12:34:56Z",
+        "source_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3",
+        "source_identity": {
+          "version": 1,
+          "platform": "bilibili",
+          "stable_id": "BV1xx411c7mD",
+          "effective_part": 3,
+          "canonical_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3",
+          "extra": "ignored"
+        },
+        "platform": "bilibili",
+        "status": "completed",
+        "app_version": "app",
+        "worker_version": "app",
+        "model": "iic/SenseVoiceSmall-onnx",
+        "transcript": {
+          "source": "asr",
+          "language": null,
+          "engine": "iic/SenseVoiceSmall-onnx"
+        },
+        "artifacts": {
+          "transcript_txt": "transcript/transcript.txt"
+        },
+        "error": null,
+        "text_preview": "视频文字稿示例",
+        "insights_count": 0,
+        "draft_path": null,
+        "has_draft": false,
+        "draft_seed_insight_id": null
+      },
+      "accept": true
+    },
+    {
+      "label": "identity version drift",
+      "manifest": {
+        "schema_version": 3,
+        "source_privacy_migration_version": 2,
+        "source_privacy_quarantined": false,
+        "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+        "created_at": "2026-11-14T12:00:00Z",
+        "updated_at": "2026-11-14T12:34:56Z",
+        "source_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3",
+        "source_identity": {
+          "version": 2,
+          "platform": "bilibili",
+          "stable_id": "BV1xx411c7mD",
+          "effective_part": 3,
+          "canonical_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3"
+        },
+        "platform": "bilibili",
+        "status": "completed",
+        "app_version": "app",
+        "worker_version": "app",
+        "model": "iic/SenseVoiceSmall-onnx",
+        "transcript": {
+          "source": "asr",
+          "language": null,
+          "engine": "iic/SenseVoiceSmall-onnx"
+        },
+        "artifacts": {
+          "transcript_txt": "transcript/transcript.txt"
+        },
+        "error": null,
+        "text_preview": "视频文字稿示例",
+        "insights_count": 0,
+        "draft_path": null,
+        "has_draft": false,
+        "draft_seed_insight_id": null
+      },
+      "accept": false
+    },
+    {
+      "label": "identity stable id drift",
+      "manifest": {
+        "schema_version": 3,
+        "source_privacy_migration_version": 2,
+        "source_privacy_quarantined": false,
+        "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+        "created_at": "2026-11-14T12:00:00Z",
+        "updated_at": "2026-11-14T12:34:56Z",
+        "source_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3",
+        "source_identity": {
+          "version": 1,
+          "platform": "bilibili",
+          "stable_id": "other",
+          "effective_part": 3,
+          "canonical_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3"
+        },
+        "platform": "bilibili",
+        "status": "completed",
+        "app_version": "app",
+        "worker_version": "app",
+        "model": "iic/SenseVoiceSmall-onnx",
+        "transcript": {
+          "source": "asr",
+          "language": null,
+          "engine": "iic/SenseVoiceSmall-onnx"
+        },
+        "artifacts": {
+          "transcript_txt": "transcript/transcript.txt"
+        },
+        "error": null,
+        "text_preview": "视频文字稿示例",
+        "insights_count": 0,
+        "draft_path": null,
+        "has_draft": false,
+        "draft_seed_insight_id": null
+      },
+      "accept": false
+    },
+    {
+      "label": "identity platform drift",
+      "manifest": {
+        "schema_version": 3,
+        "source_privacy_migration_version": 2,
+        "source_privacy_quarantined": false,
+        "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+        "created_at": "2026-11-14T12:00:00Z",
+        "updated_at": "2026-11-14T12:34:56Z",
+        "source_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3",
+        "source_identity": {
+          "version": 1,
+          "platform": "youtube",
+          "stable_id": "BV1xx411c7mD",
+          "effective_part": 3,
+          "canonical_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3"
+        },
+        "platform": "bilibili",
+        "status": "completed",
+        "app_version": "app",
+        "worker_version": "app",
+        "model": "iic/SenseVoiceSmall-onnx",
+        "transcript": {
+          "source": "asr",
+          "language": null,
+          "engine": "iic/SenseVoiceSmall-onnx"
+        },
+        "artifacts": {
+          "transcript_txt": "transcript/transcript.txt"
+        },
+        "error": null,
+        "text_preview": "视频文字稿示例",
+        "insights_count": 0,
+        "draft_path": null,
+        "has_draft": false,
+        "draft_seed_insight_id": null
+      },
+      "accept": false
+    },
+    {
+      "label": "identity canonical url drift",
+      "manifest": {
+        "schema_version": 3,
+        "source_privacy_migration_version": 2,
+        "source_privacy_quarantined": false,
+        "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+        "created_at": "2026-11-14T12:00:00Z",
+        "updated_at": "2026-11-14T12:34:56Z",
+        "source_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3",
+        "source_identity": {
+          "version": 1,
+          "platform": "bilibili",
+          "stable_id": "BV1xx411c7mD",
+          "effective_part": 3,
+          "canonical_url": "https://example.com/other"
+        },
+        "platform": "bilibili",
+        "status": "completed",
+        "app_version": "app",
+        "worker_version": "app",
+        "model": "iic/SenseVoiceSmall-onnx",
+        "transcript": {
+          "source": "asr",
+          "language": null,
+          "engine": "iic/SenseVoiceSmall-onnx"
+        },
+        "artifacts": {
+          "transcript_txt": "transcript/transcript.txt"
+        },
+        "error": null,
+        "text_preview": "视频文字稿示例",
+        "insights_count": 0,
+        "draft_path": null,
+        "has_draft": false,
+        "draft_seed_insight_id": null
+      },
+      "accept": false
+    },
+    {
+      "label": "identity effective part drift",
+      "manifest": {
+        "schema_version": 3,
+        "source_privacy_migration_version": 2,
+        "source_privacy_quarantined": false,
+        "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+        "created_at": "2026-11-14T12:00:00Z",
+        "updated_at": "2026-11-14T12:34:56Z",
+        "source_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3",
+        "source_identity": {
+          "version": 1,
+          "platform": "bilibili",
+          "stable_id": "BV1xx411c7mD",
+          "effective_part": 7,
+          "canonical_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3"
+        },
+        "platform": "bilibili",
+        "status": "completed",
+        "app_version": "app",
+        "worker_version": "app",
+        "model": "iic/SenseVoiceSmall-onnx",
+        "transcript": {
+          "source": "asr",
+          "language": null,
+          "engine": "iic/SenseVoiceSmall-onnx"
+        },
+        "artifacts": {
+          "transcript_txt": "transcript/transcript.txt"
+        },
+        "error": null,
+        "text_preview": "视频文字稿示例",
+        "insights_count": 0,
+        "draft_path": null,
+        "has_draft": false,
+        "draft_seed_insight_id": null
+      },
+      "accept": false
+    },
+    {
+      "label": "identity effective part null",
+      "manifest": {
+        "schema_version": 3,
+        "source_privacy_migration_version": 2,
+        "source_privacy_quarantined": false,
+        "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+        "created_at": "2026-11-14T12:00:00Z",
+        "updated_at": "2026-11-14T12:34:56Z",
+        "source_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3",
+        "source_identity": {
+          "version": 1,
+          "platform": "bilibili",
+          "stable_id": "BV1xx411c7mD",
+          "effective_part": null,
+          "canonical_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3"
+        },
+        "platform": "bilibili",
+        "status": "completed",
+        "app_version": "app",
+        "worker_version": "app",
+        "model": "iic/SenseVoiceSmall-onnx",
+        "transcript": {
+          "source": "asr",
+          "language": null,
+          "engine": "iic/SenseVoiceSmall-onnx"
+        },
+        "artifacts": {
+          "transcript_txt": "transcript/transcript.txt"
+        },
+        "error": null,
+        "text_preview": "视频文字稿示例",
+        "insights_count": 0,
+        "draft_path": null,
+        "has_draft": false,
+        "draft_seed_insight_id": null
+      },
+      "accept": false
+    },
+    {
+      "label": "identity effective part bool",
+      "manifest": {
+        "schema_version": 3,
+        "source_privacy_migration_version": 2,
+        "source_privacy_quarantined": false,
+        "task_id": "20261114-120000-bilibili-BV1xx411c7mD-p3",
+        "created_at": "2026-11-14T12:00:00Z",
+        "updated_at": "2026-11-14T12:34:56Z",
+        "source_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3",
+        "source_identity": {
+          "version": 1,
+          "platform": "bilibili",
+          "stable_id": "BV1xx411c7mD",
+          "effective_part": true,
+          "canonical_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3"
+        },
+        "platform": "bilibili",
+        "status": "completed",
+        "app_version": "app",
+        "worker_version": "app",
+        "model": "iic/SenseVoiceSmall-onnx",
+        "transcript": {
+          "source": "asr",
+          "language": null,
+          "engine": "iic/SenseVoiceSmall-onnx"
+        },
+        "artifacts": {
+          "transcript_txt": "transcript/transcript.txt"
+        },
+        "error": null,
+        "text_preview": "视频文字稿示例",
+        "insights_count": 0,
+        "draft_path": null,
+        "has_draft": false,
+        "draft_seed_insight_id": null
+      },
+      "accept": false
+    }
+  ]
+}

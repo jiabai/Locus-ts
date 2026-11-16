@@ -1,0 +1,478 @@
+use std::sync::Arc;
+use tauri::Manager;
+use tauri_plugin_deep_link::DeepLinkExt;
+
+mod account;
+mod asr_model;
+mod atomic_files;
+mod brand;
+mod data_storage;
+mod data_storage_validation;
+mod safe_filesystem;
+mod collections;
+mod deep_link;
+mod diagnostic_export;
+mod diagnostics;
+mod draft_detail;
+mod history;
+mod history_deletion;
+mod note_actions;
+mod insight_preferences;
+mod llm_providers;
+mod local_media;
+mod local_media_contract;
+mod progress_event;
+mod runtime;
+mod settings;
+mod task_manifest;
+mod transcript_detail;
+mod ui_preferences;
+mod vc_runtime;
+mod video_processing;
+mod window_chrome;
+mod worker_runtime;
+mod web_page;
+
+#[cfg(test)]
+mod file_safety_tests;
+#[cfg(test)]
+mod local_media_contract_tests;
+
+pub(crate) use runtime::{
+    bundled_python_path, ensure_runtime_dirs,
+    path_to_env_string, resolve_runtime_paths,
+    resolve_fixed_paths, ensure_config_dirs, worker_launch, worker_runtime_bootstrap_env,
+    RuntimePaths, ALLOW_REAL_ASR_ENV, AUDIO_REVIEW_CACHE_DIR_NAME,
+    CACHE_DIR_ENV, DENO_DIR_ENV, DENO_NO_UPDATE_CHECK_ENV, DESKTOP_LOG_DIR_NAME,
+    MODELSCOPE_OFFLINE_ENV, MODEL_DIR_ENV,
+    OUTPUT_DIR_ENV, PYTORCH_RUNTIME_DIR_ENV,
+    RESOURCE_DIR_ENV, USER_DATA_DIR_ENV, WORKER_TS_ENTRY, WORKER_TS_STORAGE_VALIDATION_ENTRY,
+};
+#[cfg(test)]
+pub(crate) use runtime::{bundled_deno_path, bundled_ytdlp_path, worker_ts_root, YTDLP_PATH_ENV};
+
+pub(crate) use diagnostics::{append_desktop_log, summarize_worker_result_for_log};
+
+pub(crate) use asr_model::{DEFAULT_ASR_MODEL, SUPPORTED_ASR_MODELS};
+
+#[cfg(test)]
+pub(crate) use asr_model::{ASR_MODEL_DOWNLOAD_EVENT_NAME, MODEL_DOWNLOAD_EVENT_PREFIX};
+
+pub(crate) use worker_runtime::{
+    run_blocking_worker_command, CancelProcessResult, ProcessSupervisors,
+};
+
+pub(crate) use history_deletion::HistoryDeletionState;
+
+pub(crate) const PROGRESS_EVENT_NAME: &str = "worker-progress";
+pub(crate) const PROGRESS_EVENT_PREFIX: &str = "APP_PROGRESS ";
+#[cfg(test)]
+pub(crate) const DESKTOP_WORKER_CONTRACT_VERSION: u32 = 12;
+pub(crate) const DIAGNOSTIC_EVENT_PREFIX: &str = "APP_DIAGNOSTIC ";
+
+#[cfg(any(windows, target_os = "linux"))]
+fn register_deep_links_on_startup() -> bool {
+    cfg!(target_os = "linux") || !cfg!(debug_assertions)
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .manage(Arc::new(ProcessSupervisors::default()))
+        .manage(Arc::new(web_page::WebPageOperations::default()))
+        .manage(Arc::new(diagnostic_export::DiagnosticExportState::default()))
+        .manage(Arc::new(asr_model::DiagnosticModelState::default()))
+        .manage(Arc::new(HistoryDeletionState::default()))
+        .manage(Arc::new(local_media::LocalMediaSelectionState::default()))
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                deep_link::activate_main_window_for_deep_link(&window, argv);
+            }
+        }))
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            data_storage::initialize(app.handle())?;
+            #[cfg(any(windows, target_os = "linux"))]
+            if register_deep_links_on_startup() {
+                if let Err(error) = app.deep_link().register_all() {
+                    eprintln!("[frameq] failed to register deep links: {error}");
+                }
+            }
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if data_storage::request_window_close(window.app_handle(), window.label()) {
+                    api.prevent_close();
+                }
+            }
+        })
+        .invoke_handler(|invoke| match invoke.message.command() {
+            "begin_web_page" => web_page::begin_web_page(invoke),
+            "process_web_page" => web_page::process_web_page(invoke),
+            _ => {
+                let handler: fn(tauri::ipc::Invoke) -> bool = tauri::generate_handler![
+            web_page::cancel_web_page,
+            data_storage::get_data_storage_state,
+            data_storage::begin_data_storage_preflight,
+            data_storage::cancel_data_storage_preflight,
+            data_storage::select_data_storage_directory,
+            data_storage::prepare_data_storage_migration,
+            data_storage::get_pending_data_storage_preview,
+            data_storage::confirm_data_storage_migration,
+            data_storage::cancel_data_storage_migration,
+            data_storage::resume_data_storage_migration,
+            data_storage::recheck_data_storage,
+            data_storage::relink_data_storage,
+            data_storage::prepare_old_storage_cleanup,
+            data_storage::confirm_old_storage_cleanup,
+            data_storage::restart_for_data_storage,
+            data_storage::restart_application,
+            local_media::select_local_media,
+            local_media::clear_local_media_selection,
+            video_processing::process_video,
+            video_processing::process_local_media,
+            video_processing::retry_insights,
+            video_processing::record_note_title_cancellation,
+            video_processing::cancel_process,
+            settings::get_llm_config,
+            settings::save_llm_config,
+            settings::dismiss_asr_model_migration,
+            settings::get_audio_review_cache_usage,
+            settings::clear_audio_review_cache,
+            llm_providers::list_llm_providers,
+            llm_providers::save_llm_provider,
+            llm_providers::delete_llm_provider,
+            llm_providers::set_active_llm_provider,
+            llm_providers::set_llm_source,
+            llm_providers::test_llm_connection,
+            ui_preferences::get_ui_preferences,
+            ui_preferences::save_ui_preferences,
+            insight_preferences::get_insight_preferences,
+            insight_preferences::save_inspiration_profile,
+            insight_preferences::skip_inspiration_profile,
+            insight_preferences::clear_inspiration_profile,
+            insight_preferences::save_default_generation_preferences,
+            history::get_history,
+            history::get_history_detail,
+            note_actions::set_note_pinned,
+            note_actions::rename_note,
+            note_actions::get_note_info,
+            note_actions::open_note_source,
+            collections::get_collections,
+            collections::create_collection,
+            collections::rename_collection,
+            collections::delete_collection,
+            collections::set_collection_task_membership,
+            history_deletion::delete_history_task,
+            history_deletion::resume_note_deletion_cleanup,
+            transcript_detail::load_transcript_detail,
+            transcript_detail::save_transcript_edit,
+            draft_detail::load_draft_detail,
+            draft_detail::save_draft_edit,
+            asr_model::get_asr_model_status,
+            asr_model::download_asr_model,
+            asr_model::cancel_asr_model_download,
+            diagnostic_export::export_diagnostics,
+            account::begin_auth_flow,
+            account::complete_auth_flow,
+            account::get_account_status,
+            account::logout_account,
+            account::redeem_activation_code,
+            account::request_activation_code,
+            window_chrome::start_window_drag,
+            window_chrome::close_window,
+            window_chrome::minimize_window,
+            window_chrome::toggle_maximize_window,
+            window_chrome::get_window_position,
+            window_chrome::set_window_position
+                ];
+                handler(invoke)
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                if data_storage::request_exit(app) { api.prevent_exit(); }
+            }
+        });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::account::{
+        account_server_not_configured_code, build_activation_redeem_url, build_auth_login_url,
+        parse_auth_callback_url, server_base_url, AuthCallback,
+    };
+    use super::path_to_env_string;
+    #[cfg(all(debug_assertions, windows))]
+    use super::register_deep_links_on_startup;
+    use super::settings::{load_llm_config_from_file, save_llm_config_to_file, LlmConfigInput};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn auth_login_url_includes_state_and_redirect_scheme() {
+        let url =
+            build_auth_login_url("https://app.example", "state-123456").expect("build auth url");
+
+        assert_eq!(
+            url,
+            "https://app.example/login?desktop=1&state=state-123456&redirect_uri=pro.8xf.app%3A%2F%2Fauth%2Fcallback"
+        );
+    }
+
+    #[cfg(all(debug_assertions, windows))]
+    #[test]
+    fn debug_builds_do_not_register_deep_links_during_startup() {
+        assert!(!register_deep_links_on_startup());
+    }
+
+    #[test]
+    fn server_base_url_requires_explicit_configuration_and_allows_override() {
+        let original = std::env::var("APP_SERVER_BASE_URL").ok();
+        std::env::remove_var("APP_SERVER_BASE_URL");
+
+        assert_eq!(server_base_url(), "");
+        assert_eq!(
+            account_server_not_configured_code(),
+            "ACCOUNT_SERVER_NOT_CONFIGURED"
+        );
+
+        std::env::set_var("APP_SERVER_BASE_URL", "http://127.0.0.1:8787/");
+
+        assert_eq!(server_base_url(), "http://127.0.0.1:8787");
+        match original {
+            Some(value) => std::env::set_var("APP_SERVER_BASE_URL", value),
+            None => std::env::remove_var("APP_SERVER_BASE_URL"),
+        }
+    }
+
+    #[test]
+    fn activation_redeem_url_targets_desktop_activation_route() {
+        assert_eq!(
+            build_activation_redeem_url("https://app.example/"),
+            "https://app.example/api/desktop/activation-codes/redeem"
+        );
+    }
+
+    #[test]
+    fn auth_callback_parser_accepts_matching_state() {
+        let callback = parse_auth_callback_url(
+            "pro.8xf.app://auth/callback?ticket=flt_abc123&state=state-123456",
+            "state-123456",
+        )
+        .expect("parse auth callback");
+
+        assert_eq!(
+            callback,
+            AuthCallback {
+                ticket: "flt_abc123".to_string(),
+                state: "state-123456".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn auth_callback_parser_rejects_wrong_state_or_path() {
+        assert!(parse_auth_callback_url(
+            "pro.8xf.app://auth/callback?ticket=flt_abc123&state=other-state",
+            "state-123456",
+        )
+        .is_err());
+        assert!(parse_auth_callback_url(
+            "pro.8xf.app://billing/callback?ticket=flt_abc123&state=state-123456",
+            "state-123456",
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn load_llm_config_reads_only_local_app_settings() {
+        let env_path = temp_env_path("load_llm_config_reads_only_local_app_settings");
+        fs::write(
+            &env_path,
+            [
+                "APP_LLM_PROVIDER=openai_compatible",
+                "APP_LLM_BASE_URL=https://llm.example/v1",
+                "APP_LLM_API_KEY=secret-key",
+                "APP_LLM_MODEL=demo-model",
+                "APP_LLM_TIMEOUT_SECONDS=42",
+                "APP_OUTPUT_DIR=D:/Locus/results",
+                "APP_ASR_MODEL=iic/SenseVoiceSmall",
+                "APP_SETTINGS_SCHEMA_VERSION=2",
+            ]
+            .join("\n"),
+        )
+        .expect("write test env");
+
+        let config = load_llm_config_from_file(&env_path).expect("load config");
+
+        assert_eq!(config.output_dir, "D:/Locus/results");
+        assert_eq!(config.asr_model, "iic/SenseVoiceSmall");
+        assert_eq!(
+            config.supported_asr_models,
+            vec!["iic/SenseVoiceSmall", "iic/SenseVoiceSmall-onnx"]
+        );
+    }
+
+    #[test]
+    fn load_llm_config_creates_app_local_env_template_and_reports_path() {
+        let env_path = temp_env_path("load_llm_config_creates_app_local_env_template");
+
+        let config = load_llm_config_from_file(&env_path).expect("load config");
+        let saved = fs::read_to_string(&env_path).expect("read created env");
+
+        assert_eq!(config.config_path, path_to_env_string(&env_path));
+        assert_eq!(config.asr_model, "iic/SenseVoiceSmall-onnx");
+        assert!(saved.contains("Desktop local settings"));
+        assert!(saved.contains("APP_OUTPUT_DIR="));
+        assert!(saved.contains("APP_ASR_MODEL=iic/SenseVoiceSmall-onnx"));
+        assert!(saved.contains("APP_SETTINGS_SCHEMA_VERSION=2"));
+        assert!(!saved.contains("APP_LLM_API_KEY"));
+    }
+
+    #[test]
+    fn save_asr_config_preserves_output_and_removes_old_llm_values() {
+        let env_path = temp_env_path("save_llm_config_updates_local_settings");
+        fs::write(
+            &env_path,
+            [
+                "# keep this comment",
+                "APP_LLM_PROVIDER=openai_compatible",
+                "APP_LLM_BASE_URL=https://old.example/v1",
+                "APP_LLM_API_KEY=old-secret",
+                "APP_LLM_MODEL=old-model",
+                "APP_LLM_TIMEOUT_SECONDS=44",
+                "OTHER_SETTING=keep-me",
+                "APP_OUTPUT_DIR=D:/Locus/custom-results",
+            ]
+            .join("\n"),
+        )
+        .expect("write test env");
+
+        let config = save_llm_config_to_file(
+            &env_path,
+            LlmConfigInput {
+                asr_model: "iic/SenseVoiceSmall".to_string(),
+            },
+        )
+        .expect("save config");
+        let saved = fs::read_to_string(&env_path).expect("read saved env");
+
+        assert_eq!(config.output_dir, "D:/Locus/custom-results");
+        assert_eq!(config.asr_model, "iic/SenseVoiceSmall");
+        assert_eq!(config.config_path, path_to_env_string(&env_path));
+        assert!(saved.contains("APP_OUTPUT_DIR=D:/Locus/custom-results"));
+        assert!(saved.contains("APP_ASR_MODEL=iic/SenseVoiceSmall"));
+        assert!(saved.contains("OTHER_SETTING=keep-me"));
+        assert!(!saved.contains("APP_LLM_PROVIDER"));
+        assert!(!saved.contains("APP_LLM_BASE_URL"));
+        assert!(!saved.contains("APP_LLM_API_KEY"));
+        assert!(!saved.contains("APP_LLM_MODEL"));
+        assert!(!saved.contains("APP_LLM_TIMEOUT_SECONDS"));
+    }
+
+    #[test]
+    fn save_asr_config_keeps_default_output_without_llm_credentials() {
+        let env_path = temp_env_path("save_asr_config_keeps_default_output");
+
+        let config = save_llm_config_to_file(
+            &env_path,
+            LlmConfigInput {
+                asr_model: "iic/SenseVoiceSmall".to_string(),
+            },
+        )
+        .expect("save ASR configuration");
+        let saved = fs::read_to_string(&env_path).expect("read saved env");
+
+        assert!(config.output_dir.is_empty());
+        assert_eq!(config.asr_model, "iic/SenseVoiceSmall");
+        assert!(saved.contains("APP_OUTPUT_DIR="));
+        assert!(saved.contains("APP_ASR_MODEL=iic/SenseVoiceSmall"));
+        assert!(saved.contains("Desktop local settings"));
+        assert!(!saved.contains("APP_LLM_API_KEY"));
+    }
+
+    #[test]
+    fn desktop_worker_contract_matches_tauri_constants() {
+        let contract_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("contracts")
+            .join("desktop-worker-contract.json");
+        let contract: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(contract_path).expect("read desktop worker contract"),
+        )
+        .expect("parse desktop worker contract");
+
+        assert_eq!(
+            super::DESKTOP_WORKER_CONTRACT_VERSION,
+            contract["contractVersion"]
+                .as_u64()
+                .expect("numeric desktop contract version") as u32
+        );
+        assert_eq!(
+            super::video_processing::PROCESS_VIDEO_CONTRACT_VERSION,
+            contract["processVideo"]["workerRequest"]["properties"]["contract_version"]["const"]
+                .as_u64()
+                .expect("numeric process-video worker contract version") as u32
+        );
+        assert_eq!(
+            super::local_media_contract::LOCAL_MEDIA_CONTRACT_VERSION,
+            contract["localMedia"]["workerRequest"]["properties"]["contract_version"]["const"]
+                .as_u64()
+                .expect("numeric local-media worker contract version") as u32
+        );
+        assert_eq!(
+            serde_json::json!(super::local_media_contract::VIDEO_EXTENSIONS),
+            contract["localMedia"]["extensionsByKind"]["video"]
+        );
+        assert_eq!(
+            serde_json::json!(super::local_media_contract::AUDIO_EXTENSIONS),
+            contract["localMedia"]["extensionsByKind"]["audio"]
+        );
+        assert_eq!(
+            super::PROGRESS_EVENT_NAME,
+            contract["events"]["workerProgress"]
+        );
+        assert_eq!(
+            super::ASR_MODEL_DOWNLOAD_EVENT_NAME,
+            contract["events"]["asrModelDownloadProgress"]
+        );
+        assert_eq!(
+            super::PROGRESS_EVENT_PREFIX,
+            contract["events"]["workerProgressPrefix"]
+        );
+        assert_eq!(
+            super::MODEL_DOWNLOAD_EVENT_PREFIX,
+            contract["events"]["asrModelDownloadPrefix"]
+        );
+        assert_eq!(
+            super::DIAGNOSTIC_EVENT_PREFIX,
+            contract["events"]["workerDiagnosticPrefix"]
+        );
+        assert_eq!(super::DEFAULT_ASR_MODEL, contract["asr"]["defaultModel"]);
+        assert_eq!(super::OUTPUT_DIR_ENV, contract["env"]["outputDir"]);
+        assert_eq!(super::CACHE_DIR_ENV, contract["env"]["cacheDir"]);
+        assert_eq!(super::MODEL_DIR_ENV, contract["env"]["modelDir"]);
+    }
+
+    fn temp_env_path(test_name: &str) -> PathBuf {
+        temp_dir(test_name).join(".env")
+    }
+
+    fn temp_dir(test_name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("app-{test_name}-{unique}"));
+        fs::create_dir_all(&dir).expect("create test dir");
+        dir
+    }
+}

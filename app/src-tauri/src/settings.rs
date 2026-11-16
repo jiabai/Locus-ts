@@ -1,0 +1,713 @@
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use tauri::{AppHandle, State};
+
+use crate::asr_model::{refresh_diagnostic_model_state, DiagnosticModelState};
+
+use crate::{
+    ensure_config_dirs, ensure_runtime_dirs, path_to_env_string, resolve_fixed_paths, resolve_runtime_paths, RuntimePaths,
+    AUDIO_REVIEW_CACHE_DIR_NAME,
+};
+
+pub(crate) const DOTENV_FILE_NAME: &str = ".env";
+pub(crate) const LLM_PROVIDER_ENV: &str = "APP_LLM_PROVIDER";
+pub(crate) const LLM_BASE_URL_ENV: &str = "APP_LLM_BASE_URL";
+pub(crate) const LLM_API_KEY_ENV: &str = "APP_LLM_API_KEY";
+pub(crate) const LLM_MODEL_ENV: &str = "APP_LLM_MODEL";
+pub(crate) const LLM_TIMEOUT_ENV: &str = "APP_LLM_TIMEOUT_SECONDS";
+pub(crate) const LLM_SOURCE_ENV: &str = "APP_LLM_SOURCE";
+pub(crate) const LLM_CHECKOUT_URL_ENV: &str = "APP_LLM_CHECKOUT_URL";
+pub(crate) const LLM_SESSION_TOKEN_ENV: &str = "APP_LLM_SESSION_TOKEN";
+pub(crate) const LLM_CHECKOUT_REQUEST_ID_ENV: &str = "APP_LLM_CHECKOUT_REQUEST_ID";
+pub(crate) const ANYSEARCH_SOURCE_ENV: &str = "APP_ANYSEARCH_SOURCE";
+pub(crate) const ANYSEARCH_CHECKOUT_URL_ENV: &str = "APP_ANYSEARCH_CHECKOUT_URL";
+pub(crate) const ANYSEARCH_SESSION_TOKEN_ENV: &str = "APP_ANYSEARCH_SESSION_TOKEN";
+pub(crate) const ASR_MODEL_ENV: &str = "APP_ASR_MODEL";
+pub(crate) const SETTINGS_SCHEMA_VERSION_ENV: &str = "APP_SETTINGS_SCHEMA_VERSION";
+pub(crate) const ASR_MODEL_MIGRATION_ENV: &str = "APP_ASR_MODEL_MIGRATION";
+pub(crate) const ASR_MODEL_DOWNLOAD_URL_ENV: &str = "APP_ASR_MODEL_DOWNLOAD_URL";
+pub(crate) const ASR_MODEL_DOWNLOAD_SHA256_ENV: &str = "APP_ASR_MODEL_DOWNLOAD_SHA256";
+pub(crate) const MODELSCOPE_ENDPOINT_ENV: &str = "APP_MODELSCOPE_ENDPOINT";
+pub(crate) const SENSEVOICE_REVISION_ENV: &str = "APP_SENSEVOICE_REVISION";
+
+const LEGACY_LOCAL_LLM_ENV_KEYS: [&str; 5] = [
+    LLM_PROVIDER_ENV,
+    LLM_BASE_URL_ENV,
+    LLM_API_KEY_ENV,
+    LLM_MODEL_ENV,
+    LLM_TIMEOUT_ENV,
+];
+const SETTINGS_SCHEMA_VERSION: &str = "2";
+const ASR_MODEL_MIGRATION_MARKER: &str = "1";
+const APP_SETTINGS_DOTENV_TEMPLATE: &str = "# Desktop local settings.\n\
+# This file lives in app-local data and is read by the desktop client/worker.\n\
+# Insight LLM configuration is managed by the server Admin Web.\n\
+# Do not put APP_LLM_* keys here. Configure custom models in Settings > Models.\n\
+\n\
+# Optional output directory for generated videos, transcripts, and insights.\n\
+# Leave blank to use app-local data outputs/.\n\
+APP_OUTPUT_DIR=\n\
+\n\
+# Local ASR model for new transcription tasks.\n\
+APP_ASR_MODEL=iic/SenseVoiceSmall-onnx\n\
+\n\
+# Optional release ASR model download overrides.\n\
+# APP_ASR_MODEL_DOWNLOAD_URL=\n\
+# APP_ASR_MODEL_DOWNLOAD_SHA256=\n\
+# APP_MODELSCOPE_ENDPOINT=\n\
+# APP_SENSEVOICE_REVISION=master\n\
+\n\
+# Settings schema version used for one-time migrations. Leave it as is.\n\
+APP_SETTINGS_SCHEMA_VERSION=2\n";
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct LlmConfigInput {
+    #[serde(default)]
+    pub(crate) asr_model: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct LlmConfigView {
+    pub(crate) output_dir: String,
+    pub(crate) asr_model: String,
+    pub(crate) supported_asr_models: Vec<String>,
+    pub(crate) config_path: String,
+    pub(crate) asr_model_migrated: bool,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub(crate) struct AudioReviewCacheUsageView {
+    pub(crate) size_bytes: u64,
+    pub(crate) cache_path: String,
+}
+
+#[tauri::command]
+pub(crate) fn get_llm_config(
+    app: AppHandle,
+    diagnostic_state: State<'_, Arc<DiagnosticModelState>>,
+) -> Result<LlmConfigView, String> {
+    let paths = resolve_fixed_paths(&app)?;
+    ensure_config_dirs(&paths)?;
+    load_llm_config_for_paths(&paths, diagnostic_state.inner())
+}
+
+#[tauri::command]
+pub(crate) fn save_llm_config(
+    app: AppHandle,
+    diagnostic_state: State<'_, Arc<DiagnosticModelState>>,
+    config: LlmConfigInput,
+) -> Result<LlmConfigView, String> {
+    let _storage_access = crate::data_storage::acquire_data_access(&app)?;
+    let paths = resolve_fixed_paths(&app)?;
+    ensure_config_dirs(&paths)?;
+    save_llm_config_for_paths(&paths, diagnostic_state.inner(), config)
+}
+
+#[tauri::command]
+pub(crate) fn dismiss_asr_model_migration(
+    app: AppHandle,
+    diagnostic_state: State<'_, Arc<DiagnosticModelState>>,
+) -> Result<LlmConfigView, String> {
+    let paths = resolve_fixed_paths(&app)?;
+    ensure_config_dirs(&paths)?;
+    dismiss_asr_model_migration_for_paths(&paths, diagnostic_state.inner())
+}
+
+fn dismiss_asr_model_migration_for_paths(
+    paths: &RuntimePaths,
+    diagnostic_state: &DiagnosticModelState,
+) -> Result<LlmConfigView, String> {
+    let path = env_path(paths);
+    ensure_app_settings_dotenv(&path)?;
+    write_dotenv_updates_removing(&path, &[], &[ASR_MODEL_MIGRATION_ENV])?;
+    load_llm_config_for_paths(paths, diagnostic_state)
+}
+
+fn load_llm_config_for_paths(
+    paths: &RuntimePaths,
+    diagnostic_state: &DiagnosticModelState,
+) -> Result<LlmConfigView, String> {
+    let view = load_llm_config_from_file(&env_path(paths))?;
+    refresh_diagnostic_model_state(paths, &view.asr_model, diagnostic_state);
+    Ok(view)
+}
+
+fn save_llm_config_for_paths(
+    paths: &RuntimePaths,
+    diagnostic_state: &DiagnosticModelState,
+    config: LlmConfigInput,
+) -> Result<LlmConfigView, String> {
+    let view = save_llm_config_to_file(&env_path(paths), config)?;
+    refresh_diagnostic_model_state(paths, &view.asr_model, diagnostic_state);
+    Ok(view)
+}
+
+#[tauri::command]
+pub(crate) fn get_audio_review_cache_usage(
+    app: AppHandle,
+) -> Result<AudioReviewCacheUsageView, String> {
+    let _storage_access = crate::data_storage::acquire_data_access(&app)?;
+    let paths = resolve_runtime_paths(&app)?;
+    ensure_runtime_dirs(&paths)?;
+    audio_review_cache_usage_from_cache(&paths.cache_root()?)
+}
+
+#[tauri::command]
+pub(crate) fn clear_audio_review_cache(
+    app: AppHandle,
+) -> Result<AudioReviewCacheUsageView, String> {
+    let _storage_access = crate::data_storage::acquire_data_access(&app)?;
+    let paths = resolve_runtime_paths(&app)?;
+    ensure_runtime_dirs(&paths)?;
+    clear_audio_review_cache_from_cache(&paths.cache_root()?)
+}
+
+pub(crate) fn load_llm_config_from_file(path: &Path) -> Result<LlmConfigView, String> {
+    ensure_app_settings_dotenv(path)?;
+    migrate_settings_schema(path)?;
+    let values = parse_dotenv_values(path)?;
+    Ok(LlmConfigView {
+        output_dir: values
+            .get(crate::OUTPUT_DIR_ENV)
+            .cloned()
+            .unwrap_or_default(),
+        asr_model: resolve_asr_model_value(values.get(ASR_MODEL_ENV).cloned())?,
+        supported_asr_models: supported_asr_models(),
+        config_path: path_to_env_string(path),
+        asr_model_migrated: values.get(ASR_MODEL_MIGRATION_ENV).map(String::as_str)
+            == Some(ASR_MODEL_MIGRATION_MARKER),
+    })
+}
+
+pub(crate) fn save_llm_config_to_file(
+    path: &Path,
+    config: LlmConfigInput,
+) -> Result<LlmConfigView, String> {
+    ensure_app_settings_dotenv(path)?;
+    let asr_model = resolve_asr_model_value(Some(config.asr_model))?;
+    write_dotenv_updates_removing(
+        path,
+        &[
+            (ASR_MODEL_ENV, asr_model),
+            (
+                SETTINGS_SCHEMA_VERSION_ENV,
+                SETTINGS_SCHEMA_VERSION.to_string(),
+            ),
+        ],
+        &[
+            LLM_PROVIDER_ENV,
+            LLM_BASE_URL_ENV,
+            LLM_API_KEY_ENV,
+            LLM_MODEL_ENV,
+            LLM_TIMEOUT_ENV,
+            ASR_MODEL_MIGRATION_ENV,
+        ],
+    )?;
+    load_llm_config_from_file(path)
+}
+
+pub(crate) fn env_path(paths: &RuntimePaths) -> PathBuf {
+    paths.user_data_dir.join(DOTENV_FILE_NAME)
+}
+
+pub(crate) fn audio_review_cache_usage_from_cache(
+    cache_root: &Path,
+) -> Result<AudioReviewCacheUsageView, String> {
+    let cache_root = ensure_canonical_dir(cache_root, "app-local cache directory")?;
+    let cache_dir = audio_review_cache_dir(&cache_root);
+    Ok(AudioReviewCacheUsageView {
+        size_bytes: directory_size_bytes(&cache_dir)?,
+        cache_path: path_to_env_string(cache_dir),
+    })
+}
+
+pub(crate) fn clear_audio_review_cache_from_cache(
+    cache_root: &Path,
+) -> Result<AudioReviewCacheUsageView, String> {
+    let cache_root = ensure_canonical_dir(cache_root, "app-local cache directory")?;
+    let cache_dir = audio_review_cache_dir(&cache_root);
+    if cache_dir.exists() {
+        let metadata = fs::symlink_metadata(&cache_dir)
+            .map_err(|error| format!("Failed to inspect audio playback cache: {error}"))?;
+        if metadata.file_type().is_symlink() {
+            return Err("Refusing to clear symlinked audio playback cache.".to_string());
+        }
+        let canonical_cache = cache_dir
+            .canonicalize()
+            .map_err(|error| format!("Failed to resolve audio playback cache: {error}"))?;
+        if canonical_cache == cache_root || !canonical_cache.starts_with(&cache_root) {
+            return Err(
+                "Refusing to clear audio playback cache outside app-local cache.".to_string(),
+            );
+        }
+        if metadata.is_dir() {
+            fs::remove_dir_all(&cache_dir)
+                .map_err(|error| format!("Failed to clear audio playback cache: {error}"))?;
+        } else {
+            fs::remove_file(&cache_dir)
+                .map_err(|error| format!("Failed to clear audio playback cache file: {error}"))?;
+        }
+    }
+    audio_review_cache_usage_from_cache(&cache_root)
+}
+
+fn audio_review_cache_dir(cache_root: &Path) -> PathBuf {
+    cache_root.join(AUDIO_REVIEW_CACHE_DIR_NAME)
+}
+
+fn ensure_canonical_dir(path: &Path, label: &str) -> Result<PathBuf, String> {
+    fs::create_dir_all(path).map_err(|error| format!("Failed to create {label}: {error}"))?;
+    path.canonicalize()
+        .map_err(|error| format!("Failed to resolve {label}: {error}"))
+}
+
+fn directory_size_bytes(path: &Path) -> Result<u64, String> {
+    if !path.exists() {
+        return Ok(0);
+    }
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|error| format!("Failed to inspect audio playback cache: {error}"))?;
+    if metadata.file_type().is_symlink() {
+        return Ok(0);
+    }
+    if metadata.is_file() {
+        return Ok(metadata.len());
+    }
+
+    let mut size = 0;
+    for entry in fs::read_dir(path)
+        .map_err(|error| format!("Failed to read audio playback cache: {error}"))?
+    {
+        let entry =
+            entry.map_err(|error| format!("Failed to read audio playback cache: {error}"))?;
+        size += directory_size_bytes(&entry.path())?;
+    }
+    Ok(size)
+}
+
+pub(crate) fn legacy_local_llm_env_removals() -> Vec<String> {
+    LEGACY_LOCAL_LLM_ENV_KEYS
+        .iter()
+        .map(|key| (*key).to_string())
+        .collect()
+}
+
+pub(crate) fn configured_env_value(
+    config_values: &HashMap<String, String>,
+    key: &str,
+) -> Option<String> {
+    config_values
+        .get(key)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            std::env::var(key)
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
+}
+
+pub(crate) fn asr_model_source(config_values: &HashMap<String, String>) -> String {
+    if configured_env_value(config_values, ASR_MODEL_DOWNLOAD_URL_ENV).is_some() {
+        "custom_url".to_string()
+    } else {
+        "modelscope".to_string()
+    }
+}
+
+pub(crate) fn supported_asr_models() -> Vec<String> {
+    crate::SUPPORTED_ASR_MODELS
+        .iter()
+        .map(|model| (*model).to_string())
+        .collect()
+}
+
+pub(crate) fn resolve_asr_model_value(value: Option<String>) -> Result<String, String> {
+    let model = value.unwrap_or_default().trim().to_string();
+    if model.is_empty() {
+        return Ok(crate::DEFAULT_ASR_MODEL.to_string());
+    }
+
+    if crate::SUPPORTED_ASR_MODELS.contains(&model.as_str()) {
+        Ok(model)
+    } else {
+        Err(format!("Unsupported ASR model: {model}"))
+    }
+}
+
+pub(crate) fn parse_dotenv_values(path: &Path) -> Result<HashMap<String, String>, String> {
+    if !path.exists() {
+        return Ok(HashMap::new());
+    }
+
+    let content = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    let mut values = HashMap::new();
+    for raw_line in content.lines() {
+        let Some((key, value)) = parse_dotenv_assignment(raw_line) else {
+            continue;
+        };
+        values.insert(key.to_string(), strip_env_quotes(value.trim()).to_string());
+    }
+    Ok(values)
+}
+
+fn ensure_app_settings_dotenv(path: &Path) -> Result<(), String> {
+    if path.exists() {
+        return Ok(());
+    }
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    fs::write(path, APP_SETTINGS_DOTENV_TEMPLATE).map_err(|error| error.to_string())
+}
+
+/// Settings written before schema 2 carry `iic/SenseVoiceSmall`, which was the
+/// template default at the time. Schema 2 moves those users to the ONNX model
+/// that ships with a working runtime. The version marker keeps an explicit
+/// PyTorch selection made after the upgrade from being overwritten again.
+///
+/// Only a file that still held the old PyTorch default gets the migration
+/// marker, so the settings sheet can explain the change once.
+fn migrate_settings_schema(path: &Path) -> Result<(), String> {
+    let values = parse_dotenv_values(path)?;
+    if values.get(SETTINGS_SCHEMA_VERSION_ENV).map(String::as_str) == Some(SETTINGS_SCHEMA_VERSION)
+    {
+        return Ok(());
+    }
+
+    let previous_model = values.get(ASR_MODEL_ENV).map(String::as_str);
+    let mut updates = vec![
+        (ASR_MODEL_ENV, crate::DEFAULT_ASR_MODEL.to_string()),
+        (
+            SETTINGS_SCHEMA_VERSION_ENV,
+            SETTINGS_SCHEMA_VERSION.to_string(),
+        ),
+    ];
+    if previous_model == Some(crate::asr_model::SENSEVOICE_SMALL_MODEL) {
+        updates.push((
+            ASR_MODEL_MIGRATION_ENV,
+            ASR_MODEL_MIGRATION_MARKER.to_string(),
+        ));
+    }
+
+    write_dotenv_updates_removing(path, &updates, &[])
+}
+
+fn write_dotenv_updates_removing(
+    path: &Path,
+    updates: &[(&str, String)],
+    remove_keys: &[&str],
+) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+
+    let existing_content = if path.exists() {
+        fs::read_to_string(path).map_err(|error| error.to_string())?
+    } else {
+        String::new()
+    };
+    let update_map: HashMap<&str, &str> = updates
+        .iter()
+        .map(|(key, value)| (*key, value.as_str()))
+        .collect();
+    let mut written_keys: Vec<String> = Vec::new();
+    let mut lines = Vec::new();
+
+    for line in existing_content.lines() {
+        if let Some((key, _)) = parse_dotenv_assignment(line) {
+            if remove_keys.iter().any(|remove_key| remove_key == &key) {
+                continue;
+            }
+
+            if let Some(value) = update_map.get(key) {
+                if !written_keys.iter().any(|written| written == key) {
+                    lines.push(format!("{key}={value}"));
+                    written_keys.push(key.to_string());
+                }
+                continue;
+            }
+        }
+
+        lines.push(line.to_string());
+    }
+
+    for (key, value) in updates {
+        if !written_keys.iter().any(|written| written == key) {
+            lines.push(format!("{key}={value}"));
+        }
+    }
+
+    fs::write(path, format!("{}\n", lines.join("\n"))).map_err(|error| error.to_string())
+}
+
+fn parse_dotenv_assignment(line: &str) -> Option<(&str, &str)> {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') || !line.contains('=') {
+        return None;
+    }
+
+    let line = line.strip_prefix("export ").unwrap_or(line).trim();
+    let (key, value) = line.split_once('=')?;
+    let key = key.trim();
+    if key.is_empty() {
+        return None;
+    }
+
+    Some((key, value))
+}
+
+fn strip_env_quotes(value: &str) -> &str {
+    let bytes = value.as_bytes();
+    if bytes.len() >= 2
+        && ((bytes[0] == b'"' && bytes[bytes.len() - 1] == b'"')
+            || (bytes[0] == b'\'' && bytes[bytes.len() - 1] == b'\''))
+    {
+        &value[1..value.len() - 1]
+    } else {
+        value
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        audio_review_cache_usage_from_cache, clear_audio_review_cache_from_cache,
+        dismiss_asr_model_migration_for_paths, load_llm_config_for_paths,
+        save_llm_config_for_paths, LlmConfigInput,
+    };
+    use crate::asr_model::{DiagnosticCacheStatus, DiagnosticModelState, SupportedDiagnosticModel};
+    use crate::RuntimePaths;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn settings_save_rejects_direct_output_directory_changes() {
+        let request = serde_json::json!({
+            "asr_model": "iic/SenseVoiceSmall-onnx",
+            "output_dir": "D:/unconfirmed-location",
+        });
+        assert!(serde_json::from_value::<LlmConfigInput>(request).is_err());
+    }
+
+    #[test]
+    fn saving_asr_keeps_the_legacy_output_setting_and_fixed_files() {
+        let root = temp_dir("preserve_legacy_output");
+        let path = root.join(".env");
+        fs::write(&path, "APP_OUTPUT_DIR=D:/existing-notes\nAPP_ASR_MODEL=iic/SenseVoiceSmall-onnx\nAPP_SETTINGS_SCHEMA_VERSION=2\n").expect("write existing settings");
+        fs::create_dir_all(root.join("auth")).expect("auth directory");
+        fs::write(root.join("auth/session.json"), b"existing-local-session").expect("session fixture");
+        let view = super::save_llm_config_to_file(&path, LlmConfigInput {
+            asr_model: "iic/SenseVoiceSmall".to_string(),
+        }).expect("save model preference");
+        assert_eq!(view.output_dir, "D:/existing-notes");
+        assert_eq!(view.asr_model, "iic/SenseVoiceSmall");
+        assert!(fs::read_to_string(&path).unwrap().contains("APP_OUTPUT_DIR=D:/existing-notes"));
+        assert_eq!(fs::read(root.join("auth/session.json")).unwrap(), b"existing-local-session");
+        assert!(!root.join("outputs").exists());
+    }
+
+    #[test]
+    fn audio_review_cache_usage_and_clear_only_touch_playback_cache() {
+        let app_root = temp_dir("audio_review_cache_usage_and_clear");
+        let cache_root = app_root.join("cache");
+        let outputs_root = app_root.join("outputs");
+        let cache_dir = cache_root.join(".app-audio-review");
+        let task_audio = outputs_root
+            .join("tasks")
+            .join("task-1")
+            .join("media")
+            .join("audio.wav");
+        fs::create_dir_all(cache_dir.join("task-1")).expect("create cache dir");
+        fs::create_dir_all(task_audio.parent().expect("task audio parent"))
+            .expect("create task dir");
+        fs::write(cache_dir.join("task-1").join("audio.wav"), [1_u8; 5])
+            .expect("write cached audio");
+        fs::write(cache_dir.join("task-1").join("metadata.json"), [2_u8; 7])
+            .expect("write cache metadata");
+        fs::write(&task_audio, [3_u8; 11]).expect("write original task audio");
+
+        let usage = audio_review_cache_usage_from_cache(&cache_root).expect("read cache usage");
+
+        assert_eq!(usage.size_bytes, 12);
+        assert!(usage.cache_path.ends_with("cache/.app-audio-review"));
+
+        let cleared = clear_audio_review_cache_from_cache(&cache_root).expect("clear audio cache");
+
+        assert_eq!(cleared.size_bytes, 0);
+        assert!(!cache_dir.exists());
+        assert_eq!(
+            fs::read(task_audio).expect("read original task audio"),
+            [3_u8; 11]
+        );
+    }
+
+    #[test]
+    fn settings_load_and_save_refresh_only_the_closed_diagnostic_model_snapshot() {
+        let app_root = temp_dir("settings_refresh_diagnostic_snapshot");
+        let paths = RuntimePaths {
+            resource_dir: app_root.join("resources"),
+            user_data_dir: app_root.join("app-data"),
+        };
+        fs::create_dir_all(&paths.user_data_dir).expect("app data");
+        fs::write(
+            paths.user_data_dir.join(".env"),
+            "APP_ASR_MODEL=iic/SenseVoiceSmall-onnx\n",
+        )
+        .expect("settings");
+        let state = DiagnosticModelState::default();
+
+        let loaded = load_llm_config_for_paths(&paths, &state).expect("load settings");
+        assert_eq!(loaded.asr_model, "iic/SenseVoiceSmall-onnx");
+        assert_eq!(
+            state.snapshot().model,
+            SupportedDiagnosticModel::SenseVoiceSmallOnnx
+        );
+        assert_eq!(
+            state.snapshot().cache_status,
+            DiagnosticCacheStatus::Missing
+        );
+
+        let saved = save_llm_config_for_paths(
+            &paths,
+            &state,
+            LlmConfigInput {
+                asr_model: "iic/SenseVoiceSmall".to_string(),
+            },
+        )
+        .expect("save settings");
+        assert_eq!(saved.asr_model, "iic/SenseVoiceSmall");
+        assert_eq!(
+            state.snapshot().model,
+            SupportedDiagnosticModel::SenseVoiceSmall
+        );
+        assert_eq!(
+            state.snapshot().cache_status,
+            DiagnosticCacheStatus::Missing
+        );
+        assert_eq!(
+            serde_json::to_string(&state.snapshot()).expect("serialize"),
+            "{\"model\":\"iic/SenseVoiceSmall\",\"cache_status\":\"missing\"}"
+        );
+    }
+
+    #[test]
+    fn settings_template_defaults_to_the_onnx_model() {
+        let app_root = temp_dir("settings_template_defaults_to_onnx");
+        let paths = RuntimePaths {
+            resource_dir: app_root.join("resources"),
+            user_data_dir: app_root.join("app-data"),
+        };
+        fs::create_dir_all(&paths.user_data_dir).expect("app data");
+
+        let loaded = load_llm_config_for_paths(&paths, &DiagnosticModelState::default())
+            .expect("load settings");
+        let saved = fs::read_to_string(paths.user_data_dir.join(".env")).expect("read settings");
+
+        assert_eq!(loaded.asr_model, "iic/SenseVoiceSmall-onnx");
+        assert!(saved.contains("APP_ASR_MODEL=iic/SenseVoiceSmall-onnx"));
+        assert!(saved.contains("APP_SETTINGS_SCHEMA_VERSION=2"));
+    }
+
+    #[test]
+    fn legacy_settings_switch_to_onnx_once_and_keep_a_later_explicit_choice() {
+        let app_root = temp_dir("legacy_settings_switch_to_onnx");
+        let paths = RuntimePaths {
+            resource_dir: app_root.join("resources"),
+            user_data_dir: app_root.join("app-data"),
+        };
+        fs::create_dir_all(&paths.user_data_dir).expect("app data");
+        let env = paths.user_data_dir.join(".env");
+        fs::write(&env, "APP_ASR_MODEL=iic/SenseVoiceSmall\n").expect("legacy settings");
+        let state = DiagnosticModelState::default();
+
+        let migrated = load_llm_config_for_paths(&paths, &state).expect("migrate settings");
+        let migrated_file = fs::read_to_string(&env).expect("read migrated settings");
+
+        assert_eq!(migrated.asr_model, "iic/SenseVoiceSmall-onnx");
+        assert!(migrated.asr_model_migrated);
+        assert!(migrated_file.contains("APP_ASR_MODEL=iic/SenseVoiceSmall-onnx"));
+        assert!(migrated_file.contains("APP_SETTINGS_SCHEMA_VERSION=2"));
+        assert!(migrated_file.contains("APP_ASR_MODEL_MIGRATION=1"));
+
+        let restored = save_llm_config_for_paths(
+            &paths,
+            &state,
+            LlmConfigInput {
+                asr_model: "iic/SenseVoiceSmall".to_string(),
+            },
+        )
+        .expect("save explicit choice");
+        let reloaded = load_llm_config_for_paths(&paths, &state).expect("reload settings");
+
+        assert_eq!(restored.asr_model, "iic/SenseVoiceSmall");
+        assert!(!restored.asr_model_migrated);
+        assert_eq!(reloaded.asr_model, "iic/SenseVoiceSmall");
+        assert!(!reloaded.asr_model_migrated);
+    }
+
+    #[test]
+    fn legacy_onnx_settings_migrate_without_raising_the_notice() {
+        let app_root = temp_dir("legacy_onnx_settings_no_notice");
+        let paths = RuntimePaths {
+            resource_dir: app_root.join("resources"),
+            user_data_dir: app_root.join("app-data"),
+        };
+        fs::create_dir_all(&paths.user_data_dir).expect("app data");
+        let env = paths.user_data_dir.join(".env");
+        fs::write(&env, "APP_ASR_MODEL=iic/SenseVoiceSmall-onnx\n").expect("legacy settings");
+
+        let migrated = load_llm_config_for_paths(&paths, &DiagnosticModelState::default())
+            .expect("migrate settings");
+        let migrated_file = fs::read_to_string(&env).expect("read migrated settings");
+
+        assert_eq!(migrated.asr_model, "iic/SenseVoiceSmall-onnx");
+        assert!(!migrated.asr_model_migrated);
+        assert!(!migrated_file.contains("APP_ASR_MODEL_MIGRATION"));
+        assert!(migrated_file.contains("APP_SETTINGS_SCHEMA_VERSION=2"));
+    }
+
+    #[test]
+    fn dismissing_the_migration_notice_clears_the_marker_only() {
+        let app_root = temp_dir("dismiss_migration_notice");
+        let paths = RuntimePaths {
+            resource_dir: app_root.join("resources"),
+            user_data_dir: app_root.join("app-data"),
+        };
+        fs::create_dir_all(&paths.user_data_dir).expect("app data");
+        let env = paths.user_data_dir.join(".env");
+        fs::write(&env, "APP_ASR_MODEL=iic/SenseVoiceSmall\n").expect("legacy settings");
+        let state = DiagnosticModelState::default();
+
+        let migrated = load_llm_config_for_paths(&paths, &state).expect("migrate settings");
+        assert!(migrated.asr_model_migrated);
+
+        let dismissed =
+            dismiss_asr_model_migration_for_paths(&paths, &state).expect("dismiss notice");
+        let dismissed_file = fs::read_to_string(&env).expect("read dismissed settings");
+
+        assert!(!dismissed.asr_model_migrated);
+        assert_eq!(dismissed.asr_model, "iic/SenseVoiceSmall-onnx");
+        assert!(!dismissed_file.contains("APP_ASR_MODEL_MIGRATION"));
+        assert!(dismissed_file.contains("APP_ASR_MODEL=iic/SenseVoiceSmall-onnx"));
+        assert!(dismissed_file.contains("APP_SETTINGS_SCHEMA_VERSION=2"));
+    }
+
+    fn temp_dir(test_name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos();
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../build/data-storage-acceptance")
+            .join(format!("settings-{test_name}-{unique}"));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        dir.canonicalize().expect("resolve test dir")
+    }
+}

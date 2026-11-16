@@ -1,0 +1,130 @@
+from worker_core.models import (
+    Insight,
+    JobStage,
+    ProcessRequest,
+    ProcessResult,
+    TranscriptMetadata,
+    WorkerError,
+)
+
+
+def test_process_request_contains_only_resolved_execution_inputs() -> None:
+    sensitive_url = (
+        "https://www.xiaohongshu.com/explore/64a1b2c3d4e5f67890123456"
+        "?xsec_token=review-secret"
+    )
+    request = ProcessRequest(url=sensitive_url, asr_model="iic/SenseVoiceSmall")
+
+    assert request.asr_model == "iic/SenseVoiceSmall"
+    assert not hasattr(request, "language")
+    assert not hasattr(request, "output_formats")
+    assert not hasattr(request, "model")
+    assert not hasattr(request, "generate_insights")
+    assert not hasattr(request, "insightflow_mode")
+    assert "review-secret" not in repr(request)
+    assert "xsec_token" not in repr(request)
+
+
+def test_process_result_serializes_task_artifacts_text_and_insights() -> None:
+    result = ProcessResult(
+        status=JobStage.COMPLETED,
+        task_id="20260705-153012-douyin-7524373044106677544",
+        task_dir="outputs/tasks/20260705-153012-douyin-7524373044106677544",
+        artifacts={
+            "video": "media/video.mp4",
+            "audio": "media/audio.wav",
+            "transcript_txt": "transcript/transcript.txt",
+            "transcript_md": "transcript/transcript.md",
+            "segments": "transcript/segments.json",
+            "summary": "ai/summary.md",
+            "mindmap": "ai/mindmap.mmd",
+            "insights": "ai/insights.json",
+        },
+        text="transcript",
+        summary="# summary",
+        insights=[
+            Insight(
+                id=1,
+                topic="question",
+                match_reason="matches the transcript",
+                follow_up_questions=("follow up?",),
+                suitable_use="content planning",
+                source_chunk_id=1,
+            )
+        ],
+        transcript=TranscriptMetadata(source="subtitle", language="zh-Hans", engine=None),
+    )
+
+    assert result.to_dict() == {
+        "status": "completed",
+        "task_id": "20260705-153012-douyin-7524373044106677544",
+        "task_dir": "outputs/tasks/20260705-153012-douyin-7524373044106677544",
+        "artifacts": {
+            "video": "media/video.mp4",
+            "audio": "media/audio.wav",
+            "transcript_txt": "transcript/transcript.txt",
+            "transcript_md": "transcript/transcript.md",
+            "segments": "transcript/segments.json",
+            "summary": "ai/summary.md",
+            "mindmap": "ai/mindmap.mmd",
+            "insights": "ai/insights.json",
+        },
+        "text": "transcript",
+        "summary": "# summary",
+        "insights": [
+            {
+                "id": 1,
+                "topic": "question",
+                "matchReason": "matches the transcript",
+                "followUpQuestions": ["follow up?"],
+                "suitableUse": "content planning",
+                "sourceChunkId": 1,
+            }
+        ],
+        "transcript": {
+            "source": "subtitle",
+            "language": "zh-Hans",
+            "engine": None,
+        },
+        "dissection": None,
+        "error": None,
+        "draft": "",
+    }
+
+
+def test_partial_result_keeps_task_artifacts_and_structured_error() -> None:
+    result = ProcessResult(
+        status=JobStage.PARTIAL_COMPLETED,
+        task_id="20260705-153012-douyin-demo",
+        task_dir="outputs/tasks/20260705-153012-douyin-demo",
+        artifacts={"transcript_txt": "transcript/transcript.txt"},
+        text="finished transcript",
+        error=WorkerError(
+            code="AI_CONFIG_MISSING",
+            message="AI LLM configuration is missing.",
+            stage=JobStage.INSIGHTS_GENERATING,
+        ),
+    )
+
+    serialized = result.to_dict()
+
+    assert serialized["status"] == "partial_completed"
+    assert serialized["task_id"] == "20260705-153012-douyin-demo"
+    assert serialized["artifacts"] == {"transcript_txt": "transcript/transcript.txt"}
+    assert serialized["text"] == "finished transcript"
+    assert serialized["error"] == {
+        "code": "AI_CONFIG_MISSING",
+        "message": "AI LLM configuration is missing.",
+        "stage": "insights_generating",
+    }
+
+
+def test_process_result_exposes_nullable_dissection_field() -> None:
+    serialized = ProcessResult(status=JobStage.COMPLETED).to_dict()
+
+    assert "dissection" in serialized
+    assert serialized["dissection"] is None
+
+
+def test_job_stage_has_draft_generating_member() -> None:
+    assert JobStage.DRAFT_GENERATING.value == "draft_generating"

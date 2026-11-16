@@ -1,0 +1,962 @@
+{
+  "constants": {
+    "youtube_format_selector": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+    "youtube_js_runtimes": [
+      "deno",
+      "node",
+      "quickjs",
+      "bun"
+    ],
+    "platform_subtitle_args": [
+      "--write-subs",
+      "--write-auto-subs",
+      "--sub-langs",
+      "zh-Hans,zh-CN,zh-Hant,zh,en,ja,ko",
+      "--sub-format",
+      "best"
+    ],
+    "youtube_hosts": [
+      "youtube.com",
+      "www.youtube.com",
+      "m.youtube.com"
+    ],
+    "youtube_short_hosts": [
+      "youtu.be",
+      "www.youtu.be"
+    ],
+    "douyin_host_suffixes": [
+      "douyin.com",
+      "iesdouyin.com"
+    ],
+    "xiaohongshu_host_suffixes": [
+      "xiaohongshu.com",
+      "xhslink.com",
+      "xhslink.cn"
+    ],
+    "bilibili_host_suffixes": [
+      "bilibili.com",
+      "b23.tv"
+    ],
+    "downloaded_media_suffixes": [
+      ".mp4",
+      ".mkv",
+      ".webm",
+      ".mov",
+      ".m4v"
+    ],
+    "ytdlp_timeout_seconds": 1200,
+    "ytdlp_timeout_code": "VIDEO_DOWNLOAD_TIMEOUT",
+    "url_trailing_punctuation": " \t\r\n\"'<>[]{}()，。！？；：、,.;:!?",
+    "youtube_video_id_pattern": "^[A-Za-z0-9_-]+$"
+  },
+  "commands": [
+    {
+      "label": "generic https",
+      "url": "https://example.com/watch/123",
+      "output_dir": "outputs",
+      "include_subtitles": true,
+      "command": [
+        "<launcher>",
+        "--no-playlist",
+        "-o",
+        "outputs/%(id)s.%(ext)s",
+        "https://example.com/watch/123"
+      ]
+    },
+    {
+      "label": "douyin video",
+      "url": "https://www.douyin.com/video/7524373044106677544",
+      "output_dir": "outputs",
+      "include_subtitles": true,
+      "command": [
+        "<launcher>",
+        "--no-playlist",
+        "-o",
+        "outputs/%(id)s.%(ext)s",
+        "https://www.douyin.com/video/7524373044106677544"
+      ]
+    },
+    {
+      "label": "bilibili gets subtitle args",
+      "url": "https://www.bilibili.com/video/BV1Aa411c7mD",
+      "output_dir": "outputs",
+      "include_subtitles": true,
+      "command": [
+        "<launcher>",
+        "--no-playlist",
+        "--write-subs",
+        "--write-auto-subs",
+        "--sub-langs",
+        "zh-Hans,zh-CN,zh-Hant,zh,en,ja,ko",
+        "--sub-format",
+        "best",
+        "-o",
+        "outputs/%(id)s.%(ext)s",
+        "https://www.bilibili.com/video/BV1Aa411c7mD"
+      ]
+    },
+    {
+      "label": "bilibili short host gets subtitle args",
+      "url": "https://b23.tv/BV1Aa411c7mD",
+      "output_dir": "outputs",
+      "include_subtitles": true,
+      "command": [
+        "<launcher>",
+        "--no-playlist",
+        "--write-subs",
+        "--write-auto-subs",
+        "--sub-langs",
+        "zh-Hans,zh-CN,zh-Hant,zh,en,ja,ko",
+        "--sub-format",
+        "best",
+        "-o",
+        "outputs/%(id)s.%(ext)s",
+        "https://b23.tv/BV1Aa411c7mD"
+      ]
+    },
+    {
+      "label": "xiaohongshu has no subtitle args",
+      "url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234568",
+      "output_dir": "outputs",
+      "include_subtitles": true,
+      "command": [
+        "<launcher>",
+        "--no-playlist",
+        "-o",
+        "outputs/%(id)s.%(ext)s",
+        "https://www.xiaohongshu.com/explore/0123456789abcdef01234568"
+      ]
+    },
+    {
+      "label": "youtube watch",
+      "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "output_dir": "outputs",
+      "include_subtitles": true,
+      "command": [
+        "<launcher>",
+        "--no-playlist",
+        "-f",
+        "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+        "--merge-output-format",
+        "mp4",
+        "--js-runtimes",
+        "deno",
+        "--js-runtimes",
+        "node",
+        "--js-runtimes",
+        "quickjs",
+        "--js-runtimes",
+        "bun",
+        "--write-subs",
+        "--write-auto-subs",
+        "--sub-langs",
+        "zh-Hans,zh-CN,zh-Hant,zh,en,ja,ko",
+        "--sub-format",
+        "best",
+        "-o",
+        "outputs/%(id)s.%(ext)s",
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+      ]
+    },
+    {
+      "label": "youtube shorts",
+      "url": "https://www.youtube.com/shorts/dQw4w9WgXcQ",
+      "output_dir": "outputs",
+      "include_subtitles": true,
+      "command": [
+        "<launcher>",
+        "--no-playlist",
+        "-f",
+        "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+        "--merge-output-format",
+        "mp4",
+        "--js-runtimes",
+        "deno",
+        "--js-runtimes",
+        "node",
+        "--js-runtimes",
+        "quickjs",
+        "--js-runtimes",
+        "bun",
+        "--write-subs",
+        "--write-auto-subs",
+        "--sub-langs",
+        "zh-Hans,zh-CN,zh-Hant,zh,en,ja,ko",
+        "--sub-format",
+        "best",
+        "-o",
+        "outputs/%(id)s.%(ext)s",
+        "https://www.youtube.com/shorts/dQw4w9WgXcQ"
+      ]
+    },
+    {
+      "label": "youtube short host",
+      "url": "https://youtu.be/dQw4w9WgXcQ",
+      "output_dir": "outputs",
+      "include_subtitles": true,
+      "command": [
+        "<launcher>",
+        "--no-playlist",
+        "-f",
+        "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+        "--merge-output-format",
+        "mp4",
+        "--js-runtimes",
+        "deno",
+        "--js-runtimes",
+        "node",
+        "--js-runtimes",
+        "quickjs",
+        "--js-runtimes",
+        "bun",
+        "--write-subs",
+        "--write-auto-subs",
+        "--sub-langs",
+        "zh-Hans,zh-CN,zh-Hant,zh,en,ja,ko",
+        "--sub-format",
+        "best",
+        "-o",
+        "outputs/%(id)s.%(ext)s",
+        "https://youtu.be/dQw4w9WgXcQ"
+      ]
+    },
+    {
+      "label": "youtube without subtitles",
+      "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "output_dir": "outputs",
+      "include_subtitles": false,
+      "command": [
+        "<launcher>",
+        "--no-playlist",
+        "-f",
+        "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+        "--merge-output-format",
+        "mp4",
+        "--js-runtimes",
+        "deno",
+        "--js-runtimes",
+        "node",
+        "--js-runtimes",
+        "quickjs",
+        "--js-runtimes",
+        "bun",
+        "-o",
+        "outputs/%(id)s.%(ext)s",
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+      ]
+    },
+    {
+      "label": "bilibili without subtitles",
+      "url": "https://www.bilibili.com/video/BV1Aa411c7mD",
+      "output_dir": "outputs",
+      "include_subtitles": false,
+      "command": [
+        "<launcher>",
+        "--no-playlist",
+        "-o",
+        "outputs/%(id)s.%(ext)s",
+        "https://www.bilibili.com/video/BV1Aa411c7mD"
+      ]
+    },
+    {
+      "label": "output dir with trailing slash",
+      "url": "https://example.com/v",
+      "output_dir": "outputs/",
+      "include_subtitles": true,
+      "command": [
+        "<launcher>",
+        "--no-playlist",
+        "-o",
+        "outputs/%(id)s.%(ext)s",
+        "https://example.com/v"
+      ]
+    },
+    {
+      "label": "output dir with spaces",
+      "url": "https://example.com/v",
+      "output_dir": "C:/Program Data/locus out",
+      "include_subtitles": true,
+      "command": [
+        "<launcher>",
+        "--no-playlist",
+        "-o",
+        "C:/Program Data/locus out/%(id)s.%(ext)s",
+        "https://example.com/v"
+      ]
+    },
+    {
+      "label": "output dir windows backslash",
+      "url": "https://example.com/v",
+      "output_dir": "C:\\Users\\locus\\outputs",
+      "include_subtitles": true,
+      "command": [
+        "<launcher>",
+        "--no-playlist",
+        "-o",
+        "C:/Users/locus/outputs/%(id)s.%(ext)s",
+        "https://example.com/v"
+      ]
+    },
+    {
+      "label": "url with query",
+      "url": "https://example.com/v?id=7&lang=zh",
+      "output_dir": "outputs",
+      "include_subtitles": true,
+      "command": [
+        "<launcher>",
+        "--no-playlist",
+        "-o",
+        "outputs/%(id)s.%(ext)s",
+        "https://example.com/v?id=7&lang=zh"
+      ]
+    },
+    {
+      "label": "uppercase scheme",
+      "url": "HTTPS://WWW.YOUTUBE.COM/WATCH?V=dQw4w9WgXcQ",
+      "output_dir": "outputs",
+      "include_subtitles": true,
+      "command": [
+        "<launcher>",
+        "--no-playlist",
+        "-o",
+        "outputs/%(id)s.%(ext)s",
+        "HTTPS://WWW.YOUTUBE.COM/WATCH?V=dQw4w9WgXcQ"
+      ]
+    },
+    {
+      "label": "share text with two urls",
+      "url": "看这个 https://www.douyin.com/video/7524373044106677544 还有 https://www.bilibili.com/video/BV1Aa411c7mD。",
+      "output_dir": "outputs",
+      "include_subtitles": true,
+      "command": [
+        "<launcher>",
+        "--no-playlist",
+        "--write-subs",
+        "--write-auto-subs",
+        "--sub-langs",
+        "zh-Hans,zh-CN,zh-Hant,zh,en,ja,ko",
+        "--sub-format",
+        "best",
+        "-o",
+        "outputs/%(id)s.%(ext)s",
+        "看这个 https://www.douyin.com/video/7524373044106677544 还有 https://www.bilibili.com/video/BV1Aa411c7mD。"
+      ]
+    }
+  ],
+  "youtube_processing": [
+    {
+      "label": "watch",
+      "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "result": true
+    },
+    {
+      "label": "watch with extra query",
+      "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42",
+      "result": true
+    },
+    {
+      "label": "shorts",
+      "url": "https://www.youtube.com/shorts/dQw4w9WgXcQ",
+      "result": true
+    },
+    {
+      "label": "short host",
+      "url": "https://youtu.be/dQw4w9WgXcQ",
+      "result": true
+    },
+    {
+      "label": "short host with www",
+      "url": "https://www.youtu.be/dQw4w9WgXcQ",
+      "result": true
+    },
+    {
+      "label": "mobile host",
+      "url": "https://m.youtube.com/watch?v=dQw4w9WgXcQ",
+      "result": true
+    },
+    {
+      "label": "bare youtube.com",
+      "url": "https://youtube.com/watch?v=dQw4w9WgXcQ",
+      "result": true
+    },
+    {
+      "label": "host with trailing dot",
+      "url": "https://www.youtube.com./watch?v=dQw4w9WgXcQ",
+      "result": true
+    },
+    {
+      "label": "uppercase host",
+      "url": "https://WWW.YOUTUBE.COM/watch?v=dQw4w9WgXcQ",
+      "result": true
+    },
+    {
+      "label": "unknown subdomain",
+      "url": "https://music.youtube.com/watch?v=dQw4w9WgXcQ",
+      "result": false
+    },
+    {
+      "label": "no video id",
+      "url": "https://www.youtube.com/watch?v=",
+      "result": false
+    },
+    {
+      "label": "id with illegal char",
+      "url": "https://www.youtube.com/watch?v=abc$def",
+      "result": false
+    },
+    {
+      "label": "id with slash",
+      "url": "https://www.youtube.com/watch?v=abc/def",
+      "result": false
+    },
+    {
+      "label": "short host with two segments",
+      "url": "https://youtu.be/abc/def",
+      "result": false
+    },
+    {
+      "label": "shorts with three segments",
+      "url": "https://www.youtube.com/shorts/id/extra",
+      "result": false
+    },
+    {
+      "label": "empty v plus valid v",
+      "url": "https://www.youtube.com/watch?v=&v=dQw4w9WgXcQ",
+      "result": true
+    },
+    {
+      "label": "douyin video",
+      "url": "https://www.douyin.com/video/7524373044106677544",
+      "result": false
+    },
+    {
+      "label": "bilibili video",
+      "url": "https://www.bilibili.com/video/BV1Aa411c7mD",
+      "result": false
+    },
+    {
+      "label": "not http",
+      "url": "ftp://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "result": false
+    },
+    {
+      "label": "plain id",
+      "url": "dQw4w9WgXcQ",
+      "result": false
+    },
+    {
+      "label": "embedded in share text",
+      "url": "推荐 https://www.youtube.com/watch?v=dQw4w9WgXcQ 给大家，。",
+      "result": true
+    },
+    {
+      "label": "embedded with trailing punctuation",
+      "url": "https://youtu.be/dQw4w9WgXcQ)",
+      "result": true
+    },
+    {
+      "label": "two urls one youtube",
+      "url": "https://www.douyin.com/video/7524373044106677544 https://youtu.be/dQw4w9WgXcQ",
+      "result": true
+    },
+    {
+      "label": "empty",
+      "url": "",
+      "result": false
+    }
+  ],
+  "failures": [
+    {
+      "label": "age restricted",
+      "stderr": "ERROR: This video is age-restricted.",
+      "stdout": "",
+      "result": {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "YOUTUBE_AGE_RESTRICTED: ERROR: This video is age-restricted."
+      }
+    },
+    {
+      "label": "confirm your age",
+      "stderr": "Please confirm your age before watching.",
+      "stdout": "",
+      "result": {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "YOUTUBE_AGE_RESTRICTED: Please confirm your age before watching."
+      }
+    },
+    {
+      "label": "http 429",
+      "stderr": "ERROR: HTTP Error 429: Too Many Requests",
+      "stdout": "",
+      "result": {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "YOUTUBE_RATE_LIMITED: ERROR: HTTP Error 429: Too Many Requests"
+      }
+    },
+    {
+      "label": "too many requests",
+      "stderr": "ERROR: too many requests",
+      "stdout": "",
+      "result": {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "YOUTUBE_RATE_LIMITED: ERROR: too many requests"
+      }
+    },
+    {
+      "label": "sign in",
+      "stderr": "ERROR: Please sign in to continue",
+      "stdout": "",
+      "result": {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "YOUTUBE_LOGIN_REQUIRED: ERROR: Please sign in to continue"
+      }
+    },
+    {
+      "label": "not a bot",
+      "stderr": "ERROR: Sign in to confirm you’re not a bot",
+      "stdout": "",
+      "result": {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "YOUTUBE_LOGIN_REQUIRED: ERROR: Sign in to confirm you’re not a bot"
+      }
+    },
+    {
+      "label": "captcha hint",
+      "stderr": "ERROR: Use --cookies-from-browser chrome to pass the captcha",
+      "stdout": "",
+      "result": {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "YOUTUBE_LOGIN_REQUIRED: ERROR:"
+      }
+    },
+    {
+      "label": "no video formats",
+      "stderr": "ERROR: No video formats found",
+      "stdout": "",
+      "result": {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "YOUTUBE_NO_PLAYABLE_STREAM: ERROR: No video formats found"
+      }
+    },
+    {
+      "label": "format not available",
+      "stderr": "ERROR: Requested format is not available",
+      "stdout": "",
+      "result": {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "YOUTUBE_NO_PLAYABLE_STREAM: ERROR: Requested format is not available"
+      }
+    },
+    {
+      "label": "private video",
+      "stderr": "ERROR: This is a private video",
+      "stdout": "",
+      "result": {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "YOUTUBE_PRIVATE_OR_UNAVAILABLE: ERROR: This is a private video"
+      }
+    },
+    {
+      "label": "unavailable",
+      "stderr": "ERROR: Video unavailable",
+      "stdout": "",
+      "result": {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "YOUTUBE_PRIVATE_OR_UNAVAILABLE: ERROR: Video unavailable"
+      }
+    },
+    {
+      "label": "403",
+      "stderr": "ERROR: HTTP Error 403: Forbidden",
+      "stdout": "",
+      "result": {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "YOUTUBE_STREAM_FORBIDDEN: ERROR: HTTP Error 403: Forbidden"
+      }
+    },
+    {
+      "label": "403 forbidden text",
+      "stderr": "ERROR: 403: Forbidden",
+      "stdout": "",
+      "result": {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "YOUTUBE_STREAM_FORBIDDEN: ERROR: 403: Forbidden"
+      }
+    },
+    {
+      "label": "unknown failure",
+      "stderr": "ERROR: Something else went wrong",
+      "stdout": "",
+      "result": {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "YOUTUBE_DOWNLOAD_FAILED: ERROR: Something else went wrong"
+      }
+    },
+    {
+      "label": "empty stderr falls back to stdout",
+      "stderr": "",
+      "stdout": "plain stdout failure",
+      "result": {
+        "returncode": 1,
+        "stdout": "plain stdout failure",
+        "stderr": "YOUTUBE_DOWNLOAD_FAILED: plain stdout failure"
+      }
+    },
+    {
+      "label": "both empty",
+      "stderr": "",
+      "stdout": "",
+      "result": {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "YOUTUBE_DOWNLOAD_FAILED: yt-dlp failed to download the YouTube video."
+      }
+    },
+    {
+      "label": "uppercase marker",
+      "stderr": "ERROR: AGE-RESTRICTED VIDEO",
+      "stdout": "",
+      "result": {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "YOUTUBE_AGE_RESTRICTED: ERROR: AGE-RESTRICTED VIDEO"
+      }
+    },
+    {
+      "label": "cookie hint removal",
+      "stderr": "ERROR: Try --cookies cookies.txt. Then retry.",
+      "stdout": "",
+      "result": {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "YOUTUBE_LOGIN_REQUIRED: ERROR: txt. Then retry."
+      }
+    },
+    {
+      "label": "signed media url removal",
+      "stderr": "ERROR: https://r1.googlevideo.com/videoplayback?ip=1.2.3.4 failed",
+      "stdout": "",
+      "result": {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "YOUTUBE_DOWNLOAD_FAILED: ERROR: [youtube media url removed] failed"
+      }
+    }
+  ],
+  "sanitize": [
+    {
+      "label": "plain",
+      "message": "  ERROR:   plain\nmessage  ",
+      "result": "ERROR: plain message"
+    },
+    {
+      "label": "signed url",
+      "message": "https://rr.googlevideo.com/videoplayback?x=1&y=2 failed",
+      "result": "[youtube media url removed] failed"
+    },
+    {
+      "label": "cookie hint",
+      "message": "Use --cookies-from-browser firefox. Then retry.",
+      "result": "Then retry."
+    },
+    {
+      "label": "cookie hint no period",
+      "message": "Try --cookies cookies.txt and retry again",
+      "result": "txt and retry again"
+    },
+    {
+      "label": "multiple spaces",
+      "message": "a\t\tb   c",
+      "result": "a b c"
+    },
+    {
+      "label": "empty",
+      "message": "",
+      "result": ""
+    },
+    {
+      "label": "only whitespace",
+      "message": " \t\r\n ",
+      "result": ""
+    },
+    {
+      "label": "media url plus words",
+      "message": "before https://x.googlevideo.com/videoplayback?a=b after",
+      "result": "before [youtube media url removed] after"
+    }
+  ],
+  "fallback_attempts": [
+    {
+      "label": "douyin with aweme id empty failure",
+      "url": "https://www.douyin.com/video/7524373044106677544",
+      "failure_message": "",
+      "douyin": true,
+      "xiaohongshu": false,
+      "bilibili": false
+    },
+    {
+      "label": "douyin with aweme id json failure",
+      "url": "https://www.douyin.com/video/7524373044106677544",
+      "failure_message": "ERROR: Expecting value: line 1",
+      "douyin": true,
+      "xiaohongshu": false,
+      "bilibili": false
+    },
+    {
+      "label": "douyin short host no id",
+      "url": "https://v.douyin.com/iRabcdef/",
+      "failure_message": "ERROR: empty response",
+      "douyin": true,
+      "xiaohongshu": false,
+      "bilibili": false
+    },
+    {
+      "label": "douyin fresh cookies",
+      "url": "https://www.douyin.com/video/7524373044106677544",
+      "failure_message": "fresh cookies required",
+      "douyin": true,
+      "xiaohongshu": false,
+      "bilibili": false
+    },
+    {
+      "label": "douyin unrelated failure",
+      "url": "https://www.douyin.com/video/7524373044106677544",
+      "failure_message": "ERROR: network unreachable",
+      "douyin": true,
+      "xiaohongshu": false,
+      "bilibili": false
+    },
+    {
+      "label": "douyin other host",
+      "url": "https://www.bilibili.com/video/BV1Aa411c7mD",
+      "failure_message": "ERROR: Expecting value",
+      "douyin": false,
+      "xiaohongshu": false,
+      "bilibili": true
+    },
+    {
+      "label": "douyin embedded short text",
+      "url": "分享 https://v.douyin.com/iRabcdef/ 给你",
+      "failure_message": "ERROR: web detail json",
+      "douyin": true,
+      "xiaohongshu": false,
+      "bilibili": false
+    },
+    {
+      "label": "xhs with failure",
+      "url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234568",
+      "failure_message": "ERROR: unsupported url",
+      "douyin": false,
+      "xiaohongshu": true,
+      "bilibili": false
+    },
+    {
+      "label": "xhs no failure",
+      "url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234568",
+      "failure_message": "",
+      "douyin": false,
+      "xiaohongshu": false,
+      "bilibili": false
+    },
+    {
+      "label": "xhs short host",
+      "url": "https://xhslink.com/a/abcdef",
+      "failure_message": "ERROR: failed",
+      "douyin": false,
+      "xiaohongshu": true,
+      "bilibili": false
+    },
+    {
+      "label": "xhs cn short host",
+      "url": "https://xhslink.cn/a/abcdef",
+      "failure_message": "  ",
+      "douyin": false,
+      "xiaohongshu": false,
+      "bilibili": false
+    },
+    {
+      "label": "bilibili with failure",
+      "url": "https://www.bilibili.com/video/BV1Aa411c7mD",
+      "failure_message": "ERROR: failed",
+      "douyin": false,
+      "xiaohongshu": false,
+      "bilibili": true
+    },
+    {
+      "label": "bilibili no failure",
+      "url": "https://www.bilibili.com/video/BV1Aa411c7mD",
+      "failure_message": "   ",
+      "douyin": false,
+      "xiaohongshu": false,
+      "bilibili": false
+    },
+    {
+      "label": "bilibili short host",
+      "url": "https://b23.tv/abcdef",
+      "failure_message": "ERROR: failed",
+      "douyin": false,
+      "xiaohongshu": false,
+      "bilibili": true
+    },
+    {
+      "label": "unrelated host",
+      "url": "https://example.com/v",
+      "failure_message": "ERROR: failed",
+      "douyin": false,
+      "xiaohongshu": false,
+      "bilibili": false
+    },
+    {
+      "label": "youtube",
+      "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "failure_message": "ERROR: failed",
+      "douyin": false,
+      "xiaohongshu": false,
+      "bilibili": false
+    }
+  ],
+  "url_candidates": [
+    {
+      "label": "single",
+      "raw": "https://www.douyin.com/video/7524373044106677544",
+      "result": [
+        "https://www.douyin.com/video/7524373044106677544"
+      ]
+    },
+    {
+      "label": "two urls",
+      "raw": "https://www.douyin.com/video/7524373044106677544 https://www.bilibili.com/video/BV1Aa411c7mD",
+      "result": [
+        "https://www.douyin.com/video/7524373044106677544",
+        "https://www.bilibili.com/video/BV1Aa411c7mD"
+      ]
+    },
+    {
+      "label": "trailing chinese punctuation",
+      "raw": "https://www.douyin.com/video/7524373044106677544。！？",
+      "result": [
+        "https://www.douyin.com/video/7524373044106677544"
+      ]
+    },
+    {
+      "label": "trailing ascii punctuation",
+      "raw": "https://www.douyin.com/video/7524373044106677544,.;:!?",
+      "result": [
+        "https://www.douyin.com/video/7524373044106677544"
+      ]
+    },
+    {
+      "label": "trailing closing paren",
+      "raw": "https://www.douyin.com/video/7524373044106677544)",
+      "result": [
+        "https://www.douyin.com/video/7524373044106677544"
+      ]
+    },
+    {
+      "label": "trailing quote",
+      "raw": "\"https://www.douyin.com/video/7524373044106677544\"",
+      "result": [
+        "https://www.douyin.com/video/7524373044106677544"
+      ]
+    },
+    {
+      "label": "uppercase scheme",
+      "raw": "HTTPS://EXAMPLE.COM/V",
+      "result": [
+        "HTTPS://EXAMPLE.COM/V"
+      ]
+    },
+    {
+      "label": "no url",
+      "raw": "just some text",
+      "result": []
+    },
+    {
+      "label": "empty",
+      "raw": "",
+      "result": []
+    }
+  ],
+  "ids": [
+    {
+      "label": "douyin video path",
+      "text": "https://www.douyin.com/video/7524373044106677544",
+      "douyin_id": "7524373044106677544",
+      "xhs_note_id": null
+    },
+    {
+      "label": "douyin note path",
+      "text": "https://www.douyin.com/note/7524373044106677544",
+      "douyin_id": "7524373044106677544",
+      "xhs_note_id": null
+    },
+    {
+      "label": "douyin modal_id query",
+      "text": "https://www.douyin.com/?modal_id=7524373044106677544",
+      "douyin_id": "7524373044106677544",
+      "xhs_note_id": null
+    },
+    {
+      "label": "douyin slides",
+      "text": "https://www.douyin.com/share/slides/7524373044106677544",
+      "douyin_id": "7524373044106677544",
+      "xhs_note_id": null
+    },
+    {
+      "label": "douyin short digits",
+      "text": "https://www.douyin.com/video/12345",
+      "douyin_id": "12345",
+      "xhs_note_id": null
+    },
+    {
+      "label": "douyin no id",
+      "text": "https://www.douyin.com/user/abc",
+      "douyin_id": null,
+      "xhs_note_id": null
+    },
+    {
+      "label": "xhs explore",
+      "text": "https://www.xiaohongshu.com/explore/0123456789abcdef01234568",
+      "douyin_id": null,
+      "xhs_note_id": "0123456789abcdef01234568"
+    },
+    {
+      "label": "xhs discovery item",
+      "text": "https://www.xiaohongshu.com/discovery/item/0123456789ABCDEF01234568",
+      "douyin_id": null,
+      "xhs_note_id": "0123456789abcdef01234568"
+    },
+    {
+      "label": "xhs uppercase",
+      "text": "ABCDEF0123456789ABCDEF01",
+      "douyin_id": null,
+      "xhs_note_id": "abcdef0123456789abcdef01"
+    },
+    {
+      "label": "xhs too short",
+      "text": "0123456789abcdef",
+      "douyin_id": null,
+      "xhs_note_id": null
+    },
+    {
+      "label": "plain text",
+      "text": "nothing here",
+      "douyin_id": null,
+      "xhs_note_id": null
+    }
+  ]
+}

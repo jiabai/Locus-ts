@@ -1,0 +1,377 @@
+export type EmailDispatchPurpose =
+  | "desktop_login"
+  | "admin_login"
+  | "self_service_activation";
+
+export type OtpPurpose = Exclude<EmailDispatchPurpose, "self_service_activation">;
+
+export type ActivationCodeIssuanceSource = "admin" | "self_service_email";
+
+export type ActivationCodeStatus =
+  | "pending_delivery"
+  | "active"
+  | "redeemed"
+  | "expired"
+  | "disabled";
+
+export type ActivationCodeDisabledReason =
+  | "delivery_failed"
+  | "superseded"
+  | "activation_became_active";
+
+export type UserRecord = {
+  id: string;
+  email: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type EmailOtpRecord = {
+  id: string;
+  purpose: OtpPurpose;
+  email: string;
+  state: string;
+  codeHash: string;
+  ip: string;
+  attempts: number;
+  expiresAt: Date;
+  consumedAt: Date | null;
+  createdAt: Date;
+};
+
+export type AuthRateLimitScope = "email_minute" | "email_hour" | "ip_hour";
+
+export type AuthRateLimitRecord = {
+  id: string;
+  keyHash: string;
+  purpose: EmailDispatchPurpose;
+  scope: AuthRateLimitScope;
+  windowStartedAt: Date;
+  count: number;
+  nextAllowedAt: Date;
+  updatedAt: Date;
+};
+
+export type DesktopLoginTicketRecord = {
+  id: string;
+  ticketHash: string;
+  state: string;
+  userId: string;
+  expiresAt: Date;
+  consumedAt: Date | null;
+  createdAt: Date;
+};
+
+export type SessionRecord = {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  createdAt: Date;
+  expiresAt: Date;
+  revokedAt: Date | null;
+};
+
+export type EntitlementRecord = {
+  id: string;
+  userId: string;
+  expiresAt: Date;
+  llmQuotaLimit: number;
+  llmQuotaUsed: number;
+  updatedAt: Date;
+};
+
+export type LlmConfigRecord = {
+  id: string;
+  provider: string;
+  baseUrl: string;
+  model: string;
+  encryptedApiKey: string;
+  apiKeyLast4: string;
+  timeoutSeconds: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type AnysearchConfigRecord = {
+  id: string;
+  mcpUrl: string;
+  encryptedApiKey: string;
+  apiKeyLast4: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type LlmUsageEventRecord = {
+  id: string;
+  userId: string;
+  entitlementId: string;
+  requestId: string;
+  createdAt: Date;
+};
+
+export type ActivationCodeRecord = {
+  id: string;
+  codeHash: string;
+  codePrefix: string;
+  status: ActivationCodeStatus;
+  issuanceSource: ActivationCodeIssuanceSource;
+  entitlementDays: number;
+  issuedToUserId: string | null;
+  redeemBy: Date;
+  createdAt: Date;
+  sentAt: Date | null;
+  redeemedAt: Date | null;
+  redeemedByUserId: string | null;
+  disabledReason: ActivationCodeDisabledReason | null;
+};
+
+export type AdminSessionRecord = {
+  id: string;
+  email: string;
+  tokenHash: string;
+  csrfTokenHash: string;
+  createdAt: Date;
+  expiresAt: Date;
+  revokedAt: Date | null;
+};
+
+export type UserSessionRecord = {
+  id: string;
+  userId: string;
+  email: string;
+  tokenHash: string;
+  csrfTokenHash: string;
+  createdAt: Date;
+  expiresAt: Date;
+  revokedAt: Date | null;
+};
+
+export type AdminEntitlementAdjustmentRecord = {
+  id: string;
+  adminEmail: string;
+  userId: string;
+  reason: string;
+  note: string | null;
+  beforeExpiresAt: Date | null;
+  afterExpiresAt: Date;
+  beforeLlmQuotaLimit: number;
+  afterLlmQuotaLimit: number;
+  beforeLlmQuotaUsed: number;
+  afterLlmQuotaUsed: number;
+  createdAt: Date;
+};
+
+export type ActivationRedemption =
+  | { status: "redeemed"; entitlement: EntitlementRecord }
+  | { status: "entitlement_active"; entitlement: EntitlementRecord }
+  | { status: "session_invalid" }
+  | { status: "code_invalid" };
+
+export type PrepareSelfServiceActivationCodeResult =
+  | {
+      status: "prepared";
+      activationCodeId: string;
+      email: string;
+      retryAt: Date;
+      redeemBy: Date;
+    }
+  | { status: "session_invalid" }
+  | { status: "entitlement_active" }
+  | { status: "rate_limited"; retryAt: Date }
+  | { status: "temporarily_unavailable" };
+
+export type ActivatePreparedSelfServiceActivationCodeResult =
+  | { status: "activated" }
+  | { status: "entitlement_active" }
+  | { status: "invalid" }
+  | { status: "temporarily_unavailable" };
+
+export type EntitlementAdjustmentApplication =
+  | {
+      status: "applied";
+      entitlement: EntitlementRecord;
+      adjustment: AdminEntitlementAdjustmentRecord;
+    }
+  | { status: "user_not_found" }
+  | { status: "expiry_required" };
+
+export type IssueEmailOtpResult =
+  | { status: "issued"; otpId: string }
+  | { status: "rate_limited"; retryAt: Date }
+  | { status: "temporarily_unavailable" };
+
+export type VerifyDesktopOtpResult =
+  | { status: "verified"; user: UserRecord; ticket: DesktopLoginTicketRecord }
+  | { status: "invalid" }
+  | { status: "temporarily_unavailable" };
+
+export type VerifyAdminOtpResult =
+  | { status: "verified"; session: AdminSessionRecord }
+  | { status: "invalid" }
+  | { status: "temporarily_unavailable" };
+
+export type VerifyUserOtpResult =
+  | { status: "verified"; user: UserRecord; session: UserSessionRecord }
+  | { status: "invalid" }
+  | { status: "temporarily_unavailable" };
+
+export type VerifyDesktopOtpAndWebSessionResult =
+  | { status: "verified"; user: UserRecord; ticket: DesktopLoginTicketRecord; session: UserSessionRecord }
+  | { status: "invalid" }
+  | { status: "temporarily_unavailable" };
+
+export type ExchangeDesktopTicketResult =
+  | { status: "exchanged"; user: UserRecord; session: SessionRecord }
+  | { status: "invalid" }
+  | { status: "temporarily_unavailable" };
+
+export type LlmQuotaCheckoutResult =
+  | { status: "consumed"; entitlement: EntitlementRecord }
+  | { status: "reused"; entitlement: EntitlementRecord }
+  | { status: "unavailable" }
+  | { status: "temporarily_unavailable" };
+
+export type Store = {
+  upsertUserByEmail(email: string, now: Date): Promise<UserRecord>;
+  getUserById(userId: string): Promise<UserRecord | null>;
+  issueEmailOtp(
+    input: Omit<EmailOtpRecord, "id" | "attempts" | "consumedAt">,
+  ): Promise<IssueEmailOtpResult>;
+  invalidateIssuedOtpAfterDeliveryFailure(otpId: string, now: Date): Promise<void>;
+  verifyDesktopOtpAndCreateTicket(input: {
+    email: string;
+    state: string;
+    codeHash: string;
+    ticketHash: string;
+    now: Date;
+    ticketExpiresAt: Date;
+  }): Promise<VerifyDesktopOtpResult>;
+  verifyDesktopOtpAndCreateTicketAndWebSession(input: {
+    email: string;
+    state: string;
+    codeHash: string;
+    ticketHash: string;
+    sessionTokenHash: string;
+    csrfTokenHash: string;
+    now: Date;
+    ticketExpiresAt: Date;
+    sessionExpiresAt: Date;
+  }): Promise<VerifyDesktopOtpAndWebSessionResult>;
+  verifyAdminOtpAndCreateSession(input: {
+    email: string;
+    state: string;
+    codeHash: string;
+    sessionTokenHash: string;
+    csrfTokenHash: string;
+    now: Date;
+    sessionExpiresAt: Date;
+  }): Promise<VerifyAdminOtpResult>;
+  exchangeDesktopTicketAndCreateSession(input: {
+    ticketHash: string;
+    state: string;
+    sessionTokenHash: string;
+    now: Date;
+    sessionExpiresAt: Date;
+  }): Promise<ExchangeDesktopTicketResult>;
+  createSession(input: Omit<SessionRecord, "id" | "revokedAt">): Promise<SessionRecord>;
+  findSessionByTokenHash(tokenHash: string, now: Date): Promise<SessionRecord | null>;
+  revokeSession(tokenHash: string, now: Date): Promise<void>;
+  getEntitlement(userId: string): Promise<EntitlementRecord | null>;
+  upsertEntitlement(
+    userId: string,
+    expiresAt: Date,
+    now: Date,
+    quota?: { llmQuotaLimit?: number; llmQuotaUsed?: number },
+  ): Promise<EntitlementRecord>;
+  consumeLlmQuota(
+    userId: string,
+    requestId: string,
+    now: Date,
+  ): Promise<LlmQuotaCheckoutResult>;
+  getLlmConfig(): Promise<LlmConfigRecord | null>;
+  upsertLlmConfig(
+    input: Omit<LlmConfigRecord, "id" | "createdAt" | "updatedAt">,
+    now: Date,
+  ): Promise<LlmConfigRecord>;
+  getAnysearchConfig(): Promise<AnysearchConfigRecord | null>;
+  upsertAnysearchConfig(
+    input: Omit<AnysearchConfigRecord, "id" | "createdAt" | "updatedAt">,
+    now: Date,
+  ): Promise<AnysearchConfigRecord>;
+  createActivationCode(
+    input: Omit<ActivationCodeRecord, "id">,
+  ): Promise<ActivationCodeRecord>;
+  findActivationCodeByHash(codeHash: string): Promise<ActivationCodeRecord | null>;
+  markActivationCodeRedeemed(
+    codeHash: string,
+    userId: string,
+    redeemedAt: Date,
+  ): Promise<ActivationCodeRecord | null>;
+  prepareSelfServiceActivationCode(input: {
+    sessionTokenHash: string;
+    codeHash: string;
+    codePrefix: string;
+    ip: string;
+    now: Date;
+    redeemBy: Date;
+    entitlementDays: number;
+  }): Promise<PrepareSelfServiceActivationCodeResult>;
+  disablePreparedSelfServiceActivationCode(input: {
+    activationCodeId: string;
+    now: Date;
+    reason: "delivery_failed";
+  }): Promise<ActivationCodeRecord | null>;
+  activatePreparedSelfServiceActivationCode(input: {
+    activationCodeId: string;
+    now: Date;
+  }): Promise<ActivatePreparedSelfServiceActivationCodeResult>;
+  redeemActivationCodeAndGrantEntitlement(input: {
+    sessionTokenHash: string;
+    codeHash: string;
+    now: Date;
+    llmQuotaPerActivation: number;
+  }): Promise<ActivationRedemption>;
+  listActivationCodes(): Promise<ActivationCodeRecord[]>;
+  listUsers(): Promise<UserRecord[]>;
+  createAdminSession(
+    input: Omit<AdminSessionRecord, "id" | "revokedAt">,
+  ): Promise<AdminSessionRecord>;
+  findAdminSessionByTokenHash(
+    tokenHash: string,
+    now: Date,
+  ): Promise<AdminSessionRecord | null>;
+  revokeAdminSession(tokenHash: string, now: Date): Promise<void>;
+  verifyUserOtpAndCreateWebSession(input: {
+    email: string;
+    state: string;
+    codeHash: string;
+    sessionTokenHash: string;
+    csrfTokenHash: string;
+    now: Date;
+    sessionExpiresAt: Date;
+  }): Promise<VerifyUserOtpResult>;
+  createUserSession(
+    input: Omit<UserSessionRecord, "id" | "revokedAt">,
+  ): Promise<UserSessionRecord>;
+  findUserSessionByTokenHash(
+    tokenHash: string,
+    now: Date,
+  ): Promise<UserSessionRecord | null>;
+  revokeUserSession(tokenHash: string, now: Date): Promise<void>;
+  createAdminEntitlementAdjustment(
+    input: AdminEntitlementAdjustmentRecord,
+  ): Promise<AdminEntitlementAdjustmentRecord>;
+  applyEntitlementAdjustmentWithAudit(input: {
+    adminEmail: string;
+    userId: string;
+    reason: string;
+    note: string | null;
+    extendDays?: number;
+    expiresAt?: Date;
+    quotaAdd?: number;
+    now: Date;
+  }): Promise<EntitlementAdjustmentApplication>;
+  listAdminEntitlementAdjustments(
+    limit?: number,
+  ): Promise<AdminEntitlementAdjustmentRecord[]>;
+};

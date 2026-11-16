@@ -1,0 +1,691 @@
+from __future__ import annotations
+
+import copy
+import json
+from pathlib import Path
+
+import pytest
+from worker_core.requests import (
+    parse_preference_snapshot,
+    parse_process_local_media_request,
+    parse_process_request,
+    parse_retry_insights_request,
+)
+
+
+def valid_preference_snapshot() -> dict[str, object]:
+    return {
+        "profile": {
+            "role": "content_creator",
+            "domain": "content_media",
+            "stage": "experienced_professional",
+            "cityContext": "new_tier1_city",
+            "genderPerspective": "neutral_perspective",
+            "platforms": ["douyin"],
+        },
+        "profileSkipped": False,
+        "generationPreferences": {
+            "goal": "content_creation",
+            "scenario": "short_video",
+            "angles": ["topic_angle"],
+            "audience": "fans_readers",
+            "styles": ["grounded"],
+            "avoid": ["clickbait"],
+        },
+        "labelSnapshot": {
+            "profile": [
+                {
+                    "field": "role",
+                    "label": "我的角色",
+                    "values": [{"id": "content_creator", "label": "内容创作者"}],
+                }
+            ],
+            "generationPreferences": [
+                {
+                    "field": "goal",
+                    "label": "本次目标",
+                    "values": [{"id": "content_creation", "label": "内容创作"}],
+                }
+            ],
+        },
+    }
+
+
+def valid_process_request() -> dict[str, object]:
+    return {
+        "contract_version": 3,
+        "url": "https://www.douyin.com/video/7524373044106677544",
+        "asr_model": "iic/SenseVoiceSmall",
+    }
+
+
+def valid_local_media_request(
+    *, media_kind: str = "video", extension: str = "wmv"
+) -> dict[str, object]:
+    source_path = Path.cwd() / "private" / "review-secret" / f"访谈.{extension}"
+    return {
+        "contract_version": 4,
+        "source_path": str(source_path),
+        "media_kind": media_kind,
+        "safe_display_name": f"访谈.{extension}",
+        "source_extension": extension,
+        "asr_model": "iic/SenseVoiceSmall",
+    }
+
+
+def test_local_media_request_parses_exact_v4_execution_input_without_repr_path() -> None:
+    request = parse_process_local_media_request(valid_local_media_request())
+
+    assert request.media_kind == "video"
+    assert request.safe_display_name == "访谈.wmv"
+    assert request.source_extension == "wmv"
+    assert request.asr_model == "iic/SenseVoiceSmall"
+    assert request.source_path.is_absolute()
+    assert "review-secret" not in repr(request)
+    assert "访谈" not in repr(request)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"remove": "contract_version"},
+        {"remove": "source_path"},
+        {"remove": "media_kind"},
+        {"remove": "safe_display_name"},
+        {"remove": "source_extension"},
+        {"remove": "asr_model"},
+        {"contract_version": 3},
+        {"contract_version": "4"},
+        {"source_path": 42},
+        {"source_path": "relative/访谈.wmv"},
+        {"media_kind": "document"},
+        {"media_kind": 1},
+        {"safe_display_name": ""},
+        {"safe_display_name": r"C:\Users\review-secret\访谈.wmv"},
+        {"source_extension": "mp3"},
+        {"source_extension": "WMV"},
+        {"source_extension": 42},
+        {"asr_model": "vendor/not-supported"},
+        {"selection_token": "review-secret-selection-token"},
+    ],
+)
+def test_local_media_request_rejects_non_v4_payloads(
+    mutation: dict[str, object],
+) -> None:
+    payload = valid_local_media_request()
+    removed = mutation.get("remove")
+    if isinstance(removed, str):
+        payload.pop(removed)
+    else:
+        payload.update(mutation)
+
+    with pytest.raises(
+        ValueError, match=r"^Local media request payload was invalid\.$"
+    ):
+        parse_process_local_media_request(payload)
+
+
+@pytest.mark.parametrize(
+    "media_kind,extension",
+    [
+        ("video", "mp3"),
+        ("audio", "mp4"),
+    ],
+)
+def test_local_media_request_rejects_wrong_kind_extension(
+    media_kind: str, extension: str
+) -> None:
+    payload = valid_local_media_request(
+        media_kind=media_kind,
+        extension=extension,
+    )
+
+    with pytest.raises(
+        ValueError, match=r"^Local media request payload was invalid\.$"
+    ):
+        parse_process_local_media_request(payload)
+
+
+def test_local_media_request_rejects_path_echoing_payload() -> None:
+    payload = valid_local_media_request()
+    payload["unexpected"] = r"C:\Users\review-secret\recording.wmv"
+
+    with pytest.raises(ValueError) as error:
+        parse_process_local_media_request(payload)
+
+    assert str(error.value) == "Local media request payload was invalid."
+    assert "review-secret" not in str(error.value)
+    assert "C:\\Users" not in str(error.value)
+
+
+def test_process_request_parses_exact_v3_execution_input() -> None:
+    request = parse_process_request(valid_process_request())
+
+    assert request.url == "https://www.douyin.com/video/7524373044106677544"
+    assert request.asr_model == "iic/SenseVoiceSmall"
+
+
+def test_process_request_accepts_onnx_desktop_model_snapshot() -> None:
+    payload = valid_process_request()
+    payload["asr_model"] = "iic/SenseVoiceSmall-onnx"
+
+    request = parse_process_request(payload)
+
+    assert request.asr_model == "iic/SenseVoiceSmall-onnx"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"remove": "contract_version"},
+        {"remove": "url"},
+        {"remove": "asr_model"},
+        {"contract_version": 2},
+        {"contract_version": "3"},
+        {"url": "   "},
+        {"asr_model": "vendor/not-supported"},
+        {"language": "Chinese"},
+        {"output_formats": ["txt", "md"]},
+        {"insightflow_mode": "embedded"},
+        {"model": "iic/SenseVoiceSmall"},
+        {"preference_snapshot": valid_preference_snapshot()},
+        {"generate_insights": True},
+    ],
+)
+def test_process_request_rejects_non_v3_payloads(mutation: dict[str, object]) -> None:
+    payload = valid_process_request()
+    removed = mutation.get("remove")
+    if isinstance(removed, str):
+        payload.pop(removed)
+    else:
+        payload.update(mutation)
+
+    with pytest.raises(ValueError, match="^Process request payload was invalid\\.$"):
+        parse_process_request(payload)
+
+
+def test_process_request_rejects_additional_fields_without_echoing_input() -> None:
+    payload = valid_process_request()
+    payload["url"] = "https://user:review-secret@www.example.com/private"
+    payload["language"] = "Chinese"
+
+    with pytest.raises(ValueError) as error:
+        parse_process_request(payload)
+
+    assert str(error.value) == "Process request payload was invalid."
+    assert "review-secret" not in str(error.value)
+    assert "https://" not in str(error.value)
+
+
+def test_process_request_does_not_accept_preference_snapshot() -> None:
+    payload = valid_process_request()
+    payload["preference_snapshot"] = valid_preference_snapshot()
+
+    with pytest.raises(ValueError, match="^Process request payload was invalid\\.$"):
+        parse_process_request(payload)
+
+
+def test_process_request_has_no_ai_generation_field() -> None:
+    payload = valid_process_request()
+    payload["generate_insights"] = True
+
+    with pytest.raises(ValueError, match="^Process request payload was invalid\\.$"):
+        parse_process_request(payload)
+
+
+def test_process_request_rejects_retired_ai_generation_field_without_echoing_input() -> None:
+    payload = valid_process_request()
+    payload["url"] = "https://user:review-secret@www.example.com/private"
+    payload["generate_insights"] = True
+
+    with pytest.raises(ValueError) as error:
+        parse_process_request(payload)
+
+    assert str(error.value) == "Process request payload was invalid."
+    assert "review-secret" not in str(error.value)
+    assert "https://" not in str(error.value)
+
+
+def test_retry_request_parses_preference_snapshot() -> None:
+    request = parse_retry_insights_request(
+        {
+            "task_id": "20260705-153012-douyin-demo",
+            "target": "insights",
+            "output_language": "zh-CN",
+            "preference_snapshot": valid_preference_snapshot(),
+        }
+    )
+
+    assert request.target == "insights"
+    assert request.output_language == "zh-CN"
+    assert request.preference_snapshot is not None
+    assert request.preference_snapshot.profile is not None
+    assert request.preference_snapshot.profile.role == "content_creator"
+    assert request.preference_snapshot.profile_skipped is False
+    assert request.preference_snapshot.generation_preferences.goal == "content_creation"
+    assert request.preference_snapshot.generation_preferences.angles == ("topic_angle",)
+    assert request.preference_snapshot.label_snapshot.generation_preferences[0].field == "goal"
+    assert request.preference_snapshot.profile.to_dict() == {
+        "role": "content_creator",
+        "domain": "content_media",
+        "stage": "experienced_professional",
+        "cityContext": "new_tier1_city",
+        "genderPerspective": "neutral_perspective",
+        "platforms": ["douyin"],
+    }
+    serialized = json.dumps(request.preference_snapshot.to_dict())
+    assert "defaultStyles" not in serialized
+    assert "defaultAvoid" not in serialized
+
+
+def test_preference_snapshot_requires_explicit_nullable_profile() -> None:
+    explicit_null = valid_preference_snapshot()
+    explicit_null["profile"] = None
+    explicit_null["profileSkipped"] = True
+
+    parsed = parse_preference_snapshot(explicit_null)
+
+    assert parsed is not None
+    assert parsed.profile is None
+    assert parsed.profile_skipped is True
+
+    missing_profile = valid_preference_snapshot()
+    missing_profile.pop("profile")
+
+    with pytest.raises(ValueError) as error:
+        parse_preference_snapshot(missing_profile)
+
+    assert str(error.value) == "preference_snapshot fields were invalid."
+
+
+@pytest.mark.parametrize(
+    "layer,expected_error",
+    [
+        ("root", "preference_snapshot fields were invalid."),
+        (
+            "generationPreferences",
+            "preference_snapshot.generationPreferences fields were invalid.",
+        ),
+        ("labelSnapshot", "preference_snapshot.labelSnapshot fields were invalid."),
+        (
+            "profileLabelRow",
+            "preference_snapshot.labelSnapshot.profile item fields were invalid.",
+        ),
+        (
+            "generationLabelRow",
+            "preference_snapshot.labelSnapshot.generationPreferences item fields were invalid.",
+        ),
+        (
+            "labelValue",
+            "preference_snapshot.labelSnapshot value fields were invalid.",
+        ),
+    ],
+)
+def test_preference_snapshot_rejects_additional_properties_at_every_closed_layer(
+    layer: str,
+    expected_error: str,
+) -> None:
+    snapshot = copy.deepcopy(valid_preference_snapshot())
+    if layer == "root":
+        target = snapshot
+    elif layer == "generationPreferences":
+        target = snapshot["generationPreferences"]
+    elif layer == "labelSnapshot":
+        target = snapshot["labelSnapshot"]
+    else:
+        labels = snapshot["labelSnapshot"]
+        assert isinstance(labels, dict)
+        if layer == "profileLabelRow":
+            rows = labels["profile"]
+            assert isinstance(rows, list)
+            target = rows[0]
+        elif layer == "generationLabelRow":
+            rows = labels["generationPreferences"]
+            assert isinstance(rows, list)
+            target = rows[0]
+        else:
+            rows = labels["profile"]
+            assert isinstance(rows, list)
+            row = rows[0]
+            assert isinstance(row, dict)
+            values = row["values"]
+            assert isinstance(values, list)
+            target = values[0]
+    assert isinstance(target, dict)
+    target["reviewSecretField"] = "review-secret-value"
+
+    with pytest.raises(ValueError) as error:
+        parse_preference_snapshot(snapshot)
+
+    assert str(error.value) == expected_error
+    assert "review-secret" not in str(error.value)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"remove": "role"},
+        {"remove": "platforms"},
+        {"defaultStyles": ["review-secret-style"]},
+        {"defaultAvoid": ["review-secret-avoid"]},
+        {"reviewSecretField": "review-secret-value"},
+    ],
+)
+def test_preference_snapshot_rejects_non_current_profile_shape_without_echoing_input(
+    mutation: dict[str, object],
+) -> None:
+    snapshot = valid_preference_snapshot()
+    profile = snapshot["profile"]
+    assert isinstance(profile, dict)
+    removed = mutation.get("remove")
+    if isinstance(removed, str):
+        profile.pop(removed)
+    else:
+        profile.update(mutation)
+
+    with pytest.raises(ValueError) as error:
+        parse_preference_snapshot(snapshot)
+
+    assert str(error.value) == "preference_snapshot.profile fields were invalid."
+    assert "review-secret" not in str(error.value)
+
+
+@pytest.mark.parametrize(
+    "section,field",
+    [
+        ("profile", "defaultStyles"),
+        ("profile", "defaultAvoid"),
+        ("profile", "styles"),
+        ("generationPreferences", "role"),
+        ("generationPreferences", "review-secret-field"),
+    ],
+)
+def test_preference_snapshot_rejects_label_fields_outside_their_current_section(
+    section: str,
+    field: str,
+) -> None:
+    snapshot = copy.deepcopy(valid_preference_snapshot())
+    label_snapshot = snapshot["labelSnapshot"]
+    assert isinstance(label_snapshot, dict)
+    rows = label_snapshot[section]
+    assert isinstance(rows, list)
+    row = rows[0]
+    assert isinstance(row, dict)
+    row["field"] = field
+    row["label"] = "review-secret-label"
+
+    with pytest.raises(ValueError) as error:
+        parse_preference_snapshot(snapshot)
+
+    assert str(error.value) == (
+        "preference_snapshot.labelSnapshot item field was invalid."
+    )
+    assert "review-secret" not in str(error.value)
+
+
+def test_retry_request_rejects_invalid_preference_snapshot_options() -> None:
+    snapshot = valid_preference_snapshot()
+    generation_preferences = snapshot["generationPreferences"]
+    assert isinstance(generation_preferences, dict)
+    generation_preferences["angles"] = ["topic_angle", "not_a_real_angle"]
+
+    with pytest.raises(ValueError, match="^Retry request payload was invalid\\.$"):
+        parse_retry_insights_request(
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "target": "insights",
+                "output_language": "zh-CN",
+                "preference_snapshot": snapshot,
+            }
+        )
+
+
+def test_retry_request_requires_generation_target() -> None:
+    with pytest.raises(ValueError, match="^Retry request payload was invalid\\.$"):
+        parse_retry_insights_request(
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "output_language": "zh-CN",
+            }
+        )
+
+
+def test_retry_request_rejects_unknown_generation_target() -> None:
+    with pytest.raises(ValueError, match="^Retry request payload was invalid\\.$"):
+        parse_retry_insights_request(
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "target": "both",
+                "output_language": "zh-CN",
+            }
+        )
+
+
+def test_retry_summary_request_rejects_preference_snapshot() -> None:
+    with pytest.raises(ValueError, match="^Retry request payload was invalid\\.$"):
+        parse_retry_insights_request(
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "target": "summary",
+                "output_language": "zh-CN",
+                "preference_snapshot": valid_preference_snapshot(),
+            }
+        )
+
+
+def test_retry_dissection_request_accepts_only_the_common_wire_fields() -> None:
+    request = parse_retry_insights_request(
+        {
+            "task_id": "task-1",
+            "target": "dissection",
+            "output_language": "zh-CN",
+        }
+    )
+
+    assert request.target == "dissection"
+    assert request.preference_snapshot is None
+
+
+def test_retry_dissection_request_rejects_preference_snapshot() -> None:
+    with pytest.raises(ValueError, match="Retry request payload was invalid"):
+        parse_retry_insights_request(
+            {
+                "task_id": "task-1",
+                "target": "dissection",
+                "output_language": "zh-CN",
+                "preference_snapshot": valid_preference_snapshot(),
+            }
+        )
+
+
+# ---------------------------------------------------------------------------
+# Task 2.2: target="draft"
+# ---------------------------------------------------------------------------
+
+
+def test_retry_request_accepts_draft_target_with_insight_id() -> None:
+    request = parse_retry_insights_request(
+        {
+            "task_id": "20260705-153012-douyin-demo",
+            "target": "draft",
+            "insight_id": 7,
+            "platform": "douyin",
+            "output_language": "zh-CN",
+        }
+    )
+
+    assert request.target == "draft"
+    assert request.insight_id == 7
+    assert request.platform == "douyin"
+    # preference_snapshot is rejected on draft — and absent here.
+    assert request.preference_snapshot is None
+
+
+def test_retry_draft_target_requires_insight_id() -> None:
+    with pytest.raises(ValueError):
+        parse_retry_insights_request(
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "target": "draft",
+                "output_language": "zh-CN",
+            }
+        )
+
+
+def test_retry_draft_target_rejects_null_insight_id() -> None:
+    with pytest.raises(ValueError):
+        parse_retry_insights_request(
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "target": "draft",
+                "insight_id": None,
+                "output_language": "zh-CN",
+            }
+        )
+
+
+def test_retry_draft_target_rejects_preference_snapshot() -> None:
+    # preference_snapshot MUST NOT be sent for draft (read from disk instead).
+    with pytest.raises(ValueError):
+        parse_retry_insights_request(
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "target": "draft",
+                "insight_id": 7,
+                "preference_snapshot": valid_preference_snapshot(),
+                "output_language": "zh-CN",
+            }
+        )
+
+
+def test_retry_draft_target_rejects_non_int_insight_id() -> None:
+    with pytest.raises(ValueError):
+        parse_retry_insights_request(
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "target": "draft",
+                "insight_id": "not-an-int",
+                "output_language": "zh-CN",
+            }
+        )
+
+
+# ---------------------------------------------------------------------------
+# Task 2: draft target — platform validation (9-id vocabulary)
+# ---------------------------------------------------------------------------
+
+
+def test_retry_draft_target_requires_platform() -> None:
+    # platform 是请求级字段，draft 必须携带；缺失在 checkout 前失败、不扣额度。
+    with pytest.raises(ValueError):
+        parse_retry_insights_request(
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "target": "draft",
+                "insight_id": 7,
+                "output_language": "zh-CN",
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "platform",
+    [
+        "podcast",  # 档案词表项，但不在 draft 9-id 词表内
+        "wechat",  # 拼写错误（合法 id 是 wechat_official_account / wechat_channels）
+        "",  # 空串
+        "   ",  # 纯空白 → strip 后为空
+        "DOUYIN",  # 大小写不匹配（id 大小写敏感）
+        "unknown_platform",  # 完全不存在的 id
+    ],
+)
+def test_retry_draft_target_rejects_invalid_platform(platform: str) -> None:
+    with pytest.raises(ValueError):
+        parse_retry_insights_request(
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "target": "draft",
+                "insight_id": 7,
+                "platform": platform,
+                "output_language": "zh-CN",
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "platform,expected",
+    [
+        ("wechat_official_account", "wechat_official_account"),
+        ("xiaohongshu", "xiaohongshu"),
+        ("wechat_channels", "wechat_channels"),
+        ("douyin", "douyin"),
+        ("tiktok", "tiktok"),
+        ("twitter", "twitter"),
+        ("bilibili", "bilibili"),
+        ("youtube", "youtube"),
+        ("other", "other"),
+        ("  douyin  ", "douyin"),  # 前后空白被 strip
+    ],
+)
+def test_retry_draft_target_accepts_valid_platform(platform: str, expected: str) -> None:
+    request = parse_retry_insights_request(
+        {
+            "task_id": "20260705-153012-douyin-demo",
+            "target": "draft",
+            "insight_id": 7,
+            "platform": platform,
+            "output_language": "zh-CN",
+        }
+    )
+    assert request.target == "draft"
+    assert request.platform == expected
+
+
+@pytest.mark.parametrize("target", ["summary", "insights"])
+def test_retry_non_draft_target_rejects_platform(target: str) -> None:
+    # platform 仅 target="draft" 携带；其余 target 出现即非法。
+    with pytest.raises(ValueError):
+        parse_retry_insights_request(
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "target": target,
+                "platform": "douyin",
+                "output_language": "zh-CN",
+            }
+        )
+
+
+@pytest.mark.parametrize("target", ["summary", "insights"])
+def test_retry_non_draft_target_without_platform_parses_with_none(
+    target: str,
+) -> None:
+    request = parse_retry_insights_request(
+        {
+            "task_id": "20260705-153012-douyin-demo",
+            "target": target,
+            "output_language": "zh-CN",
+        }
+    )
+    assert request.target == target
+    assert request.platform is None
+
+
+@pytest.mark.parametrize(
+    "task_id",
+    [
+        "../outside",
+        "nested/task",
+        "nested\\task",
+        "C:/Locus/task",
+        "20260705-153012-douyin-demo/../outside",
+    ],
+)
+def test_retry_request_rejects_task_id_path_traversal(task_id: str) -> None:
+    with pytest.raises(ValueError, match="^Retry request payload was invalid\\.$"):
+        parse_retry_insights_request(
+            {
+                "task_id": task_id,
+                "target": "insights",
+                "output_language": "zh-CN",
+            }
+        )

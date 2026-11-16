@@ -1,0 +1,54 @@
+# Desktop One-Click Updates
+
+## Background
+
+FrameQ already ships as a lightweight desktop installer with bundled runtime resources and first-run ASR model download. Ordinary users should be able to receive desktop client and worker fixes without manually finding a new installer.
+
+## Goals
+
+- The desktop client checks GitHub Releases for app updates without requiring login.
+- When a newer stable release exists, the toolbar and settings sheet show a low-noise update reminder.
+- The user can download, install, and restart into the new release from the desktop app.
+- Python worker code is upgraded together with the desktop application bundle; v1 does not support independent worker hot updates.
+- App-local data remains untouched across upgrades, including `models/`, `outputs/`, `cache/`, `auth/session.json`, and app-local `.env`.
+
+## User-visible Requirements
+
+- Startup performs a delayed, silent update check; manual checking is available in Settings.
+- The Settings `应用更新` / `App Updates` section always shows the version of the running build, so a user can tell which build they have without opening the releases page. The value comes from the desktop bundle's own version and matches the version the updater compares against.
+- If the app is already current, manual check reports that no update is available.
+- If an update is available, the user sees version notes and an `一键升级` action.
+- If video processing, insight generation, or ASR model download is active, installation is blocked with a message that the task should finish first.
+- Download progress is visible; errors are recoverable and do not damage the current installation.
+- After installation, the app offers `重启完成更新` and relaunches through Tauri process support.
+
+## Distribution Requirements
+
+- Updates use Tauri updater signed artifacts.
+- GitHub Releases hosts the public static `latest.json` updater metadata for published stable releases.
+- FrameQ account server keeps its account, activation, entitlement and AI checkout responsibilities.
+  Desktop updater metadata and signatures are distributed through the GitHub Releases endpoint.
+- `latest.json` must be published as UTF-8 without BOM so Tauri updater can decode it as JSON.
+- Release metadata contains version, publication date, platform-specific artifact URL, signature, and release notes.
+- Large installer/update artifacts are served from GitHub Release assets; SQLite does not store package binaries.
+- ASR model weights, LLM keys, cloud LLM models, and user-private settings must not be bundled into update artifacts beyond the existing lightweight runtime resources.
+
+## Non-goals
+
+- No independent worker hot-update package in v1.
+- No downgrade support.
+- No beta/canary channel in v1.
+- No forced update gate in v1.
+
+## Acceptance Criteria
+
+- 2026-06-27 test-policy update: because mainland China access to GitHub Releases is too slow for reliable manual validation, FrameQ v1 no longer treats live old-version-to-new-version GitHub updater testing as a required acceptance gate. This is recorded as a test waiver; it does not claim that the mainland China GitHub network path was successfully exercised.
+- The one-click updater feature is accepted for v1 based on automated tests, updater manifest/artifact generation, Tauri signature-verification configuration, and the fallback ability to distribute a fresh installer directly.
+- An old installed build can detect a newer published GitHub Release, download it, install it, and relaunch when the user's network can reliably access GitHub Releases.
+- Current-version clients receive no update from Tauri updater when `latest.json` does not describe a newer version.
+- Requests to `/api/desktop/updates/:target/:arch/:currentVersion` receive the account server's
+  standard 404 response. Supported account and checkout routes remain available through the
+  existing `/api/desktop/` Nginx proxy.
+- Invalid release metadata, missing signatures, and platform mismatches are not published to clients.
+- Existing ASR model cache, outputs, history, local settings, and desktop session survive the upgrade.
+- Offline or server-failing checks show a recoverable error only when manually triggered and do not block local transcription.

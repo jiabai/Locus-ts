@@ -1,0 +1,349 @@
+import type {
+  ActivationCodeRecord,
+  AdminEntitlementAdjustmentRecord,
+  AdminSessionRecord,
+  AnysearchConfigRecord,
+  AuthRateLimitRecord,
+  DesktopLoginTicketRecord,
+  EmailOtpRecord,
+  EntitlementRecord,
+  LlmConfigRecord,
+  LlmUsageEventRecord,
+  SessionRecord,
+  Store,
+  UserRecord,
+  UserSessionRecord,
+} from "./contracts.js";
+import { MemoryAtomicCoordinator } from "./memory/atomic.js";
+import * as anysearchConfigOperations from "./memory/anysearchConfig.js";
+import * as authOperations from "./memory/auth.js";
+import * as entitlementOperations from "./memory/entitlements.js";
+import * as llmConfigOperations from "./memory/llmConfig.js";
+import * as selfServiceActivationOperations from "./memory/selfServiceActivation.js";
+import * as userSessionOperations from "./memory/userSession.js";
+
+export class MemoryStore implements Store {
+  users: UserRecord[] = [];
+  emailOtps: EmailOtpRecord[] = [];
+  desktopLoginTickets: DesktopLoginTicketRecord[] = [];
+  sessions: SessionRecord[] = [];
+  entitlements: EntitlementRecord[] = [];
+  llmConfig: LlmConfigRecord | null = null;
+  anysearchConfig: AnysearchConfigRecord | null = null;
+  llmUsageEvents: LlmUsageEventRecord[] = [];
+  activationCodes: ActivationCodeRecord[] = [];
+  adminSessions: AdminSessionRecord[] = [];
+  adminEntitlementAdjustments: AdminEntitlementAdjustmentRecord[] = [];
+  authRateLimits: AuthRateLimitRecord[] = [];
+  userSessions: UserSessionRecord[] = [];
+  private readonly atomic = new MemoryAtomicCoordinator(this);
+
+  async upsertUserByEmail(email: string, now: Date): ReturnType<Store["upsertUserByEmail"]> {
+    return authOperations.upsertUserByEmail(this.authContext(), email, now);
+  }
+
+  async getUserById(userId: string): ReturnType<Store["getUserById"]> {
+    return authOperations.getUserById(this.authContext(), userId);
+  }
+
+  async issueEmailOtp(input: Parameters<Store["issueEmailOtp"]>[0]): ReturnType<Store["issueEmailOtp"]> {
+    return authOperations.issueEmailOtp(this.authContext(), input);
+  }
+
+  async invalidateIssuedOtpAfterDeliveryFailure(
+    otpId: string,
+    now: Date,
+  ): ReturnType<Store["invalidateIssuedOtpAfterDeliveryFailure"]> {
+    return authOperations.invalidateIssuedOtpAfterDeliveryFailure(
+      this.authContext(),
+      otpId,
+      now,
+    );
+  }
+
+  async verifyDesktopOtpAndCreateTicket(
+    input: Parameters<Store["verifyDesktopOtpAndCreateTicket"]>[0],
+  ): ReturnType<Store["verifyDesktopOtpAndCreateTicket"]> {
+    return authOperations.verifyDesktopOtpAndCreateTicket(this.authContext(), input);
+  }
+
+  async verifyAdminOtpAndCreateSession(
+    input: Parameters<Store["verifyAdminOtpAndCreateSession"]>[0],
+  ): ReturnType<Store["verifyAdminOtpAndCreateSession"]> {
+    return authOperations.verifyAdminOtpAndCreateSession(this.authContext(), input);
+  }
+
+  async exchangeDesktopTicketAndCreateSession(
+    input: Parameters<Store["exchangeDesktopTicketAndCreateSession"]>[0],
+  ): ReturnType<Store["exchangeDesktopTicketAndCreateSession"]> {
+    return authOperations.exchangeDesktopTicketAndCreateSession(this.authContext(), input);
+  }
+
+  async createEmailOtp(
+    input: Omit<EmailOtpRecord, "id" | "attempts" | "consumedAt">,
+  ): Promise<EmailOtpRecord> {
+    return authOperations.createEmailOtp(this.authContext(), input);
+  }
+
+  async createDesktopLoginTicket(
+    input: Omit<DesktopLoginTicketRecord, "id" | "consumedAt">,
+  ): Promise<DesktopLoginTicketRecord> {
+    return authOperations.createDesktopLoginTicket(this.authContext(), input);
+  }
+
+  async createSession(input: Parameters<Store["createSession"]>[0]): ReturnType<Store["createSession"]> {
+    return authOperations.createSession(this.authContext(), input);
+  }
+
+  async findSessionByTokenHash(
+    tokenHash: string,
+    now: Date,
+  ): ReturnType<Store["findSessionByTokenHash"]> {
+    return authOperations.findSessionByTokenHash(this.authContext(), tokenHash, now);
+  }
+
+  async revokeSession(
+    tokenHash: string,
+    now: Date,
+  ): ReturnType<Store["revokeSession"]> {
+    return authOperations.revokeSession(this.authContext(), tokenHash, now);
+  }
+
+  async getEntitlement(userId: string): ReturnType<Store["getEntitlement"]> {
+    return entitlementOperations.getEntitlement(this.entitlementContext(), userId);
+  }
+
+  async upsertEntitlement(
+    userId: string,
+    expiresAt: Date,
+    now: Date,
+    quota: Parameters<Store["upsertEntitlement"]>[3] = {},
+  ): ReturnType<Store["upsertEntitlement"]> {
+    return entitlementOperations.upsertEntitlement(
+      this.entitlementContext(),
+      userId,
+      expiresAt,
+      now,
+      quota,
+    );
+  }
+
+  async consumeLlmQuota(
+    userId: string,
+    requestId: string,
+    now: Date,
+  ): ReturnType<Store["consumeLlmQuota"]> {
+    return entitlementOperations.consumeLlmQuota(
+      this.entitlementContext(),
+      userId,
+      requestId,
+      now,
+    );
+  }
+
+  async getLlmConfig(): ReturnType<Store["getLlmConfig"]> {
+    return llmConfigOperations.getLlmConfig(this.llmConfigContext());
+  }
+
+  async upsertLlmConfig(
+    input: Parameters<Store["upsertLlmConfig"]>[0],
+    now: Date,
+  ): ReturnType<Store["upsertLlmConfig"]> {
+    return llmConfigOperations.upsertLlmConfig(this.llmConfigContext(), input, now);
+  }
+
+  async getAnysearchConfig(): ReturnType<Store["getAnysearchConfig"]> {
+    return anysearchConfigOperations.getAnysearchConfig(this.llmConfigContext());
+  }
+
+  async upsertAnysearchConfig(
+    input: Parameters<Store["upsertAnysearchConfig"]>[0],
+    now: Date,
+  ): ReturnType<Store["upsertAnysearchConfig"]> {
+    return anysearchConfigOperations.upsertAnysearchConfig(this.llmConfigContext(), input, now);
+  }
+
+  async createActivationCode(input: Parameters<Store["createActivationCode"]>[0]): ReturnType<Store["createActivationCode"]> {
+    return entitlementOperations.createActivationCode(this.entitlementContext(), input);
+  }
+
+  async findActivationCodeByHash(
+    codeHash: string,
+  ): ReturnType<Store["findActivationCodeByHash"]> {
+    return entitlementOperations.findActivationCodeByHash(
+      this.entitlementContext(),
+      codeHash,
+    );
+  }
+
+  async markActivationCodeRedeemed(
+    codeHash: string,
+    userId: string,
+    redeemedAt: Date,
+  ): ReturnType<Store["markActivationCodeRedeemed"]> {
+    return entitlementOperations.markActivationCodeRedeemed(
+      this.entitlementContext(),
+      codeHash,
+      userId,
+      redeemedAt,
+    );
+  }
+
+  async prepareSelfServiceActivationCode(
+    input: Parameters<Store["prepareSelfServiceActivationCode"]>[0],
+  ): ReturnType<Store["prepareSelfServiceActivationCode"]> {
+    return selfServiceActivationOperations.prepareSelfServiceActivationCode(
+      this.entitlementContext(),
+      input,
+    );
+  }
+
+  async disablePreparedSelfServiceActivationCode(
+    input: Parameters<Store["disablePreparedSelfServiceActivationCode"]>[0],
+  ): ReturnType<Store["disablePreparedSelfServiceActivationCode"]> {
+    return selfServiceActivationOperations.disablePreparedSelfServiceActivationCode(
+      this.entitlementContext(),
+      input,
+    );
+  }
+
+  async activatePreparedSelfServiceActivationCode(
+    input: Parameters<Store["activatePreparedSelfServiceActivationCode"]>[0],
+  ): ReturnType<Store["activatePreparedSelfServiceActivationCode"]> {
+    return selfServiceActivationOperations.activatePreparedSelfServiceActivationCode(
+      this.entitlementContext(),
+      input,
+    );
+  }
+
+  async redeemActivationCodeAndGrantEntitlement(
+    input: Parameters<Store["redeemActivationCodeAndGrantEntitlement"]>[0],
+  ): ReturnType<Store["redeemActivationCodeAndGrantEntitlement"]> {
+    return entitlementOperations.redeemActivationCodeAndGrantEntitlement(
+      this.entitlementContext(),
+      input,
+    );
+  }
+
+  async listActivationCodes(): ReturnType<Store["listActivationCodes"]> {
+    return entitlementOperations.listActivationCodes(this.entitlementContext());
+  }
+
+  async listUsers(): ReturnType<Store["listUsers"]> {
+    return authOperations.listUsers(this.authContext());
+  }
+
+  async createAdminSession(input: Parameters<Store["createAdminSession"]>[0]): ReturnType<Store["createAdminSession"]> {
+    return authOperations.createAdminSession(this.authContext(), input);
+  }
+
+  async findAdminSessionByTokenHash(
+    tokenHash: string,
+    now: Date,
+  ): ReturnType<Store["findAdminSessionByTokenHash"]> {
+    return authOperations.findAdminSessionByTokenHash(this.authContext(), tokenHash, now);
+  }
+
+  async revokeAdminSession(
+    tokenHash: string,
+    now: Date,
+  ): ReturnType<Store["revokeAdminSession"]> {
+    return authOperations.revokeAdminSession(this.authContext(), tokenHash, now);
+  }
+
+  async verifyUserOtpAndCreateWebSession(
+    input: Parameters<Store["verifyUserOtpAndCreateWebSession"]>[0],
+  ): ReturnType<Store["verifyUserOtpAndCreateWebSession"]> {
+    return userSessionOperations.verifyUserOtpAndCreateWebSession(this.authContext(), input);
+  }
+
+  async verifyDesktopOtpAndCreateTicketAndWebSession(
+    input: Parameters<Store["verifyDesktopOtpAndCreateTicketAndWebSession"]>[0],
+  ): ReturnType<Store["verifyDesktopOtpAndCreateTicketAndWebSession"]> {
+    return userSessionOperations.verifyDesktopOtpAndCreateTicketAndWebSession(
+      this.authContext(),
+      input,
+    );
+  }
+
+  async createUserSession(
+    input: Parameters<Store["createUserSession"]>[0],
+  ): ReturnType<Store["createUserSession"]> {
+    return userSessionOperations.createUserSession(this.authContext(), input);
+  }
+
+  async findUserSessionByTokenHash(
+    tokenHash: string,
+    now: Date,
+  ): ReturnType<Store["findUserSessionByTokenHash"]> {
+    return userSessionOperations.findUserSessionByTokenHash(this.authContext(), tokenHash, now);
+  }
+
+  async revokeUserSession(
+    tokenHash: string,
+    now: Date,
+  ): ReturnType<Store["revokeUserSession"]> {
+    return userSessionOperations.revokeUserSession(this.authContext(), tokenHash, now);
+  }
+
+  async createAdminEntitlementAdjustment(
+    input: Parameters<Store["createAdminEntitlementAdjustment"]>[0],
+  ): ReturnType<Store["createAdminEntitlementAdjustment"]> {
+    return entitlementOperations.createAdminEntitlementAdjustment(
+      this.entitlementContext(),
+      input,
+    );
+  }
+
+  async applyEntitlementAdjustmentWithAudit(
+    input: Parameters<Store["applyEntitlementAdjustmentWithAudit"]>[0],
+  ): ReturnType<Store["applyEntitlementAdjustmentWithAudit"]> {
+    return entitlementOperations.applyEntitlementAdjustmentWithAudit(
+      this.entitlementContext(),
+      input,
+    );
+  }
+
+  async listAdminEntitlementAdjustments(
+    limit = 50,
+  ): ReturnType<Store["listAdminEntitlementAdjustments"]> {
+    return entitlementOperations.listAdminEntitlementAdjustments(
+      this.entitlementContext(),
+      limit,
+    );
+  }
+
+  private llmConfigContext() {
+    return { state: this };
+  }
+
+  private entitlementContext() {
+    return {
+      state: this,
+      atomic: this.atomic,
+      findSessionByTokenHash: this.findSessionByTokenHash.bind(this),
+      getUserById: this.getUserById.bind(this),
+      findActivationCodeByHash: this.findActivationCodeByHash.bind(this),
+      markActivationCodeRedeemed: this.markActivationCodeRedeemed.bind(this),
+      getEntitlement: this.getEntitlement.bind(this),
+      upsertEntitlement: this.upsertEntitlement.bind(this),
+      createActivationCode: this.createActivationCode.bind(this),
+      createAdminEntitlementAdjustment:
+        this.createAdminEntitlementAdjustment.bind(this),
+    };
+  }
+
+  private authContext() {
+    return {
+      state: this,
+      atomic: this.atomic,
+      upsertUserByEmail: this.upsertUserByEmail.bind(this),
+      getUserById: this.getUserById.bind(this),
+      createEmailOtp: this.createEmailOtp.bind(this),
+      createDesktopLoginTicket: this.createDesktopLoginTicket.bind(this),
+      createSession: this.createSession.bind(this),
+      createAdminSession: this.createAdminSession.bind(this),
+      createUserSession: this.createUserSession.bind(this),
+    };
+  }
+}

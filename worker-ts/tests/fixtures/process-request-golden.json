@@ -1,0 +1,424 @@
+{
+  "fields": [
+    "asr_model",
+    "contract_version",
+    "url"
+  ],
+  "contract_version": 3,
+  "message": "Process request payload was invalid.",
+  "models": [
+    "iic/SenseVoiceSmall",
+    "iic/SenseVoiceSmall-onnx"
+  ],
+  "cases": [
+    {
+      "label": "valid onnx",
+      "payload": {
+        "contract_version": 3,
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": true,
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      }
+    },
+    {
+      "label": "valid pytorch model",
+      "payload": {
+        "contract_version": 3,
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "asr_model": "iic/SenseVoiceSmall"
+      },
+      "result": {
+        "ok": true,
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "asr_model": "iic/SenseVoiceSmall"
+      }
+    },
+    {
+      "label": "url trims ascii whitespace",
+      "payload": {
+        "contract_version": 3,
+        "url": " \t\n https://example.com/v \r\n ",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": true,
+        "url": "https://example.com/v",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      }
+    },
+    {
+      "label": "url trims unicode whitespace",
+      "payload": {
+        "contract_version": 3,
+        "url": "　 https://example.com/v  ",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": true,
+        "url": "https://example.com/v",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      }
+    },
+    {
+      "label": "url trims python-only separators",
+      "payload": {
+        "contract_version": 3,
+        "url": "\u001chttps://example.com/v\u001f",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": true,
+        "url": "https://example.com/v",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      }
+    },
+    {
+      "label": "url keeps U+FEFF",
+      "payload": {
+        "contract_version": 3,
+        "url": "﻿https://example.com/v﻿",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": true,
+        "url": "﻿https://example.com/v﻿",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      }
+    },
+    {
+      "label": "url keeps interior whitespace",
+      "payload": {
+        "contract_version": 3,
+        "url": "https://example.com/a b",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": true,
+        "url": "https://example.com/a b",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      }
+    },
+    {
+      "label": "missing contract_version",
+      "payload": {
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "missing url",
+      "payload": {
+        "contract_version": 3,
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "missing asr_model",
+      "payload": {
+        "contract_version": 3,
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+      },
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "empty object",
+      "payload": {},
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "extra field",
+      "payload": {
+        "contract_version": 3,
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "asr_model": "iic/SenseVoiceSmall-onnx",
+        "output_language": "zh"
+      },
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "contract_version as string",
+      "payload": {
+        "contract_version": "3",
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "contract_version as bool",
+      "payload": {
+        "contract_version": true,
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "contract_version as null",
+      "payload": {
+        "contract_version": null,
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "contract_version as float equal",
+      "payload": {
+        "contract_version": 3.0,
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": true,
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      }
+    },
+    {
+      "label": "contract_version as float unequal",
+      "payload": {
+        "contract_version": 3.5,
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "contract_version one less",
+      "payload": {
+        "contract_version": 2,
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "contract_version one more",
+      "payload": {
+        "contract_version": 4,
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "url as number",
+      "payload": {
+        "contract_version": 3,
+        "url": 123,
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "url as null",
+      "payload": {
+        "contract_version": 3,
+        "url": null,
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "url as list",
+      "payload": {
+        "contract_version": 3,
+        "url": [
+          "https://example.com/v"
+        ],
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "url empty",
+      "payload": {
+        "contract_version": 3,
+        "url": "",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "url only ascii whitespace",
+      "payload": {
+        "contract_version": 3,
+        "url": " \t\r\n ",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "url only unicode whitespace",
+      "payload": {
+        "contract_version": 3,
+        "url": "　  ",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "url only python-only separators",
+      "payload": {
+        "contract_version": 3,
+        "url": "\u001c\u001f",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "url only U+FEFF",
+      "payload": {
+        "contract_version": 3,
+        "url": "﻿",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      },
+      "result": {
+        "ok": true,
+        "url": "﻿",
+        "asr_model": "iic/SenseVoiceSmall-onnx"
+      }
+    },
+    {
+      "label": "asr_model unknown",
+      "payload": {
+        "contract_version": 3,
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "asr_model": "iic/Other"
+      },
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "asr_model as null",
+      "payload": {
+        "contract_version": 3,
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "asr_model": null
+      },
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "asr_model as number",
+      "payload": {
+        "contract_version": 3,
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "asr_model": 7
+      },
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "payload null",
+      "payload": null,
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "payload list",
+      "payload": [
+        3,
+        "https://example.com/v",
+        "iic/SenseVoiceSmall-onnx"
+      ],
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "payload string",
+      "payload": "https://example.com/v",
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "payload number",
+      "payload": 3,
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    },
+    {
+      "label": "payload bool",
+      "payload": true,
+      "result": {
+        "ok": false,
+        "error": "Process request payload was invalid."
+      }
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "insights": [
+    {
+      "id": 1,
+      "topic": "流程先于工具",
+      "matchReason": "原文两次强调流程瓶颈",
+      "followUpQuestions": [
+        "该从哪条流程开始？",
+        "如何衡量改造效果？"
+      ],
+      "suitableUse": "短视频开场",
+      "sourceChunkId": 2
+    },
+    {
+      "id": 2,
+      "topic": "平台化的时机",
+      "matchReason": "原文给出反例",
+      "followUpQuestions": [
+        "什么时候该收拢为平台？"
+      ],
+      "suitableUse": "团队复盘",
+      "sourceChunkId": null
+    }
+  ],
+  "markdown": {
+    "zh-CN": "# 启发灵感\n\n## 灵感 1\n\n### 灵感\n流程先于工具\n\n### 匹配理由\n原文两次强调流程瓶颈\n\n### 启发问题\n- 该从哪条流程开始？\n- 如何衡量改造效果？\n\n### 适合用途\n短视频开场\n\n来源片段: 2\n\n## 灵感 2\n\n### 灵感\n平台化的时机\n\n### 匹配理由\n原文给出反例\n\n### 启发问题\n- 什么时候该收拢为平台？\n\n### 适合用途\n团队复盘\n\n",
+    "zh-TW": "# 靈感啟發\n\n## 靈感 1\n\n### 靈感\n流程先于工具\n\n### 匹配理由\n原文两次强调流程瓶颈\n\n### 啟發問題\n- 该从哪条流程开始？\n- 如何衡量改造效果？\n\n### 適合用途\n短视频开场\n\n來源片段: 2\n\n## 靈感 2\n\n### 靈感\n平台化的时机\n\n### 匹配理由\n原文给出反例\n\n### 啟發問題\n- 什么时候该收拢为平台？\n\n### 適合用途\n团队复盘\n\n",
+    "en-US": "# Inspiration\n\n## Inspiration 1\n\n### Inspiration\n流程先于工具\n\n### Match Reason\n原文两次强调流程瓶颈\n\n### Follow-up Questions\n- 该从哪条流程开始？\n- 如何衡量改造效果？\n\n### Suitable Use\n短视频开场\n\nSource Segment: 2\n\n## Inspiration 2\n\n### Inspiration\n平台化的时机\n\n### Match Reason\n原文给出反例\n\n### Follow-up Questions\n- 什么时候该收拢为平台？\n\n### Suitable Use\n团队复盘\n\n"
+  }
+}

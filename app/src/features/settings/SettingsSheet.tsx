@@ -1,0 +1,592 @@
+import {
+  Download,
+  FolderOpen,
+  ShieldCheck,
+  Trash2,
+  UserRound,
+  X,
+} from "lucide-react";
+import { useTranslation } from "react-i18next";
+
+import type { AsrModelStatus } from "../asrModel/types";
+import type { InsightPreferenceState } from "../../insightPreferencesClient";
+import type { SupportedLocale } from "../../i18n/locale";
+import { formatBytes, selectPluralCategory } from "../../i18n/formatters";
+import { renderUiMessage } from "../../i18n/uiMessage";
+import {
+  getPreferenceCopy,
+  interpolatePreferenceCopy,
+  summarizeGenerationPreferences,
+  summarizeInspirationProfile,
+} from "../../i18n/preferencePresentation";
+import type { SettingsCategory, SettingsController } from "./useSettingsController";
+import { LanguagePreferenceField } from "./LanguagePreferenceField";
+import { LlmProviderSheet } from "./LlmProviderSheet";
+import { AnimatedSheet } from "../modal/AnimatedSheet";
+import { asrModelLabel } from "../asrModel/asrModelLabels";
+import { StatusLine } from "../common/StatusLine";
+import { DataStorageSetting } from "../dataStorage/DataStorageSetting";
+
+type SettingsSheetProps = {
+  controller: SettingsController;
+  asrModelStatus: AsrModelStatus;
+  modelDownloadActive: boolean;
+  onAsrModelSelection?: (model: string) => void;
+  onOpenProfileEditorFromSettings: () => void | Promise<void>;
+  locale: SupportedLocale;
+};
+
+type SettingsProfilePresentation = {
+  label: string;
+  tone: "ready" | "missing";
+  lines: string[];
+};
+
+function settingsProfilePresentation(
+  state: InsightPreferenceState | null,
+  loading: boolean,
+  locale: SupportedLocale,
+): SettingsProfilePresentation {
+  const copy = getPreferenceCopy(locale).settings;
+
+  if (!state) {
+    return {
+      label: loading ? copy.statusReading : copy.statusUnavailable,
+      tone: "missing",
+      lines: [loading ? copy.summaryLoading : copy.summaryUnavailable],
+    };
+  }
+
+  if (state.profileStatus === "invalid") {
+    return { label: copy.statusResetRequired, tone: "missing", lines: [copy.profileResetRequired] };
+  }
+
+  if (state.profileStatus === "skipped") {
+    return { label: copy.statusSkipped, tone: "missing", lines: [copy.profileNotSet] };
+  }
+
+  if (state.profileStatus === "valid") {
+    const summary = summarizeInspirationProfile(state.profile, locale);
+    const remainingCount = summary.length - 3;
+    const lines =
+      summary.length > 3
+        ? [
+            ...summary.slice(0, 3),
+            interpolatePreferenceCopy(
+              selectPluralCategory(remainingCount, locale) === "one"
+                ? copy.moreItems_one
+                : copy.moreItems_other,
+              { count: remainingCount },
+            ),
+          ]
+        : summary;
+    return { label: copy.statusReady, tone: "ready", lines };
+  }
+
+  return { label: copy.statusNotSet, tone: "missing", lines: [copy.profileNotSet] };
+}
+
+function settingsGenerationPreferenceLines(
+  state: InsightPreferenceState | null,
+  loading: boolean,
+  locale: SupportedLocale,
+): string[] {
+  const copy = getPreferenceCopy(locale).settings;
+  if (!state) {
+    return [loading ? copy.defaultLoading : copy.defaultUnavailable];
+  }
+
+  if (!state.defaultGenerationPreferences) {
+    return [copy.defaultNotSaved];
+  }
+
+  const summary = summarizeGenerationPreferences(state.defaultGenerationPreferences, locale);
+  const savedTemplate =
+    selectPluralCategory(summary.length, locale) === "one"
+      ? copy.defaultSaved_one
+      : copy.defaultSaved_other;
+  return [interpolatePreferenceCopy(savedTemplate, { count: summary.length })];
+}
+
+export function SettingsSheet({
+  controller,
+  asrModelStatus,
+  modelDownloadActive,
+  onAsrModelSelection,
+  onOpenProfileEditorFromSettings,
+  locale,
+}: SettingsSheetProps) {
+  const { t: tSettings } = useTranslation("settings");
+  const { t: tCommon } = useTranslation("common");
+  const preferenceCopy = getPreferenceCopy(locale).settings;
+  const localizedSettingsNavItems: Array<{ id: SettingsCategory; label: string; description: string }> = [
+    {
+      id: "basic",
+      label: tSettings("navigation.basic.label"),
+      description: tSettings("navigation.basic.description"),
+    },
+    {
+      id: "inspiration",
+      label: preferenceCopy.navLabel,
+      description: preferenceCopy.navDescription,
+    },
+    {
+      id: "storage",
+      label: tSettings("navigation.storage.label"),
+      description: tSettings("navigation.storage.description"),
+    },
+    {
+      id: "advanced",
+      label: tSettings("navigation.advanced.label"),
+      description: tSettings("navigation.advanced.description"),
+    },
+    {
+      id: "models",
+      label: tSettings("navigation.models.label"),
+      description: tSettings("navigation.models.description"),
+    },
+  ];
+  const {
+    settingsOpen,
+    settingsCategory,
+    settingsDraft,
+    settingsSupportedAsrModels,
+    settingsConfigPath,
+    settingsAsrModelMigrated,
+    audioReviewCacheUsage,
+    settingsInsightPreferences,
+    settingsNotice,
+    exportDiagnostics,
+    diagnosticExportBusy,
+    diagnosticExportNotice,
+    settingsLoading,
+    settingsSaving,
+    closeSettings,
+    submitSettings,
+    dismissAsrModelMigrationNotice,
+    setSettingsCategory,
+    updateSettingsDraft,
+    clearAudioReviewCacheFromSettings,
+    clearProfileFromSettings,
+    locateSettingsConfigFile,
+    llmProviders,
+  } = controller;
+  const renderedSettingsNotice = renderUiMessage(locale, settingsNotice);
+  const renderedDiagnosticExportNotice = renderUiMessage(locale, diagnosticExportNotice);
+  const profilePresentation = settingsProfilePresentation(
+    settingsInsightPreferences,
+    settingsLoading,
+    locale,
+  );
+
+  // The five categories share no markup, so they stay as named render helpers
+  // in this file rather than becoming five prop-plumbing components.
+  function renderBasicSection() {
+    return (
+      <>
+        <LanguagePreferenceField />
+        <p className="settings-basic-note">
+          <ShieldCheck size={15} />
+          <span>{tSettings("basic.privacy")}</span>
+        </p>
+        <section id="settings-basic" className="sheet-form-section">
+          <div className="form-section-heading">
+            <h3>{tSettings("basic.heading")}</h3>
+            <p>{tSettings("basic.description")}</p>
+          </div>
+          {settingsAsrModelMigrated ? (
+            <div className="model-migration-notice" role="status">
+              <div className="model-migration-notice-body">
+                <strong>{tSettings("basic.migrationNotice.title")}</strong>
+                <p>{tSettings("basic.migrationNotice.body")}</p>
+              </div>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => void dismissAsrModelMigrationNotice()}
+              >
+                {tSettings("basic.migrationNotice.dismiss")}
+              </button>
+            </div>
+          ) : null}
+          <label className="field-row">
+            <span>{tSettings("basic.asrModel")}</span>
+            <select
+              value={settingsDraft.asrModel}
+              onChange={(event) => {
+                const model = event.currentTarget.value;
+                updateSettingsDraft("asrModel", model);
+                onAsrModelSelection?.(model);
+              }}
+              disabled={settingsLoading || settingsSaving || modelDownloadActive}
+            >
+              {settingsSupportedAsrModels.map((model) => (
+                <option value={model} key={model}>
+                  {asrModelLabel(model)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="model-settings-row">
+            <div>
+              <span className={`model-status-badge ${asrModelStatus.available ? "ready" : "missing"}`}>
+                {asrModelStatus.available
+                  ? tSettings("basic.modelReady")
+                  : tSettings("basic.modelMissing")}
+              </span>
+              <small className="sheet-path" title={asrModelStatus.modelDir || tSettings("basic.defaultModelPath")}>{asrModelStatus.modelDir || tSettings("basic.defaultModelPath")}</small>
+            </div>
+          </div>
+          <DataStorageSetting />
+        </section>
+      </>
+    );
+  }
+
+  function renderInspirationSection() {
+    return (
+      <section id="settings-inspiration" className="sheet-form-section inspiration-settings-section">
+        <div className="form-section-heading">
+          <h3>{preferenceCopy.heading}</h3>
+          <p>{preferenceCopy.description}</p>
+        </div>
+        <div className="settings-status-card inspiration-profile-card">
+          <div>
+            <span className={`model-status-badge ${profilePresentation.tone}`}>
+              {profilePresentation.label}
+            </span>
+            <strong>{preferenceCopy.profileCardTitle}</strong>
+            <div className="settings-summary-list">
+              {profilePresentation.lines.map((line, index) => (
+                <span key={`${line}-${index}`}>{line}</span>
+              ))}
+            </div>
+          </div>
+          <div className="inspiration-settings-actions">
+            <button
+              type="button"
+              className="secondary-button profile-edit-button"
+              onClick={() => void onOpenProfileEditorFromSettings()}
+              disabled={settingsLoading || settingsSaving}
+            >
+              <UserRound size={15} />
+              <span>{preferenceCopy.editProfile}</span>
+            </button>
+            <button
+              type="button"
+              className="secondary-button profile-clear-button"
+              onClick={() => void clearProfileFromSettings()}
+              disabled={settingsLoading || settingsSaving}
+            >
+              <X size={15} />
+              <span>{preferenceCopy.clearProfile}</span>
+            </button>
+          </div>
+        </div>
+        <div className="settings-status-card quiet">
+          <div>
+            <strong>{preferenceCopy.defaultGenerationTitle}</strong>
+            <div className="settings-summary-list">
+              {settingsGenerationPreferenceLines(
+                settingsInsightPreferences,
+                settingsLoading,
+                locale,
+              ).map((line, index) => (
+                <span key={`${line}-${index}`}>{line}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  function renderStorageSection() {
+    return (
+      <section id="settings-storage" className="sheet-form-section audio-cache-settings-section">
+        <div className="form-section-heading">
+          <h3>{tSettings("storage.heading")}</h3>
+          <p>{tSettings("storage.description")}</p>
+        </div>
+        <div className="config-file-row audio-cache-row">
+          <code title={audioReviewCacheUsage?.cachePath ?? ""}>
+            {tSettings("storage.audioCache", {
+              size: formatBytes(audioReviewCacheUsage?.sizeBytes ?? 0, locale),
+            })}
+          </code>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => void clearAudioReviewCacheFromSettings()}
+            disabled={settingsLoading || settingsSaving || !audioReviewCacheUsage}
+          >
+            <Trash2 size={15} />
+            <span>{tSettings("storage.clear")}</span>
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  function renderAdvancedSection() {
+    return (
+      <section id="settings-advanced" className="sheet-form-section settings-config-file-section">
+        <div className="form-section-heading">
+          <h3>{tSettings("advanced.heading")}</h3>
+          <p>{tSettings("advanced.description")}</p>
+        </div>
+        <div className="config-file-row">
+          <code title={settingsConfigPath}>
+            {settingsConfigPath || tSettings("advanced.pathPending")}
+          </code>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => void locateSettingsConfigFile()}
+            disabled={settingsLoading || !settingsConfigPath}
+          >
+            <FolderOpen size={15} />
+            <span>{tSettings("advanced.locate")}</span>
+          </button>
+        </div>
+        <div className="settings-status-card diagnostics-export-card">
+          <div>
+            <span className="section-label">{tSettings("advanced.diagnostics.eyebrow")}</span>
+            <strong>{tSettings("advanced.diagnostics.heading")}</strong>
+            <p>{tSettings("advanced.diagnostics.description")}</p>
+            <small>{tSettings("advanced.diagnostics.privacy")}</small>
+          </div>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => void exportDiagnostics()}
+            disabled={diagnosticExportBusy}
+            aria-busy={diagnosticExportBusy}
+          >
+            <Download size={15} />
+            <span>
+              {diagnosticExportBusy
+                ? tSettings("advanced.diagnostics.exporting")
+                : tSettings("advanced.diagnostics.action")}
+            </span>
+          </button>
+          {renderedDiagnosticExportNotice ? (
+            <StatusLine className="action-notice inline-notice">
+              {renderedDiagnosticExportNotice}
+            </StatusLine>
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+
+  function renderModelsSection() {
+    const llm = llmProviders;
+    const renderedError = renderUiMessage(locale, llm.error);
+    const renderedNotice = renderUiMessage(locale, llm.notice);
+    return (
+      <section id="settings-models" className="sheet-form-section llm-provider-settings-section">
+        <div className="form-section-heading">
+          <h3>{tSettings("models.heading")}</h3>
+          <p>{tSettings("models.description")}</p>
+        </div>
+
+        <div className="settings-status-card">
+          <strong>{tSettings("models.source.label")}</strong>
+          <div className="llm-source-options">
+            <button
+              type="button"
+              className="secondary-button"
+              data-llm-source="managed"
+              aria-pressed={llm.source === "managed"}
+              disabled={llm.busy}
+              onClick={() => void llm.changeSource("managed")}
+            >
+              <span>{tSettings("models.source.managed")}</span>
+              <small>{tSettings("models.source.managedDescription")}</small>
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              data-llm-source="byok"
+              aria-pressed={llm.source === "byok"}
+              disabled={llm.busy}
+              onClick={() => void llm.changeSource("byok")}
+            >
+              <span>{tSettings("models.source.byok")}</span>
+              <small>{tSettings("models.source.byokDescription")}</small>
+            </button>
+          </div>
+        </div>
+
+        <div className="settings-status-card quiet">
+          <small>{tSettings("models.byokNotice")}</small>
+          <small>{tSettings("models.draftNotice")}</small>
+          <small>{tSettings("models.securityNotice")}</small>
+        </div>
+
+        <div className="settings-status-card">
+          <strong>{tSettings("models.list.heading")}</strong>
+          {llm.providers.length === 0 ? (
+            <small>{tSettings("models.list.empty")}</small>
+          ) : (
+            llm.providers.map((provider) => {
+              const active = provider.id === llm.activeId;
+              return (
+                <div
+                  className="settings-status-card"
+                  data-llm-provider-id={provider.id}
+                  key={provider.id}
+                >
+                  <div>
+                    <span className={`model-status-badge ${active ? "ready" : "missing"}`}>
+                      {active
+                        ? tSettings("models.list.active")
+                        : tSettings("models.list.inactive")}
+                    </span>
+                    <div className="settings-summary-list">
+                      <span>{tSettings("models.list.columnName")}</span>
+                      <strong>{provider.label}</strong>
+                      <span>{tSettings("models.list.columnProvider")}</span>
+                      <span>{provider.provider}</span>
+                      <span>{tSettings("models.list.columnModel")}</span>
+                      <span>{provider.model}</span>
+                      <span>{tSettings("models.list.columnStatus")}</span>
+                      <span>
+                        {active
+                          ? tSettings("models.list.active")
+                          : tSettings("models.list.inactive")}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="inspiration-settings-actions">
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      data-llm-edit
+                      disabled={llm.busy}
+                      onClick={() => llm.startEdit(provider)}
+                    >
+                      {tSettings("models.list.edit")}
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      data-llm-activate
+                      disabled={llm.busy}
+                      onClick={() => void llm.activateProvider(provider.id)}
+                    >
+                      {tSettings("models.list.activate")}
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      data-llm-delete
+                      disabled={llm.busy}
+                      onClick={() => void llm.removeProvider(provider.id)}
+                    >
+                      {tSettings("models.list.delete")}
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+          <button
+            type="button"
+            className="primary-button"
+            data-llm-add
+            onClick={() => llm.startAdd()}
+          >
+            {tSettings("models.add")}
+          </button>
+        </div>
+
+        {renderedError ? (
+          <StatusLine className="action-notice inline-notice">
+            {renderedError}
+          </StatusLine>
+        ) : null}
+        {renderedNotice ? (
+          <StatusLine className="action-notice inline-notice">
+            {renderedNotice}
+          </StatusLine>
+        ) : null}
+      </section>
+    );
+  }
+
+  return (
+    <>
+    <AnimatedSheet
+      open={settingsOpen}
+      ariaLabel={tSettings("sheet.ariaLabel")}
+      className="settings-modal settings-sheet"
+      onBackdropClick={closeSettings}
+    >
+        <header className="modal-header sheet-header">
+          <div>
+            <p className="section-label">{tCommon("appName")}</p>
+            <h2>{tSettings("sheet.title")}</h2>
+          </div>
+          <button
+            className="icon-button"
+            type="button"
+            onClick={closeSettings}
+            aria-label={tSettings("sheet.closeAria")}
+          >
+            <X size={18} />
+          </button>
+        </header>
+        <form id="settings-form" className="settings-form" onSubmit={submitSettings}>
+          <div className="settings-layout" data-active-settings-category={settingsCategory}>
+            <nav className="settings-nav" aria-label={tSettings("navigation.ariaLabel")}>
+              {localizedSettingsNavItems.map((item) => (
+                <button
+                  type="button"
+                  key={item.id}
+                  className={`settings-nav-item ${settingsCategory === item.id ? "selected" : ""}`}
+                  onClick={() => setSettingsCategory(item.id)}
+                  aria-current={settingsCategory === item.id ? "page" : undefined}
+                  data-settings-category={item.id}
+                >
+                  <span>{item.label}</span>
+                  <small>{item.description}</small>
+                </button>
+              ))}
+            </nav>
+
+            <div className="settings-sections">
+              {settingsCategory === "basic" ? renderBasicSection() : null}
+              {settingsCategory === "inspiration" ? renderInspirationSection() : null}
+              {settingsCategory === "storage" ? renderStorageSection() : null}
+              {settingsCategory === "advanced" ? renderAdvancedSection() : null}
+              {settingsCategory === "models" ? renderModelsSection() : null}
+              {renderedSettingsNotice ? (
+                <StatusLine className="action-notice inline-notice">
+                  {renderedSettingsNotice}
+                </StatusLine>
+              ) : null}
+            </div>
+          </div>
+        </form>
+        <div className="settings-actions sheet-footer">
+          <button type="button" className="secondary-button" onClick={closeSettings}>
+            <span>{tSettings("footer.close")}</span>
+          </button>
+          <button
+            className="primary-button"
+            type="submit"
+            form="settings-form"
+            disabled={settingsLoading || settingsSaving}
+          >
+            <span>
+              {settingsSaving ? tSettings("footer.saving") : tSettings("footer.save")}
+            </span>
+          </button>
+        </div>
+    </AnimatedSheet>
+    <LlmProviderSheet controller={llmProviders} locale={locale} />
+    </>
+  );
+}

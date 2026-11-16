@@ -1,0 +1,148 @@
+name: Desktop Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create or update, for example v0.1.0"
+        required: true
+        type: string
+      release_draft:
+        description: "Create or update the release as a draft"
+        required: true
+        default: true
+        type: boolean
+      build_windows:
+        description: "Build and upload the Windows installer"
+        required: true
+        default: true
+        type: boolean
+      build_macos_arm64:
+        description: "Build and upload the macOS Apple Silicon DMG"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  windows-installer-artifacts:
+    name: Windows installer artifact
+    if: ${{ github.event_name == 'push' || inputs.build_windows }}
+    runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      RELEASE_DRAFT: ${{ github.event_name == 'push' || inputs.release_draft }}
+      APP_PYTHON_STANDALONE_URL: ${{ secrets.FRAMEQ_PYTHON_STANDALONE_URL }}
+      APP_FFMPEG_ARCHIVE_URL: ${{ secrets.FRAMEQ_FFMPEG_ARCHIVE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix app
+
+      - name: Prepare bundled runtime resources
+        shell: cmd
+        run: node scripts\build-installer.mjs --target windows-x64 --skip-tauri-build
+
+      - name: Verify packaged worker matches canonical source
+        shell: cmd
+        run: node scripts\verify-packaged-worker.mjs
+
+      - name: Build and upload the installer artifact
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: app
+          tauriScript: npm run tauri
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: "Locus ${{ env.RELEASE_TAG }}"
+          releaseBody: "Locus desktop installer."
+          releaseDraft: ${{ env.RELEASE_DRAFT }}
+          prerelease: false
+          releaseCommitish: ${{ github.sha }}
+          args: --bundles nsis --target x86_64-pc-windows-msvc
+
+  macos-arm64-dmg-artifact:
+    name: macOS Apple Silicon DMG artifact
+    needs: windows-installer-artifacts
+    if: ${{ !cancelled() && (github.event_name == 'push' || inputs.build_macos_arm64) && (needs.windows-installer-artifacts.result == 'success' || needs.windows-installer-artifacts.result == 'skipped') }}
+    runs-on: macos-15
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      APP_PYTHON_STANDALONE_URL: ${{ secrets.FRAMEQ_PYTHON_STANDALONE_URL_ARM64 }}
+      APP_FFMPEG_ARCHIVE_URL: ${{ secrets.FRAMEQ_FFMPEG_ARCHIVE_URL_ARM64 }}
+      APP_FFPROBE_ARCHIVE_URL: ${{ secrets.FRAMEQ_FFPROBE_ARCHIVE_URL_ARM64 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix app
+
+      - name: Prepare bundled runtime resources
+        run: node scripts/build-installer.mjs --target macos-arm64 --skip-tauri-build
+
+      - name: Build macOS Apple Silicon app bundle
+        run: npm --prefix app run tauri -- build --bundles app --target aarch64-apple-darwin
+
+      - name: Test macOS native host protocol
+        run: node scripts/build-system-webview-host.mjs --test-protocol
+
+      - name: Verify packaged runtime imports end to end
+        run: |
+          APP="app/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Locus.app"
+          RES="$APP/Contents/Resources/resources"
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$RES/worker" "$RES/python/bin/python3" -c "import funasr_onnx, modelscope, onnxruntime, yt_dlp; import worker_core; print('bundled runtime import OK')"
+          test -f "$RES/python/runtime-manifest.json" && echo "bundled runtime manifest OK"
+          DENO_NO_UPDATE_CHECK=1 DENO_DIR="$RUNNER_TEMP/app-deno-cache" "$RES/bin/deno" eval "console.log('bundled deno OK')"
+          if find "$APP/Contents/Resources/resources" \( -name __pycache__ -o -name '*.pyc' \) | grep -q .; then
+            echo "Packaged runtime smoke test mutated the signed app bundle." >&2
+            find "$APP/Contents/Resources/resources" \( -name __pycache__ -o -name '*.pyc' \) >&2
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=4 "$APP"
+
+      - name: Package macOS Apple Silicon DMG
+        run: bash scripts/make-macos-dmg.sh aarch64-apple-darwin Locus
+
+      - name: Upload macOS Apple Silicon DMG
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$RELEASE_TAG" app/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg --clobber

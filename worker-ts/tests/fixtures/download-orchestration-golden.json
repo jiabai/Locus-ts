@@ -1,0 +1,786 @@
+[
+  {
+    "label": "yt-dlp succeeds for a generic url",
+    "url": "https://example.com/video/123",
+    "runner_returns": [
+      {
+        "returncode": 0,
+        "stdout": "",
+        "stderr": ""
+      }
+    ],
+    "existing_files": [],
+    "fallback_outcome": "ok",
+    "expected": {
+      "runner_commands": [
+        [
+          "<launcher>",
+          "--no-playlist",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://example.com/video/123"
+        ]
+      ],
+      "fallback_calls": [],
+      "probe_calls": [],
+      "status": "ok",
+      "result": {
+        "command": [
+          "<launcher>",
+          "--no-playlist",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://example.com/video/123"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": ""
+      }
+    }
+  },
+  {
+    "label": "yt-dlp succeeds for xiaohongshu and probes subtitles",
+    "url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234568",
+    "runner_returns": [
+      {
+        "returncode": 0,
+        "stdout": "",
+        "stderr": ""
+      }
+    ],
+    "existing_files": [],
+    "fallback_outcome": "ok",
+    "expected": {
+      "runner_commands": [
+        [
+          "<launcher>",
+          "--no-playlist",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://www.xiaohongshu.com/explore/0123456789abcdef01234568"
+        ]
+      ],
+      "fallback_calls": [],
+      "probe_calls": [
+        "https://www.xiaohongshu.com/explore/0123456789abcdef01234568"
+      ],
+      "status": "ok",
+      "result": {
+        "command": [
+          "<launcher>",
+          "--no-playlist",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://www.xiaohongshu.com/explore/0123456789abcdef01234568"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": ""
+      }
+    }
+  },
+  {
+    "label": "plain failure without fallback",
+    "url": "https://example.com/v",
+    "runner_returns": [
+      {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "ERROR: network down"
+      }
+    ],
+    "existing_files": [],
+    "fallback_outcome": "ok",
+    "expected": {
+      "runner_commands": [
+        [
+          "<launcher>",
+          "--no-playlist",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://example.com/v"
+        ]
+      ],
+      "fallback_calls": [],
+      "probe_calls": [],
+      "status": "error",
+      "message": "ERROR: Media download command failed."
+    }
+  },
+  {
+    "label": "structured timeout stops immediately",
+    "url": "https://example.com/video/123",
+    "runner_returns": [
+      {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "VIDEO_DOWNLOAD_TIMEOUT: Media download command exceeded its time budget."
+      }
+    ],
+    "existing_files": [],
+    "fallback_outcome": "ok",
+    "expected": {
+      "runner_commands": [
+        [
+          "<launcher>",
+          "--no-playlist",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://example.com/video/123"
+        ]
+      ],
+      "fallback_calls": [],
+      "probe_calls": [],
+      "status": "error",
+      "message": "VIDEO_DOWNLOAD_TIMEOUT: Media download command failed."
+    }
+  },
+  {
+    "label": "youtube subtitle failure reuses downloaded media",
+    "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "runner_returns": [
+      {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "ERROR: Unable to download video subtitles"
+      }
+    ],
+    "existing_files": [
+      "clip.mp4"
+    ],
+    "fallback_outcome": "ok",
+    "expected": {
+      "runner_commands": [
+        [
+          "<launcher>",
+          "--no-playlist",
+          "-f",
+          "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+          "--merge-output-format",
+          "mp4",
+          "--js-runtimes",
+          "deno",
+          "--js-runtimes",
+          "node",
+          "--js-runtimes",
+          "quickjs",
+          "--js-runtimes",
+          "bun",
+          "--write-subs",
+          "--write-auto-subs",
+          "--sub-langs",
+          "zh-Hans,zh-CN,zh-Hant,zh,en,ja,ko",
+          "--sub-format",
+          "best",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        ]
+      ],
+      "fallback_calls": [],
+      "probe_calls": [],
+      "status": "ok",
+      "result": {
+        "command": [
+          "<launcher>",
+          "--no-playlist",
+          "-f",
+          "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+          "--merge-output-format",
+          "mp4",
+          "--js-runtimes",
+          "deno",
+          "--js-runtimes",
+          "node",
+          "--js-runtimes",
+          "quickjs",
+          "--js-runtimes",
+          "bun",
+          "--write-subs",
+          "--write-auto-subs",
+          "--sub-langs",
+          "zh-Hans,zh-CN,zh-Hant,zh,en,ja,ko",
+          "--sub-format",
+          "best",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        ],
+        "returncode": 0,
+        "stdout": "<OUT>/clip.mp4",
+        "stderr": "ERROR: Unable to download video subtitles"
+      }
+    }
+  },
+  {
+    "label": "youtube subtitle failure retries without subtitles",
+    "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "runner_returns": [
+      {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "ERROR: Unable to download video subtitles"
+      },
+      {
+        "returncode": 0,
+        "stdout": "",
+        "stderr": ""
+      }
+    ],
+    "existing_files": [],
+    "fallback_outcome": "ok",
+    "expected": {
+      "runner_commands": [
+        [
+          "<launcher>",
+          "--no-playlist",
+          "-f",
+          "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+          "--merge-output-format",
+          "mp4",
+          "--js-runtimes",
+          "deno",
+          "--js-runtimes",
+          "node",
+          "--js-runtimes",
+          "quickjs",
+          "--js-runtimes",
+          "bun",
+          "--write-subs",
+          "--write-auto-subs",
+          "--sub-langs",
+          "zh-Hans,zh-CN,zh-Hant,zh,en,ja,ko",
+          "--sub-format",
+          "best",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        ],
+        [
+          "<launcher>",
+          "--no-playlist",
+          "-f",
+          "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+          "--merge-output-format",
+          "mp4",
+          "--js-runtimes",
+          "deno",
+          "--js-runtimes",
+          "node",
+          "--js-runtimes",
+          "quickjs",
+          "--js-runtimes",
+          "bun",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        ]
+      ],
+      "fallback_calls": [],
+      "probe_calls": [],
+      "status": "ok",
+      "result": {
+        "command": [
+          "<launcher>",
+          "--no-playlist",
+          "-f",
+          "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+          "--merge-output-format",
+          "mp4",
+          "--js-runtimes",
+          "deno",
+          "--js-runtimes",
+          "node",
+          "--js-runtimes",
+          "quickjs",
+          "--js-runtimes",
+          "bun",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": ""
+      }
+    }
+  },
+  {
+    "label": "youtube retryable failure retries once",
+    "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "runner_returns": [
+      {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "ERROR: random transient error"
+      },
+      {
+        "returncode": 0,
+        "stdout": "",
+        "stderr": ""
+      }
+    ],
+    "existing_files": [],
+    "fallback_outcome": "ok",
+    "expected": {
+      "runner_commands": [
+        [
+          "<launcher>",
+          "--no-playlist",
+          "-f",
+          "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+          "--merge-output-format",
+          "mp4",
+          "--js-runtimes",
+          "deno",
+          "--js-runtimes",
+          "node",
+          "--js-runtimes",
+          "quickjs",
+          "--js-runtimes",
+          "bun",
+          "--write-subs",
+          "--write-auto-subs",
+          "--sub-langs",
+          "zh-Hans,zh-CN,zh-Hant,zh,en,ja,ko",
+          "--sub-format",
+          "best",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        ],
+        [
+          "<launcher>",
+          "--no-playlist",
+          "-f",
+          "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+          "--merge-output-format",
+          "mp4",
+          "--js-runtimes",
+          "deno",
+          "--js-runtimes",
+          "node",
+          "--js-runtimes",
+          "quickjs",
+          "--js-runtimes",
+          "bun",
+          "--write-subs",
+          "--write-auto-subs",
+          "--sub-langs",
+          "zh-Hans,zh-CN,zh-Hant,zh,en,ja,ko",
+          "--sub-format",
+          "best",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        ]
+      ],
+      "fallback_calls": [],
+      "probe_calls": [],
+      "status": "ok",
+      "result": {
+        "command": [
+          "<launcher>",
+          "--no-playlist",
+          "-f",
+          "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+          "--merge-output-format",
+          "mp4",
+          "--js-runtimes",
+          "deno",
+          "--js-runtimes",
+          "node",
+          "--js-runtimes",
+          "quickjs",
+          "--js-runtimes",
+          "bun",
+          "--write-subs",
+          "--write-auto-subs",
+          "--sub-langs",
+          "zh-Hans,zh-CN,zh-Hant,zh,en,ja,ko",
+          "--sub-format",
+          "best",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": ""
+      }
+    }
+  },
+  {
+    "label": "youtube retryable failure still fails",
+    "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "runner_returns": [
+      {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "ERROR: random transient error"
+      },
+      {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "ERROR: random transient error"
+      }
+    ],
+    "existing_files": [],
+    "fallback_outcome": "ok",
+    "expected": {
+      "runner_commands": [
+        [
+          "<launcher>",
+          "--no-playlist",
+          "-f",
+          "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+          "--merge-output-format",
+          "mp4",
+          "--js-runtimes",
+          "deno",
+          "--js-runtimes",
+          "node",
+          "--js-runtimes",
+          "quickjs",
+          "--js-runtimes",
+          "bun",
+          "--write-subs",
+          "--write-auto-subs",
+          "--sub-langs",
+          "zh-Hans,zh-CN,zh-Hant,zh,en,ja,ko",
+          "--sub-format",
+          "best",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        ],
+        [
+          "<launcher>",
+          "--no-playlist",
+          "-f",
+          "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+          "--merge-output-format",
+          "mp4",
+          "--js-runtimes",
+          "deno",
+          "--js-runtimes",
+          "node",
+          "--js-runtimes",
+          "quickjs",
+          "--js-runtimes",
+          "bun",
+          "--write-subs",
+          "--write-auto-subs",
+          "--sub-langs",
+          "zh-Hans,zh-CN,zh-Hant,zh,en,ja,ko",
+          "--sub-format",
+          "best",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        ]
+      ],
+      "fallback_calls": [],
+      "probe_calls": [],
+      "status": "error",
+      "message": "YOUTUBE_DOWNLOAD_FAILED: Media download command failed."
+    }
+  },
+  {
+    "label": "douyin fallback downloads after json failure",
+    "url": "https://www.douyin.com/video/7524373044106677544",
+    "runner_returns": [
+      {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "ERROR: Expecting value: line 1"
+      }
+    ],
+    "existing_files": [],
+    "fallback_outcome": "ok",
+    "expected": {
+      "runner_commands": [
+        [
+          "<launcher>",
+          "--no-playlist",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://www.douyin.com/video/7524373044106677544"
+        ]
+      ],
+      "fallback_calls": [
+        "douyin-fallback"
+      ],
+      "probe_calls": [],
+      "status": "ok",
+      "result": {
+        "command": [
+          "douyin-fallback",
+          "https://www.douyin.com/video/7524373044106677544"
+        ],
+        "returncode": 0,
+        "stdout": "<OUT>/fallback.mp4",
+        "stderr": ""
+      }
+    }
+  },
+  {
+    "label": "douyin fallback error is structured",
+    "url": "https://www.douyin.com/video/7524373044106677544",
+    "runner_returns": [
+      {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "ERROR: Expecting value: line 1"
+      }
+    ],
+    "existing_files": [],
+    "fallback_outcome": "error",
+    "expected": {
+      "runner_commands": [
+        [
+          "<launcher>",
+          "--no-playlist",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://www.douyin.com/video/7524373044106677544"
+        ]
+      ],
+      "fallback_calls": [
+        "douyin-fallback"
+      ],
+      "probe_calls": [],
+      "status": "error",
+      "message": "PLATFORM_FALLBACK_FAILED: Media download command failed."
+    }
+  },
+  {
+    "label": "bilibili fallback downloads after failure",
+    "url": "https://www.bilibili.com/video/BV1Aa411c7mD",
+    "runner_returns": [
+      {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "ERROR: unsupported"
+      }
+    ],
+    "existing_files": [],
+    "fallback_outcome": "ok",
+    "expected": {
+      "runner_commands": [
+        [
+          "<launcher>",
+          "--no-playlist",
+          "--write-subs",
+          "--write-auto-subs",
+          "--sub-langs",
+          "zh-Hans,zh-CN,zh-Hant,zh,en,ja,ko",
+          "--sub-format",
+          "best",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://www.bilibili.com/video/BV1Aa411c7mD"
+        ]
+      ],
+      "fallback_calls": [
+        "bilibili-fallback"
+      ],
+      "probe_calls": [],
+      "status": "ok",
+      "result": {
+        "command": [
+          "bilibili-fallback",
+          "https://www.bilibili.com/video/BV1Aa411c7mD"
+        ],
+        "returncode": 0,
+        "stdout": "<OUT>/fallback.mp4",
+        "stderr": ""
+      }
+    }
+  },
+  {
+    "label": "xiaohongshu fallback downloads after failure",
+    "url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234568",
+    "runner_returns": [
+      {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "ERROR: unsupported"
+      }
+    ],
+    "existing_files": [],
+    "fallback_outcome": "ok",
+    "expected": {
+      "runner_commands": [
+        [
+          "<launcher>",
+          "--no-playlist",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://www.xiaohongshu.com/explore/0123456789abcdef01234568"
+        ]
+      ],
+      "fallback_calls": [
+        "xiaohongshu-fallback"
+      ],
+      "probe_calls": [],
+      "status": "ok",
+      "result": {
+        "command": [
+          "xiaohongshu-fallback",
+          "https://www.xiaohongshu.com/explore/0123456789abcdef01234568"
+        ],
+        "returncode": 0,
+        "stdout": "<OUT>/fallback.mp4",
+        "stderr": ""
+      }
+    }
+  },
+  {
+    "label": "youtube unmatched failure falls into generic retry",
+    "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "runner_returns": [
+      {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "ERROR: This video is private"
+      }
+    ],
+    "existing_files": [],
+    "fallback_outcome": "ok",
+    "expected": {
+      "runner_commands": [
+        [
+          "<launcher>",
+          "--no-playlist",
+          "-f",
+          "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+          "--merge-output-format",
+          "mp4",
+          "--js-runtimes",
+          "deno",
+          "--js-runtimes",
+          "node",
+          "--js-runtimes",
+          "quickjs",
+          "--js-runtimes",
+          "bun",
+          "--write-subs",
+          "--write-auto-subs",
+          "--sub-langs",
+          "zh-Hans,zh-CN,zh-Hant,zh,en,ja,ko",
+          "--sub-format",
+          "best",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        ],
+        [
+          "<launcher>",
+          "--no-playlist",
+          "-f",
+          "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+          "--merge-output-format",
+          "mp4",
+          "--js-runtimes",
+          "deno",
+          "--js-runtimes",
+          "node",
+          "--js-runtimes",
+          "quickjs",
+          "--js-runtimes",
+          "bun",
+          "--write-subs",
+          "--write-auto-subs",
+          "--sub-langs",
+          "zh-Hans,zh-CN,zh-Hant,zh,en,ja,ko",
+          "--sub-format",
+          "best",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        ]
+      ],
+      "fallback_calls": [],
+      "probe_calls": [],
+      "status": "error",
+      "message": "YOUTUBE_DOWNLOAD_FAILED: Media download command failed."
+    }
+  },
+  {
+    "label": "youtube 403 is retried and classified",
+    "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "runner_returns": [
+      {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "ERROR: HTTP Error 403: Forbidden"
+      },
+      {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "ERROR: HTTP Error 403: Forbidden"
+      }
+    ],
+    "existing_files": [],
+    "fallback_outcome": "ok",
+    "expected": {
+      "runner_commands": [
+        [
+          "<launcher>",
+          "--no-playlist",
+          "-f",
+          "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+          "--merge-output-format",
+          "mp4",
+          "--js-runtimes",
+          "deno",
+          "--js-runtimes",
+          "node",
+          "--js-runtimes",
+          "quickjs",
+          "--js-runtimes",
+          "bun",
+          "--write-subs",
+          "--write-auto-subs",
+          "--sub-langs",
+          "zh-Hans,zh-CN,zh-Hant,zh,en,ja,ko",
+          "--sub-format",
+          "best",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        ],
+        [
+          "<launcher>",
+          "--no-playlist",
+          "-f",
+          "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+          "--merge-output-format",
+          "mp4",
+          "--js-runtimes",
+          "deno",
+          "--js-runtimes",
+          "node",
+          "--js-runtimes",
+          "quickjs",
+          "--js-runtimes",
+          "bun",
+          "--write-subs",
+          "--write-auto-subs",
+          "--sub-langs",
+          "zh-Hans,zh-CN,zh-Hant,zh,en,ja,ko",
+          "--sub-format",
+          "best",
+          "-o",
+          "<OUT>/%(id)s.%(ext)s",
+          "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        ]
+      ],
+      "fallback_calls": [],
+      "probe_calls": [],
+      "status": "error",
+      "message": "YOUTUBE_STREAM_FORBIDDEN: Media download command failed."
+    }
+  }
+]

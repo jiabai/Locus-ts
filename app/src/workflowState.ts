@@ -1,0 +1,623 @@
+import type { Insight } from "./insightPreferences";
+import type { NoteTitleMetadata } from "./noteTitle";
+import type { NoteMetadata } from "./noteMetadata";
+import type { SupportedLocale } from "./i18n/locale";
+import { parseWebPageSource, type WebPageSource } from "./webPageProtocol";
+export type { NoteTitleMetadata } from "./noteTitle";
+import { uiMessage, type UiMessage } from "./i18n/uiMessage";
+import type {
+  ProgressMessageDescriptor,
+  WorkerProgressEvent,
+  WorkflowStage,
+} from "./desktopWorkerProtocol";
+import {
+  LOCAL_MEDIA_EXTENSIONS,
+  type LocalMediaKind,
+  type LocalMediaSelectionView,
+} from "./localMediaContract";
+
+export type {
+  ProgressMessageDescriptor,
+  WorkerProgressEvent,
+  WorkflowStage,
+} from "./desktopWorkerProtocol";
+
+export type ProgressStepState = "pending" | "active" | "complete";
+
+export type ProgressStep = {
+  id: WorkflowStage;
+  state: ProgressStepState;
+};
+export type TaskArtifactKey =
+  | "video"
+  | "audio"
+  | "transcript_txt"
+  | "transcript_md"
+  | "article_txt"
+  | "article_md"
+  | "segments"
+  | "summary"
+  | "mindmap"
+  | "insights"
+  | "insights_md"
+  | "preference_snapshot"
+  | "dissection"
+  | "dissection_md"
+  | "draft";
+
+export type TaskArtifacts = Partial<Record<TaskArtifactKey, string>>;
+
+export type TranscriptMetadata = {
+  source: "asr" | "subtitle";
+  language: string | null;
+  engine: string | null;
+};
+
+export type DissectionSourceChunk = {
+  id: number;
+  startByte: number;
+  endByte: number;
+  sha256: string;
+};
+
+export type DissectionNarrative = {
+  openingHook: string | null;
+  structureType: string;
+  turningPoint: string | null;
+  closingType: string | null;
+};
+
+export type DissectionSegment = {
+  id: number;
+  title: string;
+  sourceChunkIds: number[];
+  coreClaim: string;
+  supportingPoints: string[];
+  rhetoricalDevices: string[];
+  rhythmNote: string;
+  reusablePattern: string;
+  riskFlags: string[];
+};
+
+export type TranscriptDissection = ({
+  schemaVersion: 1;
+  sourceTranscriptSha256: string;
+} | {
+  schemaVersion: 2;
+  sourceKind: "article";
+  sourceTextSha256: string;
+}) & {
+  sourceLanguage: string | null;
+  sourceChunks: DissectionSourceChunk[];
+  overallNarrative: DissectionNarrative;
+  segments: DissectionSegment[];
+  highlights: string[];
+  reusableTemplate: { name: string; skeleton: string[] };
+  audienceFit: Array<{
+    audience: string;
+    fit: "high" | "medium" | "low";
+    note: string;
+  }>;
+  strengths: string[];
+  weaknesses: string[];
+};
+
+export type TaskSubmission =
+  | { kind: "url"; url: string }
+  | { kind: "local_media"; selectionToken: string };
+
+export type TaskSourceSummary =
+  | WebPageSource
+  | { kind: "url"; url: string }
+  | {
+      kind: "local_file";
+      displayName: string;
+      mediaKind: LocalMediaKind;
+    };
+
+export type TaskComposerSource =
+  | { kind: "url"; urlDraft: string }
+  | {
+      kind: "local_media";
+      selection: LocalMediaSelectionView;
+      retainedUrlDraft: string;
+    };
+
+const UNSAFE_SOURCE_NAME_PATTERN =
+  /[\/\\\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
+
+export function parseTaskSourceSummary(value: unknown): TaskSourceSummary | null {
+  const article = parseWebPageSource(value);
+  if (article) return article;
+  if (!isPlainRecord(value)) {
+    return null;
+  }
+  if (
+    hasExactKeys(value, ["kind", "url"]) &&
+    value.kind === "url" &&
+    typeof value.url === "string" &&
+    value.url.length > 0
+  ) {
+    return { kind: "url", url: value.url };
+  }
+  if (
+    !hasExactKeys(value, ["kind", "displayName", "mediaKind"]) ||
+    value.kind !== "local_file" ||
+    (value.mediaKind !== "video" && value.mediaKind !== "audio") ||
+    typeof value.displayName !== "string" ||
+    value.displayName.trim().length === 0 ||
+    Array.from(value.displayName).length > 160 ||
+    value.displayName === "." ||
+    value.displayName === ".." ||
+    UNSAFE_SOURCE_NAME_PATTERN.test(value.displayName)
+  ) {
+    return null;
+  }
+  const extension = value.displayName.split(".").pop()?.toLocaleLowerCase("en-US");
+  if (
+    !extension ||
+    !(LOCAL_MEDIA_EXTENSIONS[value.mediaKind] as readonly string[]).includes(extension)
+  ) {
+    return null;
+  }
+  return {
+    kind: "local_file",
+    displayName: value.displayName,
+    mediaKind: value.mediaKind,
+  };
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+): boolean {
+  const actual = Object.keys(value);
+  return actual.length === keys.length && keys.every((key) => actual.includes(key));
+}
+
+export type WorkerResult = {
+  source?: WebPageSource | null;
+  markdown?: string;
+  status: "completed" | "partial_completed" | "failed";
+  task_id: string | null;
+  task_dir: string | null;
+  artifacts: TaskArtifacts;
+  text: string;
+  summary: string;
+  insights: Insight[];
+  transcript: TranscriptMetadata | null;
+  dissection: TranscriptDissection | null;
+  dissection_source_status: "current" | "stale" | null;
+  draft: string;
+  error: WorkerErrorResult | null;
+  note_title?: NoteTitleMetadata | null;
+  task_created?: boolean;
+};
+
+export type WorkerErrorResult = {
+  code: string;
+  message: string;
+  stage: WorkflowStage;
+};
+
+export type StudioTool = "summary" | "insights" | "dissection" | "draft";
+
+/**
+ * The worker stages that represent an AI-target generation failure. Draft
+ * generation reuses the `insights_generating` progress phase but reports
+ * failures with `error.stage = "draft_generating"`. Any of these stages
+ * on a retry result means the active AI target failed — attribution is done by
+ * target identity (the `target` arg passed to finishInsightRetry), never by
+ * inferring the target from the stage copy.
+ */
+const AI_FAILURE_STAGES: ReadonlySet<WorkflowStage> = new Set([
+  "insights_generating",
+  "draft_generating",
+]);
+
+function isStudioToolFailure(error: WorkerErrorResult | null): error is WorkerErrorResult {
+  return Boolean(error && AI_FAILURE_STAGES.has(error.stage));
+}
+
+export type ToolbarNewTaskButtonState = {
+  disabled: boolean;
+  ariaLabel: UiMessage;
+  title: UiMessage;
+};
+
+export type WorkflowState = {
+  markdown: string;
+  stage: WorkflowStage;
+  // cancellingFromStage is one of the live processing phases the user can
+  // cancel. draft_generating is an error-only stage, never a live phase,
+  // so it is excluded — the draft progress phase is insights_generating.
+  cancellingFromStage: Exclude<WorkflowStage, "waiting_input" | "cancelling" | "draft_generating" | "completed" | "partial_completed" | "failed"> | null;
+  activeStudioTool: StudioTool | null;
+  studioToolError: StudioTool | null;
+  studioToolErrors: Partial<Record<StudioTool, WorkerErrorResult>>;
+  composerSource: TaskComposerSource;
+  taskSource: TaskSourceSummary | null;
+  statusMessage: UiMessage | null;
+  progressMessage: ProgressMessageDescriptor | null;
+  progressPercent: number;
+  text: string;
+  summary: string;
+  insights: Insight[];
+  taskId: string | null;
+  taskDir: string | null;
+  artifacts: TaskArtifacts;
+  transcript: TranscriptMetadata | null;
+  dissection: TranscriptDissection | null;
+  dissectionStale: boolean;
+  draft: string;
+  // True when the user has manually edited the draft in the result editor.
+  // Reset to false when draft regeneration succeeds (new baseline).
+  draftEdited: boolean;
+  // The id of the Insight the user picked as the single draft seed.
+  // In-session selection state; cleared on insights regen (the insight ids
+  // change) and on workflow reset. The on-disk manifest mirror
+  // (draft_seed_insight_id) is written by the worker on draft generation
+  // (Task 3); cross-session restore into this field is a Task 7 follow-up
+  // (the history detail payload does not yet carry it).
+  draftSeedInsightId: number | null;
+  noteTitle: NoteTitleMetadata | null;
+  noteMetadata: NoteMetadata | null;
+  error: WorkerErrorResult | null;
+};
+export function createInitialWorkflow(): WorkflowState {
+  return {
+    markdown: "",
+    stage: "waiting_input",
+    cancellingFromStage: null,
+    activeStudioTool: null,
+    studioToolError: null,
+    studioToolErrors: {},
+    composerSource: { kind: "url", urlDraft: "" },
+    taskSource: null,
+    statusMessage: null,
+    progressMessage: null,
+    progressPercent: 0,
+    text: "",
+    summary: "",
+    insights: [],
+    taskId: null,
+    taskDir: null,
+    artifacts: {},
+    transcript: null,
+    dissection: null,
+    dissectionStale: false,
+    draft: "",
+    draftEdited: false,
+    draftSeedInsightId: null,
+    noteTitle: null,
+    noteMetadata: null,
+    error: null,
+  };
+}
+export function startProcessing(
+  state: WorkflowState,
+  taskSource: TaskSourceSummary,
+  webPage = taskSource.kind === "web_page",
+): WorkflowState {
+  return {
+    ...state,
+    stage: webPage ? "web_loading" : "video_extracting",
+    cancellingFromStage: null,
+    activeStudioTool: null,
+    studioToolError: null,
+    studioToolErrors: {},
+    taskSource,
+    statusMessage: null,
+    progressMessage: {
+      messageCode:
+        webPage ? "web.page.loading" : taskSource.kind === "local_file"
+          ? "local.media.validating"
+          : "video.download.preparing",
+      args: {},
+    },
+    progressPercent: 12,
+    text: "",
+    markdown: "",
+    summary: "",
+    insights: [],
+    taskId: null,
+    taskDir: null,
+    artifacts: {},
+    dissection: null,
+    dissectionStale: false,
+    draft: "",
+    draftEdited: false,
+    draftSeedInsightId: null,
+    noteTitle: null,
+    noteMetadata: null,
+    error: null,
+  };
+}
+
+export function startInsightRetry(state: WorkflowState, target: StudioTool): WorkflowState {
+  const studioToolErrors = { ...state.studioToolErrors };
+  delete studioToolErrors[target];
+  return {
+    ...state,
+    stage: "insights_generating",
+    cancellingFromStage: null,
+    activeStudioTool: target,
+    studioToolError: state.studioToolError === target ? null : state.studioToolError,
+    studioToolErrors,
+    statusMessage: null,
+    progressMessage: {
+      messageCode:
+        target === "summary"
+          ? "insights.summary.generating"
+          : target === "draft"
+            ? "insights.draft.generating"
+            : "insights.topics.generating",
+      args: {},
+    },
+    progressPercent: 88,
+    error: null,
+  };
+}
+
+export function startNoteTitleGeneration(state: WorkflowState, outputLanguage: SupportedLocale): WorkflowState {
+  if (!state.taskId || !state.artifacts.transcript_txt) return state;
+  return {
+    ...state,
+    stage: "title_generating",
+    cancellingFromStage: null,
+    activeStudioTool: null,
+    noteTitle: { text: state.noteTitle?.text ?? null, status: "generating", output_language: outputLanguage, error_code: null },
+    statusMessage: uiMessage("workflow.noteTitle.generating"),
+    progressMessage: { messageCode: "title.generation.running", args: {} },
+    progressPercent: 95,
+    error: null,
+  };
+}
+
+export function finishNoteTitleGeneration(state: WorkflowState, result: WorkerResult): WorkflowState {
+  if (!state.taskId || (result.task_id !== null && result.task_id !== state.taskId)) return state;
+  const localeMismatch = result.error === null && result.note_title?.status === "completed" &&
+    state.noteTitle !== null && result.note_title.output_language !== state.noteTitle.output_language;
+  const error: WorkerErrorResult | null = localeMismatch
+    ? { code: "WORKER_PROTOCOL_VIOLATION", message: "", stage: "title_generating" }
+    : result.error;
+  const acceptedTitle = localeMismatch ? null : result.note_title;
+  const returnedTitle = acceptedTitle ? {
+    ...acceptedTitle,
+    text: acceptedTitle.text ?? state.noteTitle?.text ?? null,
+  } : (state.noteTitle ? {
+    ...state.noteTitle,
+    status: error?.code === "WORKER_CANCELLED" ? "cancelled" as const : "failed" as const,
+    error_code: error?.code ?? "TITLE_GENERATION_FAILED",
+  } : null);
+  const noteTitle = returnedTitle && error
+    ? {
+      ...returnedTitle,
+      status: error.code === "WORKER_CANCELLED" ? "cancelled" as const : "failed" as const,
+      output_language: state.noteTitle?.output_language ?? returnedTitle.output_language,
+      error_code: error.code,
+    }
+    : returnedTitle;
+  return {
+    ...state,
+    stage: noteTitle?.status === "completed" ? result.status : "partial_completed",
+    cancellingFromStage: null,
+    noteTitle,
+    statusMessage: null,
+    progressMessage: null,
+    progressPercent: 100,
+    error,
+  };
+}
+
+export function cancelNoteTitleGeneration(state: WorkflowState): WorkflowState {
+  if (!state.taskId || !state.noteTitle) return state;
+  return {
+    ...state,
+    stage: "partial_completed",
+    cancellingFromStage: null,
+    noteTitle: { ...state.noteTitle, status: "cancelled", error_code: "WORKER_CANCELLED" },
+    statusMessage: null,
+    progressMessage: null,
+    progressPercent: 100,
+    error: { code: "WORKER_CANCELLED", message: "", stage: "title_generating" },
+  };
+}
+
+export function requestProcessingCancellation(state: WorkflowState): WorkflowState {
+  const cancellingFromStage = state.stage;
+  if (
+    cancellingFromStage !== "video_extracting" &&
+    cancellingFromStage !== "video_transcribing" &&
+    cancellingFromStage !== "web_loading" &&
+    cancellingFromStage !== "web_extracting" &&
+    cancellingFromStage !== "web_saving" &&
+    cancellingFromStage !== "title_generating" &&
+    cancellingFromStage !== "insights_generating"
+  ) {
+    return state;
+  }
+
+  return {
+    ...state,
+    stage: "cancelling",
+    cancellingFromStage,
+    statusMessage: null,
+    progressMessage: { messageCode: "task.cancel.requested", args: {} },
+    error: null,
+  };
+}
+
+export function restoreProcessingAfterCancellationFailure(
+  state: WorkflowState,
+): WorkflowState {
+  const stage = state.cancellingFromStage ?? "video_extracting";
+  return {
+    ...state,
+    stage,
+    cancellingFromStage: null,
+    statusMessage: uiMessage("workflow.cancellation.failed"),
+    progressMessage: null,
+  };
+}
+
+export function confirmProcessingCancellation(state: WorkflowState): WorkflowState {
+  if ((state.cancellingFromStage === "title_generating" || state.stage === "title_generating") && state.taskId) {
+    return cancelNoteTitleGeneration(state);
+  }
+  if (
+    state.cancellingFromStage === "insights_generating" &&
+    state.activeStudioTool !== null &&
+    state.taskId !== null
+  ) {
+    return {
+      ...state,
+      stage: Object.keys(state.studioToolErrors).length > 0
+        ? "partial_completed"
+        : "completed",
+      cancellingFromStage: null,
+      activeStudioTool: null,
+      statusMessage: null,
+      progressMessage: null,
+      progressPercent: 100,
+      error: null,
+    };
+  }
+  return {
+    ...createInitialWorkflow(),
+    composerSource: state.composerSource,
+  };
+}
+
+export function isProcessingStage(stage: WorkflowStage): boolean {
+  return (
+    stage === "video_extracting" ||
+    stage === "video_transcribing" ||
+    stage === "web_loading" ||
+    stage === "web_extracting" ||
+    stage === "web_saving" ||
+    stage === "title_generating" ||
+    stage === "insights_generating" ||
+    stage === "cancelling"
+  );
+}
+
+export function getToolbarNewTaskButtonState(stage: WorkflowStage): ToolbarNewTaskButtonState {
+  if (isProcessingStage(stage)) {
+    return {
+      disabled: true,
+      ariaLabel: uiMessage("workflow.toolbar.newTaskUnavailable"),
+      title: uiMessage("workflow.toolbar.newTaskUnavailable"),
+    };
+  }
+
+  return {
+    disabled: false,
+    ariaLabel: uiMessage("workflow.toolbar.newTask"),
+    title: uiMessage("workflow.toolbar.newTask"),
+  };
+}
+export function summarizeWorkerResult(
+  result: WorkerResult,
+  failedStudioTool: StudioTool | null = null,
+): WorkflowState {
+  const noteTitle = result.note_title ?? null;
+  return {
+    ...createInitialWorkflow(),
+    stage: noteTitle && noteTitle.status !== "completed" ? "partial_completed" : result.status,
+    statusMessage: null,
+    progressMessage: null,
+    progressPercent: result.status === "failed" ? 35 : 100,
+    text: result.text,
+    markdown: result.markdown ?? "",
+    taskSource: result.source ?? null,
+    summary: result.summary,
+    insights: result.insights,
+    taskId: result.task_id,
+    taskDir: result.task_dir,
+    artifacts: result.artifacts ?? {},
+    transcript: result.transcript ?? null,
+    dissection: result.dissection,
+    dissectionStale: result.dissection_source_status === "stale",
+    draft: result.draft ?? "",
+    noteTitle,
+    error: result.error,
+    studioToolError: isStudioToolFailure(result.error) ? failedStudioTool : null,
+    studioToolErrors:
+      isStudioToolFailure(result.error) && failedStudioTool
+        ? { [failedStudioTool]: result.error }
+        : {},
+  };
+}
+
+export function editDraft(state: WorkflowState, markdown: string): WorkflowState {
+  return { ...state, draft: markdown, draftEdited: true };
+}
+
+export function finishInsightRetry(
+  state: WorkflowState,
+  result: WorkerResult,
+  target: StudioTool,
+): WorkflowState {
+  const next = summarizeWorkerResult(result);
+  const studioToolErrors = { ...state.studioToolErrors };
+  if (isStudioToolFailure(result.error)) {
+    studioToolErrors[target] = result.error;
+  } else {
+    delete studioToolErrors[target];
+  }
+  // Regenerating insights replaces the insight list, so the previously
+  // selected seed id is no longer valid — clear it. Summary and draft regen do
+  // not change the insight ids, so their seed selection is preserved.
+  const draftSeedInsightId =
+    target === "insights" ? null : state.draftSeedInsightId;
+  const noteTitle = result.note_title ?? state.noteTitle;
+  return {
+    ...next,
+    noteTitle,
+    noteMetadata: state.noteMetadata,
+    stage: noteTitle && noteTitle.status !== "completed" ? "partial_completed" : next.stage,
+    composerSource: state.composerSource,
+    taskSource: state.taskSource,
+    markdown: state.markdown,
+    studioToolError: isStudioToolFailure(result.error) ? target : null,
+    studioToolErrors,
+    dissection:
+      target === "dissection" && result.error && result.dissection === null
+        ? state.dissection
+        : next.dissection,
+    dissectionStale:
+      target === "dissection"
+        ? result.error
+          ? state.dissectionStale
+          : result.dissection
+            ? false
+            : next.dissectionStale
+        : state.dissectionStale,
+    draftSeedInsightId,
+    draftEdited:
+      target === "draft" && !isStudioToolFailure(result.error)
+        ? false
+        : state.draftEdited,
+  };
+}
+
+export function mergeProgressEvent(
+  state: WorkflowState,
+  event: WorkerProgressEvent,
+): WorkflowState {
+  return {
+    ...state,
+    stage: event.stage,
+    progressMessage: event.message,
+    progressPercent: event.progress,
+  };
+}

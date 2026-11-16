@@ -1,0 +1,21 @@
+{
+  "name": "locus-worker-ts",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Locus TypeScript worker：ASR、任务存储、线协议入口与六个 AI 生成 target。",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "entities": "6.0.0",
+    "onnxruntime-node": "1.29.0",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.1",
+    "typescript": "5.9.3"
+  }
+}

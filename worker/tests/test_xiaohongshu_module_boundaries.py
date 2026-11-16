@@ -1,0 +1,149 @@
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+
+WORKER_ROOT = Path(__file__).resolve().parents[1]
+WORKER_PACKAGE = WORKER_ROOT / "worker_core"
+ROOT_ADAPTER = WORKER_PACKAGE / "xiaohongshu_fallback.py"
+PRIVATE_PACKAGE = WORKER_PACKAGE / "xiaohongshu"
+PRIVATE_MODULES = {
+    "types": PRIVATE_PACKAGE / "types.py",
+    "source": PRIVATE_PACKAGE / "source.py",
+    "page": PRIVATE_PACKAGE / "page.py",
+    "streams": PRIVATE_PACKAGE / "streams.py",
+    "subtitles": PRIVATE_PACKAGE / "subtitles.py",
+    "transport": PRIVATE_PACKAGE / "transport.py",
+}
+FORBIDDEN_PRIVATE_IMPORT_PREFIXES = (
+    "worker_core.asr",
+    "worker_core.ai_artifacts",
+    "worker_core.ai_prompts",
+    "worker_core.ai_runtime",
+    "worker_core.dissection_agent",
+    "worker_core.dissection_report",
+    "worker_core.insight_errors",
+    "worker_core.summary_agent",
+    "worker_core.topic_agent",
+    "worker_core.transcript_chunks",
+    "worker_core.llm",
+    "worker_core.media",
+    "worker_core.media_preparation",
+    "worker_core.pipeline",
+    "worker_core.source_identity",
+    "worker_core.source_resolution",
+    "worker_core.task_store",
+    "worker_core.xiaohongshu_fallback",
+)
+XIAOHONGSHU_PROGRESS_CODES = {
+    "xiaohongshu.page.resolving",
+    "xiaohongshu.video.saving",
+    "xiaohongshu.stream.retrying",
+}
+
+
+def _imported_modules(module_path: Path) -> set[str]:
+    tree = ast.parse(module_path.read_text(encoding="utf-8"), filename=str(module_path))
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module)
+    return imported
+
+
+def test_xiaohongshu_private_modules_and_empty_package_exist() -> None:
+    init_path = PRIVATE_PACKAGE / "__init__.py"
+    missing = [
+        name
+        for name, path in {"__init__": init_path, **PRIVATE_MODULES}.items()
+        if not path.is_file()
+    ]
+
+    assert missing == []
+    assert init_path.read_text(encoding="utf-8").strip() == ""
+
+
+def test_xiaohongshu_children_do_not_import_root_or_application_layers() -> None:
+    violations: dict[str, list[str]] = {}
+    for name, module_path in PRIVATE_MODULES.items():
+        assert module_path.is_file(), f"missing private module: {name}"
+        forbidden = sorted(
+            imported
+            for imported in _imported_modules(module_path)
+            if imported.startswith(FORBIDDEN_PRIVATE_IMPORT_PREFIXES)
+        )
+        if forbidden:
+            violations[name] = forbidden
+
+    assert violations == {}
+
+
+def test_production_modules_outside_root_do_not_import_xiaohongshu_children() -> None:
+    violations: dict[str, list[str]] = {}
+    for module_path in WORKER_PACKAGE.glob("*.py"):
+        if module_path == ROOT_ADAPTER:
+            continue
+        private_imports = sorted(
+            imported
+            for imported in _imported_modules(module_path)
+            if imported.startswith("worker_core.xiaohongshu.")
+        )
+        if private_imports:
+            violations[module_path.name] = private_imports
+
+    assert violations == {}
+
+
+def test_page_owns_compression_and_untrusted_state_parsing() -> None:
+    page_imports = _imported_modules(PRIVATE_MODULES["page"])
+    root_imports = _imported_modules(ROOT_ADAPTER)
+
+    assert {"brotli", "gzip", "json", "zlib"} <= page_imports
+    assert not {"brotli", "gzip", "json", "zlib"} & root_imports
+
+
+def test_transport_owns_cookiejar_urllib_and_safe_downloads() -> None:
+    transport_imports = _imported_modules(PRIVATE_MODULES["transport"])
+    root_imports = _imported_modules(ROOT_ADAPTER)
+
+    assert "http.cookiejar" in transport_imports
+    assert "urllib.request" in transport_imports
+    assert "worker_core.download_reliability" in transport_imports
+    assert "http.cookiejar" not in root_imports
+    assert "urllib.request" not in root_imports
+    assert "worker_core.download_reliability" not in root_imports
+
+
+def test_stream_policy_has_no_network_filesystem_or_progress_dependencies() -> None:
+    stream_imports = _imported_modules(PRIVATE_MODULES["streams"])
+    forbidden = {
+        "worker_core.download_reliability",
+        "worker_core.progress_events",
+        "http.cookiejar",
+        "pathlib",
+        "urllib.request",
+    }
+
+    assert not forbidden & stream_imports
+
+
+def test_subtitle_policy_has_no_network_filesystem_or_progress_dependencies() -> None:
+    subtitle_imports = _imported_modules(PRIVATE_MODULES["subtitles"])
+    forbidden = {
+        "worker_core.download_reliability",
+        "worker_core.progress_events",
+        "http.cookiejar",
+        "pathlib",
+        "urllib.request",
+    }
+
+    assert not forbidden & subtitle_imports
+
+
+def test_xiaohongshu_root_owns_all_registered_progress_codes() -> None:
+    root_source = ROOT_ADAPTER.read_text(encoding="utf-8")
+
+    assert "build_worker_progress_event" in root_source
+    assert all(code in root_source for code in XIAOHONGSHU_PROGRESS_CODES)

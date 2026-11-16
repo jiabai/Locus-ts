@@ -1,0 +1,33 @@
+{
+  "note": "fixture 由 tools/make-fixtures.mjs 从本地语料裁剪生成；语料不入库，fixture 入库并由 sha256 固定。重新生成会改变哈希，须同时重建 golden。",
+  "sampleRate": 16000,
+  "fixtures": [
+    {
+      "id": "speech-12s",
+      "file": "speech-12s.wav",
+      "source": "monologue-pharma.wav",
+      "offsetSamples": 160000,
+      "sampleCount": 192000,
+      "sha256": "1c0c5b429b3b46613b68cf8e92c376c247303727a1a56e1a2aff6cd31cb3e795",
+      "note": "连续说话、单段但跨越 10 秒 VAD 分块边界，覆盖跨块缓存传递"
+    },
+    {
+      "id": "dialogue-32s",
+      "file": "dialogue-32s.wav",
+      "source": "interview-finance.wav",
+      "offsetSamples": 0,
+      "sampleCount": 512000,
+      "sha256": "dc9cd9fd15ebb5c30ee61287a1cefcd86a360155f94412fe10839ae1309d0a3e",
+      "note": "对话、4 段、4 个 VAD 分块，覆盖多段切分与块边界上的端点闭合"
+    },
+    {
+      "id": "silence-3s",
+      "file": "silence-3s.wav",
+      "source": null,
+      "offsetSamples": 0,
+      "sampleCount": 48000,
+      "sha256": "d303811b8c84619667cd0501342f84ec6cbe69f7aa3856dcf52fabda374c92b8",
+      "note": "纯静音：VAD 必须给出零段并抛 ASR_EMPTY_TRANSCRIPT"
+    }
+  ]
+}

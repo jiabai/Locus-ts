@@ -1,0 +1,35 @@
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { MotionConfig } from "motion/react";
+import App from "./App";
+import { getUiPreferences } from "./settingsClient";
+import { initializeI18n } from "./i18n/i18n";
+import { LocaleProvider } from "./i18n/LocaleProvider";
+import { navigatorLanguageSource, syncDocumentLocale } from "./i18n/locale";
+import { startLocalizedApplication } from "./i18n/startup";
+import { StorageBootstrap } from "./features/dataStorage/StorageBootstrap";
+
+const rootElement = document.getElementById("root");
+if (!rootElement) {
+  throw new Error("Locus root element is missing");
+}
+
+void startLocalizedApplication({
+  readPreferences: getUiPreferences,
+  getSystemLanguages: () => navigatorLanguageSource.getLanguages(),
+  initialize: async (locale) => {
+    await initializeI18n(locale);
+    syncDocumentLocale(locale);
+  },
+  mount: (outcome) => {
+    ReactDOM.createRoot(rootElement).render(
+      <React.StrictMode>
+        <LocaleProvider initialOutcome={outcome}>
+          <MotionConfig reducedMotion="user">
+            <StorageBootstrap><App /></StorageBootstrap>
+          </MotionConfig>
+        </LocaleProvider>
+      </React.StrictMode>,
+    );
+  },
+});

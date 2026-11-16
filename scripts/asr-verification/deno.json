@@ -1,0 +1,7 @@
+{
+  "nodeModulesDir": "manual",
+  "tasks": {
+    "verify": "node --experimental-strip-types run.mjs",
+    "verify:deno": "deno run --allow-read --allow-write --allow-ffi run.mjs"
+  }
+}

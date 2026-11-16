@@ -1,0 +1,1780 @@
+{
+  "constants": {
+    "api_base": "https://api.bilibili.com",
+    "max_response_bytes": 4194304,
+    "max_stream_bytes": 2147483648,
+    "redirect_depth": 5,
+    "desktop_user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+  },
+  "parse": [
+    {
+      "label": "plain bvid",
+      "input": "BV1xx411c7mD",
+      "responses": {},
+      "result": {
+        "parsed": {
+          "video_id": "BV1xx411c7mD",
+          "id_kind": "bvid",
+          "part_index": 0,
+          "full_url": ""
+        }
+      },
+      "get_calls": []
+    },
+    {
+      "label": "plain avid",
+      "input": "av170001",
+      "responses": {},
+      "result": {
+        "parsed": {
+          "video_id": "170001",
+          "id_kind": "aid",
+          "part_index": 0,
+          "full_url": ""
+        }
+      },
+      "get_calls": []
+    },
+    {
+      "label": "uppercase bvid",
+      "input": "bv1xx411c7md",
+      "responses": {},
+      "result": {
+        "parsed": {
+          "video_id": "bv1xx411c7md",
+          "id_kind": "bvid",
+          "part_index": 0,
+          "full_url": ""
+        }
+      },
+      "get_calls": []
+    },
+    {
+      "label": "video url with part",
+      "input": "https://www.bilibili.com/video/BV1xx411c7mD?p=2",
+      "responses": {},
+      "result": {
+        "parsed": {
+          "video_id": "BV1xx411c7mD",
+          "id_kind": "bvid",
+          "part_index": 1,
+          "full_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=2"
+        }
+      },
+      "get_calls": []
+    },
+    {
+      "label": "video url without part",
+      "input": "https://www.bilibili.com/video/BV1xx411c7mD",
+      "responses": {},
+      "result": {
+        "parsed": {
+          "video_id": "BV1xx411c7mD",
+          "id_kind": "bvid",
+          "part_index": 0,
+          "full_url": "https://www.bilibili.com/video/BV1xx411c7mD"
+        }
+      },
+      "get_calls": []
+    },
+    {
+      "label": "video url with bad part",
+      "input": "https://www.bilibili.com/video/BV1xx411c7mD?p=abc",
+      "responses": {},
+      "result": {
+        "parsed": {
+          "video_id": "BV1xx411c7mD",
+          "id_kind": "bvid",
+          "part_index": 0,
+          "full_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=abc"
+        }
+      },
+      "get_calls": []
+    },
+    {
+      "label": "video url with zero part",
+      "input": "https://www.bilibili.com/video/BV1xx411c7mD?p=0",
+      "responses": {},
+      "result": {
+        "parsed": {
+          "video_id": "BV1xx411c7mD",
+          "id_kind": "bvid",
+          "part_index": 0,
+          "full_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=0"
+        }
+      },
+      "get_calls": []
+    },
+    {
+      "label": "short link redirect",
+      "input": "https://b23.tv/abc123",
+      "responses": {
+        "https://b23.tv/abc123": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://www.bilibili.com/video/BV1xx411c7mD"
+            },
+            "body": "",
+            "url": "https://b23.tv/abc123"
+          }
+        ]
+      },
+      "result": {
+        "parsed": {
+          "video_id": "BV1xx411c7mD",
+          "id_kind": "bvid",
+          "part_index": 0,
+          "full_url": "https://www.bilibili.com/video/BV1xx411c7mD"
+        }
+      },
+      "get_calls": [
+        "https://b23.tv/abc123"
+      ]
+    },
+    {
+      "label": "short link final url",
+      "input": "https://b23.tv/abc123",
+      "responses": {
+        "https://b23.tv/abc123": [
+          {
+            "status": 200,
+            "headers": {},
+            "body": "",
+            "url": "https://www.bilibili.com/video/BV1xx411c7mD"
+          }
+        ]
+      },
+      "result": {
+        "parsed": {
+          "video_id": "BV1xx411c7mD",
+          "id_kind": "bvid",
+          "part_index": 0,
+          "full_url": "https://www.bilibili.com/video/BV1xx411c7mD"
+        }
+      },
+      "get_calls": [
+        "https://b23.tv/abc123"
+      ]
+    },
+    {
+      "label": "short link embedded link",
+      "input": "https://b23.tv/abc123",
+      "responses": {
+        "https://b23.tv/abc123": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><a href=\"https://www.bilibili.com/video/BV1xx411c7mD?p=3\">video</a></html>",
+            "url": "https://b23.tv/abc123"
+          }
+        ]
+      },
+      "result": {
+        "parsed": {
+          "video_id": "BV1xx411c7mD",
+          "id_kind": "bvid",
+          "part_index": 2,
+          "full_url": "https://www.bilibili.com/video/BV1xx411c7mD?p=3"
+        }
+      },
+      "get_calls": [
+        "https://b23.tv/abc123"
+      ]
+    },
+    {
+      "label": "short link http upgraded to https",
+      "input": "http://b23.tv/abc123",
+      "responses": {
+        "http://b23.tv/abc123": [
+          {
+            "error": {
+              "code": "BILIBILI_VIDEO_INFO_UNAVAILABLE",
+              "message": "boom"
+            }
+          }
+        ],
+        "https://b23.tv/abc123": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://www.bilibili.com/video/BV1xx411c7mD"
+            },
+            "body": "",
+            "url": "https://b23.tv/abc123"
+          }
+        ]
+      },
+      "result": {
+        "parsed": {
+          "video_id": "BV1xx411c7mD",
+          "id_kind": "bvid",
+          "part_index": 0,
+          "full_url": "https://www.bilibili.com/video/BV1xx411c7mD"
+        }
+      },
+      "get_calls": [
+        "http://b23.tv/abc123",
+        "https://b23.tv/abc123"
+      ]
+    },
+    {
+      "label": "short link unresolvable",
+      "input": "https://b23.tv/abc123",
+      "responses": {
+        "https://b23.tv/abc123": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "nope",
+            "url": ""
+          }
+        ]
+      },
+      "result": {
+        "error": {
+          "code": "BILIBILI_SHORT_LINK_RESOLVE_FAILED",
+          "message": "Bilibili short link could not be resolved."
+        }
+      },
+      "get_calls": [
+        "https://b23.tv/abc123"
+      ]
+    },
+    {
+      "label": "bangumi is unsupported",
+      "input": "https://www.bilibili.com/bangumi/play/ep123",
+      "responses": {},
+      "result": {
+        "error": {
+          "code": "BILIBILI_UNSUPPORTED_CONTENT",
+          "message": "Only ordinary public Bilibili videos are supported."
+        }
+      },
+      "get_calls": []
+    },
+    {
+      "label": "movie is unsupported",
+      "input": "https://www.bilibili.com/movie/123",
+      "responses": {},
+      "result": {
+        "error": {
+          "code": "BILIBILI_UNSUPPORTED_CONTENT",
+          "message": "Only ordinary public Bilibili videos are supported."
+        }
+      },
+      "get_calls": []
+    },
+    {
+      "label": "other host is rejected",
+      "input": "https://example.com/video/BV1xx411c7mD",
+      "responses": {},
+      "result": {
+        "error": {
+          "code": "BILIBILI_ID_PARSE_FAILED",
+          "message": "Could not extract Bilibili BV or av ID from input."
+        }
+      },
+      "get_calls": []
+    },
+    {
+      "label": "ftp scheme is rejected",
+      "input": "ftp://www.bilibili.com/video/BV1xx411c7mD",
+      "responses": {},
+      "result": {
+        "error": {
+          "code": "BILIBILI_ID_PARSE_FAILED",
+          "message": "Could not extract Bilibili BV or av ID from input."
+        }
+      },
+      "get_calls": []
+    },
+    {
+      "label": "no id in text",
+      "input": "just some text",
+      "responses": {},
+      "result": {
+        "error": {
+          "code": "BILIBILI_ID_PARSE_FAILED",
+          "message": "Could not extract Bilibili BV or av ID from input."
+        }
+      },
+      "get_calls": []
+    },
+    {
+      "label": "text with trailing punctuation",
+      "input": "看这个 https://www.bilibili.com/video/BV1xx411c7mD，很有意思",
+      "responses": {},
+      "result": {
+        "error": {
+          "code": "BILIBILI_ID_PARSE_FAILED",
+          "message": "Could not extract Bilibili BV or av ID from URL."
+        }
+      },
+      "get_calls": []
+    }
+  ],
+  "urls": [
+    {
+      "id_kind": "bvid",
+      "video_id": "BV1xx411c7mD",
+      "result": "https://api.bilibili.com/x/web-interface/view?bvid=BV1xx411c7mD"
+    },
+    {
+      "id_kind": "aid",
+      "video_id": "170001",
+      "result": "https://api.bilibili.com/x/web-interface/view?aid=170001"
+    },
+    {
+      "bvid": "BV1xx411c7mD",
+      "cid": 12345,
+      "result": "https://api.bilibili.com/x/player/playurl?bvid=BV1xx411c7mD&cid=12345&fnval=4048&fnver=0&fourk=1"
+    },
+    {
+      "bvid": "BV中文",
+      "cid": 1,
+      "result": "https://api.bilibili.com/x/player/playurl?bvid=BV%E4%B8%AD%E6%96%87&cid=1&fnval=4048&fnver=0&fourk=1"
+    }
+  ],
+  "views": [
+    {
+      "label": "valid view",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"code\": 0, \"data\": {\"bvid\": \"BV1xx411c7mD\", \"aid\": 170001, \"title\": \" ç¤ºä¾è§é¢ \", \"pages\": [{\"cid\": 111, \"page\": 1, \"part\": \" ç¬¬ä¸è¯ \", \"duration\": 100}, {\"cid\": 222, \"page\": 0, \"part\": \"\", \"duration\": 200}, {\"cid\": 0, \"page\": 3, \"part\": \"è·³è¿\", \"duration\": 300}, {\"not\": \"a page\"}]}}",
+        "url": ""
+      },
+      "result": {
+        "video": {
+          "bvid": "BV1xx411c7mD",
+          "aid": 170001,
+          "title": "示例视频",
+          "pages": [
+            {
+              "cid": 111,
+              "page": 1,
+              "part": "第一话",
+              "duration_seconds": 100
+            },
+            {
+              "cid": 222,
+              "page": 2,
+              "part": "",
+              "duration_seconds": 200
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "login required status",
+      "response": {
+        "status": 403,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{}",
+        "url": ""
+      },
+      "result": {
+        "error": {
+          "code": "BILIBILI_LOGIN_REQUIRED",
+          "message": "Bilibili video requires login or account authorization."
+        }
+      }
+    },
+    {
+      "label": "empty body",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": "",
+        "url": ""
+      },
+      "result": {
+        "error": {
+          "code": "BILIBILI_VIDEO_INFO_UNAVAILABLE",
+          "message": "Bilibili API response was unavailable."
+        }
+      }
+    },
+    {
+      "label": "not json",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{oops",
+        "url": ""
+      },
+      "result": {
+        "error": {
+          "code": "BILIBILI_VIDEO_INFO_UNAVAILABLE",
+          "message": "Bilibili API response was not JSON."
+        }
+      }
+    },
+    {
+      "label": "non-object payload",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "[1, 2]",
+        "url": ""
+      },
+      "result": {
+        "error": {
+          "code": "BILIBILI_VIDEO_INFO_UNAVAILABLE",
+          "message": "Bilibili API response was malformed."
+        }
+      }
+    },
+    {
+      "label": "error code login",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"code\": -404, \"message\": \"å¥é½çä¸è§\"}",
+        "url": ""
+      },
+      "result": {
+        "error": {
+          "code": "BILIBILI_LOGIN_REQUIRED",
+          "message": "Bilibili video requires login or account authorization."
+        }
+      }
+    },
+    {
+      "label": "error code vip message",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"code\": 87008, \"message\": \"å¤§ä¼åä¸äº«\"}",
+        "url": ""
+      },
+      "result": {
+        "error": {
+          "code": "BILIBILI_LOGIN_REQUIRED",
+          "message": "Bilibili video requires login or account authorization."
+        }
+      }
+    },
+    {
+      "label": "error code generic",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"code\": 1234, \"message\": \"boom\"}",
+        "url": ""
+      },
+      "result": {
+        "error": {
+          "code": "BILIBILI_VIDEO_INFO_UNAVAILABLE",
+          "message": "Bilibili API returned an error."
+        }
+      }
+    },
+    {
+      "label": "incomplete data",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"code\": 0, \"data\": {\"bvid\": \"BV1xx411c7mD\", \"aid\": 1}}",
+        "url": ""
+      },
+      "result": {
+        "error": {
+          "code": "BILIBILI_VIDEO_INFO_UNAVAILABLE",
+          "message": "Bilibili video information was incomplete."
+        }
+      }
+    },
+    {
+      "label": "gzip body",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json",
+          "Content-Encoding": "gzip"
+        },
+        "body": "\u001f\b\u0000óéùj\u0002ÿ]A\u000e0\u0010E¯ÒtÍb¦%B]\u001aÏàF\\\u0016\fÁÖÞÝ¡B@6?ÿÞÜt¶âG\u0006\tãV;Mqäå§±\u0014øéÃ\"ìyæTÐñ\u0019\u0000 ­®qå¬ðºðiÏ9\u0014^å\nÙD½ô½zSí:ró\u0013 Îçi±w§\u0014<\u0015\u0000yJk£Áú^»¦k§:@HØb\u0012B¬&Øvø£`eä¡¶4kíx9óm\u0017E<ÜBø\u00021ÁáA\u0001\u0000\u0000",
+        "url": ""
+      },
+      "result": {
+        "video": {
+          "bvid": "BV1xx411c7mD",
+          "aid": 170001,
+          "title": "示例视频",
+          "pages": [
+            {
+              "cid": 111,
+              "page": 1,
+              "part": "第一话",
+              "duration_seconds": 100
+            },
+            {
+              "cid": 222,
+              "page": 2,
+              "part": "",
+              "duration_seconds": 200
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "brotli body",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json",
+          "Content-Encoding": "br"
+        },
+        "body": "\u001b@\u0001 \u001c\u0007¹¹è~\u0004³J1MPÕ\\Ê^µ\u000eÌnØ¦Þ8`h¾.«\u0001b¹\u0003j~ö\u001fXq[ÉEUY[\u0010\u0005Qâé\r\u000fg\u0017dRÂ°\"Êø2y¬g ½^¹Ù´Úw\u0018wf«$YÄ\u0017\b½{ÕdcH¾¨'R7ÓÒ7ÚY âÀ\u0011Ý/Sh&\u0019YºÜ¨0ñ)æ\u0012'³\u0019\tg÷Ë¬0é\u001fÁqw­Ý íLgUï^Ï\u0016Yp[L«Å&Ãáx#ãà¥\u0017",
+        "url": ""
+      },
+      "result": {
+        "video": {
+          "bvid": "BV1xx411c7mD",
+          "aid": 170001,
+          "title": "示例视频",
+          "pages": [
+            {
+              "cid": 111,
+              "page": 1,
+              "part": "第一话",
+              "duration_seconds": 100
+            },
+            {
+              "cid": 222,
+              "page": 2,
+              "part": "",
+              "duration_seconds": 200
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "deflate body",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json",
+          "Content-Encoding": "deflate"
+        },
+        "body": "x]A\u000e0\u0010E¯ÒtÍb¦%B]\u001aÏàF\\\u0016\fÁÖÞÝ¡B@6?ÿÞÜt¶âG\u0006\tãV;Mqäå§±\u0014øéÃ\"ìyæTÐñ\u0019\u0000 ­®qå¬ðºðiÏ9\u0014^å\nÙD½ô½zSí:ró\u0013 Îçi±w§\u0014<\u0015\u0000yJk£Áú^»¦k§:@HØb\u0012B¬&Øvø£`eä¡¶4kíx9óm\u0017E<ÜBø\u0002ÊzX",
+        "url": ""
+      },
+      "result": {
+        "video": {
+          "bvid": "BV1xx411c7mD",
+          "aid": 170001,
+          "title": "示例视频",
+          "pages": [
+            {
+              "cid": 111,
+              "page": 1,
+              "part": "第一话",
+              "duration_seconds": 100
+            },
+            {
+              "cid": 222,
+              "page": 2,
+              "part": "",
+              "duration_seconds": 200
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "raw deflate body",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json",
+          "Content-Encoding": "deflate"
+        },
+        "body": "]A\u000e0\u0010E¯ÒtÍb¦%B]\u001aÏàF\\\u0016\fÁÖÞÝ¡B@6?ÿÞÜt¶âG\u0006\tãV;Mqäå§±\u0014øéÃ\"ìyæTÐñ\u0019\u0000 ­®qå¬ðºðiÏ9\u0014^å\nÙD½ô½zSí:ró\u0013 Îçi±w§\u0014<\u0015\u0000yJk£Áú^»¦k§:@HØb\u0012B¬&Øvø£`eä¡¶4kíx9óm\u0017E<ÜBø\u0002",
+        "url": ""
+      },
+      "result": {
+        "video": {
+          "bvid": "BV1xx411c7mD",
+          "aid": 170001,
+          "title": "示例视频",
+          "pages": [
+            {
+              "cid": 111,
+              "page": 1,
+              "part": "第一话",
+              "duration_seconds": 100
+            },
+            {
+              "cid": 222,
+              "page": 2,
+              "part": "",
+              "duration_seconds": 200
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "dash": [
+    {
+      "label": "best av1 pair",
+      "data": {
+        "support_formats": [
+          {
+            "quality": 80,
+            "new_description": "1080P 高清"
+          },
+          {
+            "quality": 64,
+            "display_desc": "720P"
+          }
+        ],
+        "dash": {
+          "video": [
+            {
+              "id": 64,
+              "codecid": 7,
+              "bandwidth": 900,
+              "width": 1280,
+              "height": 720,
+              "baseUrl": "https://cdn.example/avc.mp4",
+              "backupUrl": [
+                "https://cdn.example/avc-2.mp4"
+              ]
+            },
+            {
+              "id": 80,
+              "codecid": 13,
+              "bandwidth": 500,
+              "width": 1920,
+              "height": 1080,
+              "base_url": "https://cdn.example/av1.mp4",
+              "backup_url": "https://cdn.example/av1-2.mp4"
+            },
+            {
+              "id": 80,
+              "codecid": 13,
+              "bandwidth": 500,
+              "width": 1920,
+              "height": 1080,
+              "baseUrl": "https://cdn.example/av1-alt.mp4"
+            },
+            {
+              "id": 32,
+              "codecid": 7,
+              "bandwidth": 100,
+              "width": 640,
+              "height": 360
+            },
+            "not-a-stream"
+          ],
+          "audio": [
+            {
+              "id": 30280,
+              "bandwidth": 320,
+              "baseUrl": "https://cdn.example/a1.m4a",
+              "backupUrl": [
+                "https://cdn.example/a1-2.m4a",
+                "https://cdn.example/a1.m4a"
+              ]
+            },
+            {
+              "id": 30232,
+              "bandwidth": 128,
+              "base_url": "https://cdn.example/a2.m4a"
+            }
+          ]
+        }
+      },
+      "result": {
+        "selection": {
+          "video_url": "https://cdn.example/av1.mp4",
+          "audio_url": "https://cdn.example/a1.m4a",
+          "video_backup_urls": [
+            "https://cdn.example/av1-2.mp4"
+          ],
+          "audio_backup_urls": [
+            "https://cdn.example/a1-2.m4a"
+          ],
+          "video_codec_id": 13,
+          "quality": 80,
+          "quality_name": "1080P 高清"
+        }
+      }
+    },
+    {
+      "label": "drm top level",
+      "data": {
+        "support_formats": [
+          {
+            "quality": 80,
+            "new_description": "1080P 高清"
+          },
+          {
+            "quality": 64,
+            "display_desc": "720P"
+          }
+        ],
+        "dash": {
+          "video": [
+            {
+              "id": 64,
+              "codecid": 7,
+              "bandwidth": 900,
+              "width": 1280,
+              "height": 720,
+              "baseUrl": "https://cdn.example/avc.mp4",
+              "backupUrl": [
+                "https://cdn.example/avc-2.mp4"
+              ]
+            },
+            {
+              "id": 80,
+              "codecid": 13,
+              "bandwidth": 500,
+              "width": 1920,
+              "height": 1080,
+              "base_url": "https://cdn.example/av1.mp4",
+              "backup_url": "https://cdn.example/av1-2.mp4"
+            },
+            {
+              "id": 80,
+              "codecid": 13,
+              "bandwidth": 500,
+              "width": 1920,
+              "height": 1080,
+              "baseUrl": "https://cdn.example/av1-alt.mp4"
+            },
+            {
+              "id": 32,
+              "codecid": 7,
+              "bandwidth": 100,
+              "width": 640,
+              "height": 360
+            },
+            "not-a-stream"
+          ],
+          "audio": [
+            {
+              "id": 30280,
+              "bandwidth": 320,
+              "baseUrl": "https://cdn.example/a1.m4a",
+              "backupUrl": [
+                "https://cdn.example/a1-2.m4a",
+                "https://cdn.example/a1.m4a"
+              ]
+            },
+            {
+              "id": 30232,
+              "bandwidth": 128,
+              "base_url": "https://cdn.example/a2.m4a"
+            }
+          ]
+        },
+        "drm_tech_type": 1
+      },
+      "result": {
+        "error": {
+          "code": "BILIBILI_DRM_PROTECTED",
+          "message": "Selected Bilibili DASH stream is DRM protected."
+        }
+      }
+    },
+    {
+      "label": "drm stream",
+      "data": {
+        "dash": {
+          "video": [
+            {
+              "codecid": 7,
+              "baseUrl": "https://x/1",
+              "drm_tech_type": 1
+            }
+          ],
+          "audio": [
+            {
+              "baseUrl": "https://x/a"
+            }
+          ]
+        }
+      },
+      "result": {
+        "error": {
+          "code": "BILIBILI_DRM_PROTECTED",
+          "message": "Selected Bilibili DASH stream is DRM protected."
+        }
+      }
+    },
+    {
+      "label": "no dash",
+      "data": {
+        "support_formats": []
+      },
+      "result": {
+        "error": {
+          "code": "BILIBILI_NO_PLAYABLE_STREAM",
+          "message": "Bilibili playurl response did not include DASH streams."
+        }
+      }
+    },
+    {
+      "label": "empty dash",
+      "data": {
+        "dash": {}
+      },
+      "result": {
+        "error": {
+          "code": "BILIBILI_NO_PLAYABLE_STREAM",
+          "message": "Bilibili playurl response did not include DASH streams."
+        }
+      }
+    },
+    {
+      "label": "missing audio",
+      "data": {
+        "dash": {
+          "video": [
+            {
+              "baseUrl": "https://x/1"
+            }
+          ]
+        }
+      },
+      "result": {
+        "error": {
+          "code": "BILIBILI_NO_PLAYABLE_STREAM",
+          "message": "Bilibili DASH response did not include video and audio streams."
+        }
+      }
+    },
+    {
+      "label": "no playable urls",
+      "data": {
+        "dash": {
+          "video": [
+            {
+              "id": 1
+            }
+          ],
+          "audio": [
+            {
+              "id": 2
+            }
+          ]
+        }
+      },
+      "result": {
+        "error": {
+          "code": "BILIBILI_NO_PLAYABLE_STREAM",
+          "message": "Bilibili DASH response returned no playable video/audio pair."
+        }
+      }
+    },
+    {
+      "label": "unknown quality name",
+      "data": {
+        "dash": {
+          "video": [
+            {
+              "id": 64,
+              "codecid": 7,
+              "bandwidth": 900,
+              "width": 1280,
+              "height": 720,
+              "baseUrl": "https://cdn.example/avc.mp4",
+              "backupUrl": [
+                "https://cdn.example/avc-2.mp4"
+              ]
+            },
+            {
+              "id": 80,
+              "codecid": 13,
+              "bandwidth": 500,
+              "width": 1920,
+              "height": 1080,
+              "base_url": "https://cdn.example/av1.mp4",
+              "backup_url": "https://cdn.example/av1-2.mp4"
+            },
+            {
+              "id": 80,
+              "codecid": 13,
+              "bandwidth": 500,
+              "width": 1920,
+              "height": 1080,
+              "baseUrl": "https://cdn.example/av1-alt.mp4"
+            },
+            {
+              "id": 32,
+              "codecid": 7,
+              "bandwidth": 100,
+              "width": 640,
+              "height": 360
+            },
+            "not-a-stream"
+          ],
+          "audio": [
+            {
+              "id": 30280,
+              "bandwidth": 320,
+              "baseUrl": "https://cdn.example/a1.m4a",
+              "backupUrl": [
+                "https://cdn.example/a1-2.m4a",
+                "https://cdn.example/a1.m4a"
+              ]
+            },
+            {
+              "id": 30232,
+              "bandwidth": 128,
+              "base_url": "https://cdn.example/a2.m4a"
+            }
+          ]
+        }
+      },
+      "result": {
+        "selection": {
+          "video_url": "https://cdn.example/av1.mp4",
+          "audio_url": "https://cdn.example/a1.m4a",
+          "video_backup_urls": [
+            "https://cdn.example/av1-2.mp4"
+          ],
+          "audio_backup_urls": [
+            "https://cdn.example/a1-2.m4a"
+          ],
+          "video_codec_id": 13,
+          "quality": 80,
+          "quality_name": ""
+        }
+      }
+    }
+  ],
+  "playurl_parse": [
+    {
+      "label": "valid playurl",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"code\": 0, \"data\": {\"support_formats\": [{\"quality\": 80, \"new_description\": \"1080P é«æ¸\"}, {\"quality\": 64, \"display_desc\": \"720P\"}], \"dash\": {\"video\": [{\"id\": 64, \"codecid\": 7, \"bandwidth\": 900, \"width\": 1280, \"height\": 720, \"baseUrl\": \"https://cdn.example/avc.mp4\", \"backupUrl\": [\"https://cdn.example/avc-2.mp4\"]}, {\"id\": 80, \"codecid\": 13, \"bandwidth\": 500, \"width\": 1920, \"height\": 1080, \"base_url\": \"https://cdn.example/av1.mp4\", \"backup_url\": \"https://cdn.example/av1-2.mp4\"}, {\"id\": 80, \"codecid\": 13, \"bandwidth\": 500, \"width\": 1920, \"height\": 1080, \"baseUrl\": \"https://cdn.example/av1-alt.mp4\"}, {\"id\": 32, \"codecid\": 7, \"bandwidth\": 100, \"width\": 640, \"height\": 360}, \"not-a-stream\"], \"audio\": [{\"id\": 30280, \"bandwidth\": 320, \"baseUrl\": \"https://cdn.example/a1.m4a\", \"backupUrl\": [\"https://cdn.example/a1-2.m4a\", \"https://cdn.example/a1.m4a\"]}, {\"id\": 30232, \"bandwidth\": 128, \"base_url\": \"https://cdn.example/a2.m4a\"}]}}}",
+        "url": ""
+      },
+      "result": {
+        "keys": [
+          "dash",
+          "support_formats"
+        ]
+      }
+    },
+    {
+      "label": "playurl login",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"code\": -101, \"message\": \"login\"}",
+        "url": ""
+      },
+      "result": {
+        "error": {
+          "code": "BILIBILI_LOGIN_REQUIRED",
+          "message": "Bilibili video requires login or account authorization."
+        }
+      }
+    },
+    {
+      "label": "playurl malformed",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "[1]",
+        "url": ""
+      },
+      "result": {
+        "error": {
+          "code": "BILIBILI_NO_PLAYABLE_STREAM",
+          "message": "Bilibili API response was malformed."
+        }
+      }
+    }
+  ],
+  "decode": [
+    {
+      "label": "plain",
+      "status": 200,
+      "headers": {},
+      "body": "{\"hello\": \"ä¸ç\"}",
+      "max_bytes": 4096,
+      "result": {
+        "text": "{\"hello\": \"世界\"}"
+      }
+    },
+    {
+      "label": "gzip",
+      "status": 200,
+      "headers": {
+        "Content-Encoding": "gzip"
+      },
+      "body": "\u001f\b\u0000óéùj\u0002ÿ«VÊHÍÉÉW²RPz²cÚó©=Jµ\u0000»\u0016Ç}\u0013\u0000\u0000\u0000",
+      "max_bytes": 4096,
+      "result": {
+        "text": "{\"hello\": \"世界\"}"
+      }
+    },
+    {
+      "label": "brotli",
+      "status": 200,
+      "headers": {
+        "Content-Encoding": "br"
+      },
+      "body": "\u000b\t{\"hello\": \"ä¸ç\"}\u0003",
+      "max_bytes": 4096,
+      "result": {
+        "text": "{\"hello\": \"世界\"}"
+      }
+    },
+    {
+      "label": "deflate",
+      "status": 200,
+      "headers": {
+        "Content-Encoding": "deflate"
+      },
+      "body": "x«VÊHÍÉÉW²RPz²cÚó©=Jµ\u0000J\u001f\b)",
+      "max_bytes": 4096,
+      "result": {
+        "text": "{\"hello\": \"世界\"}"
+      }
+    },
+    {
+      "label": "raw deflate",
+      "status": 200,
+      "headers": {
+        "Content-Encoding": "deflate"
+      },
+      "body": "«VÊHÍÉÉW²RPz²cÚó©=Jµ\u0000",
+      "max_bytes": 4096,
+      "result": {
+        "text": "{\"hello\": \"世界\"}"
+      }
+    },
+    {
+      "label": "unknown encoding",
+      "status": 200,
+      "headers": {
+        "Content-Encoding": "zstd"
+      },
+      "body": "{\"hello\": \"ä¸ç\"}",
+      "max_bytes": 4096,
+      "result": {
+        "text": "{\"hello\": \"世界\"}"
+      }
+    },
+    {
+      "label": "oversize",
+      "status": 200,
+      "headers": {},
+      "body": "{\"hello\": \"ä¸ç\"}",
+      "max_bytes": 4,
+      "result": {
+        "error": {
+          "code": "BILIBILI_VIDEO_INFO_UNAVAILABLE",
+          "message": "Bilibili response exceeded the safety limit."
+        }
+      }
+    },
+    {
+      "label": "invalid gzip",
+      "status": 200,
+      "headers": {
+        "Content-Encoding": "gzip"
+      },
+      "body": "not gzip",
+      "max_bytes": 4096,
+      "result": {
+        "error": {
+          "code": "BILIBILI_VIDEO_INFO_UNAVAILABLE",
+          "message": "Bilibili response body could not be decoded."
+        }
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "label": "download first available",
+      "urls": [
+        "https://cdn.example/av1.mp4",
+        "https://cdn.example/av1-2.mp4"
+      ],
+      "downloads": {
+        "https://cdn.example/av1.mp4": [
+          {
+            "kind": "safe",
+            "code": "DOWNLOAD_STALLED",
+            "message": "x"
+          }
+        ],
+        "https://cdn.example/av1-2.mp4": [
+          {
+            "payload": "data"
+          }
+        ]
+      },
+      "outcome": {
+        "path": "video.m4s",
+        "bytes": "data"
+      },
+      "download_calls": [
+        "https://cdn.example/av1.mp4",
+        "https://cdn.example/av1-2.mp4"
+      ]
+    },
+    {
+      "label": "all download urls fail",
+      "urls": [
+        "https://cdn.example/av1.mp4",
+        "https://cdn.example/av1-2.mp4"
+      ],
+      "downloads": {
+        "https://cdn.example/av1.mp4": [
+          {
+            "kind": "safe",
+            "code": "DOWNLOAD_STALLED",
+            "message": "x"
+          }
+        ],
+        "https://cdn.example/av1-2.mp4": [
+          {
+            "kind": "bilibili",
+            "code": "BILIBILI_DASH_DOWNLOAD_FAILED",
+            "message": "y"
+          }
+        ]
+      },
+      "outcome": {
+        "error": {
+          "code": "BILIBILI_DASH_DOWNLOAD_FAILED",
+          "message": "All Bilibili DASH media URLs failed to download."
+        }
+      },
+      "download_calls": [
+        "https://cdn.example/av1.mp4",
+        "https://cdn.example/av1-2.mp4"
+      ]
+    }
+  ],
+  "merge": [
+    {
+      "label": "merge succeeds",
+      "ffmpeg_returncode": 0,
+      "produce": true,
+      "outcome": {
+        "bytes": "merged"
+      },
+      "commands": [
+        [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<tmp>/v.m4s",
+          "-i",
+          "<tmp>/a.m4s",
+          "-c",
+          "copy",
+          "<tmp>/out.mp4"
+        ]
+      ]
+    },
+    {
+      "label": "merge exits nonzero",
+      "ffmpeg_returncode": 1,
+      "produce": false,
+      "outcome": {
+        "error": {
+          "code": "BILIBILI_FFMPEG_MERGE_FAILED",
+          "message": "ffmpeg exited with a non-zero status while merging Bilibili DASH streams."
+        }
+      },
+      "commands": [
+        [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<tmp>/v.m4s",
+          "-i",
+          "<tmp>/a.m4s",
+          "-c",
+          "copy",
+          "<tmp>/out.mp4"
+        ]
+      ]
+    },
+    {
+      "label": "merge produces nothing",
+      "ffmpeg_returncode": 0,
+      "produce": false,
+      "outcome": {
+        "error": {
+          "code": "BILIBILI_FFMPEG_MERGE_FAILED",
+          "message": "ffmpeg did not produce a merged Bilibili MP4."
+        }
+      },
+      "commands": [
+        [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<tmp>/v.m4s",
+          "-i",
+          "<tmp>/a.m4s",
+          "-c",
+          "copy",
+          "<tmp>/out.mp4"
+        ]
+      ]
+    }
+  ],
+  "full_downloads": [
+    {
+      "label": "downloads and merges dash streams",
+      "url": "https://www.bilibili.com/video/BV1xx411c7mD?p=2",
+      "responses": {
+        "https://api.bilibili.com/x/web-interface/view?bvid=BV1xx411c7mD": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "{\"code\": 0, \"data\": {\"bvid\": \"BV1xx411c7mD\", \"aid\": 170001, \"title\": \" ç¤ºä¾è§é¢ \", \"pages\": [{\"cid\": 111, \"page\": 1, \"part\": \" ç¬¬ä¸è¯ \", \"duration\": 100}, {\"cid\": 222, \"page\": 0, \"part\": \"\", \"duration\": 200}, {\"cid\": 0, \"page\": 3, \"part\": \"è·³è¿\", \"duration\": 300}, {\"not\": \"a page\"}]}}",
+            "url": ""
+          }
+        ],
+        "https://api.bilibili.com/x/player/playurl?bvid=BV1xx411c7mD&cid=222&fnval=4048&fnver=0&fourk=1": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "{\"code\": 0, \"data\": {\"support_formats\": [{\"quality\": 80, \"new_description\": \"1080P é«æ¸\"}, {\"quality\": 64, \"display_desc\": \"720P\"}], \"dash\": {\"video\": [{\"id\": 64, \"codecid\": 7, \"bandwidth\": 900, \"width\": 1280, \"height\": 720, \"baseUrl\": \"https://cdn.example/avc.mp4\", \"backupUrl\": [\"https://cdn.example/avc-2.mp4\"]}, {\"id\": 80, \"codecid\": 13, \"bandwidth\": 500, \"width\": 1920, \"height\": 1080, \"base_url\": \"https://cdn.example/av1.mp4\", \"backup_url\": \"https://cdn.example/av1-2.mp4\"}, {\"id\": 80, \"codecid\": 13, \"bandwidth\": 500, \"width\": 1920, \"height\": 1080, \"baseUrl\": \"https://cdn.example/av1-alt.mp4\"}, {\"id\": 32, \"codecid\": 7, \"bandwidth\": 100, \"width\": 640, \"height\": 360}, \"not-a-stream\"], \"audio\": [{\"id\": 30280, \"bandwidth\": 320, \"baseUrl\": \"https://cdn.example/a1.m4a\", \"backupUrl\": [\"https://cdn.example/a1-2.m4a\", \"https://cdn.example/a1.m4a\"]}, {\"id\": 30232, \"bandwidth\": 128, \"base_url\": \"https://cdn.example/a2.m4a\"}]}}}",
+            "url": ""
+          }
+        ]
+      },
+      "downloads": {
+        "https://cdn.example/av1.mp4": [
+          {
+            "payload": "video-bytes"
+          }
+        ],
+        "https://cdn.example/a1.m4a": [
+          {
+            "payload": "audio-bytes"
+          }
+        ]
+      },
+      "ffmpeg_returncode": 0,
+      "outcome": {
+        "path": "BV1xx411c7mD_p2.mp4",
+        "bytes": "merged-mp4",
+        "leftover": []
+      },
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "bilibili.metadata.resolving"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 26,
+          "message_code": "bilibili.stream.probing"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 30,
+          "message_code": "bilibili.video.downloading"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 32,
+          "message_code": "bilibili.audio.downloading"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 34,
+          "message_code": "bilibili.media.merging"
+        }
+      ],
+      "get_calls": [
+        "https://api.bilibili.com/x/web-interface/view?bvid=BV1xx411c7mD",
+        "https://api.bilibili.com/x/player/playurl?bvid=BV1xx411c7mD&cid=222&fnval=4048&fnver=0&fourk=1"
+      ],
+      "download_calls": [
+        "https://cdn.example/av1.mp4",
+        "https://cdn.example/a1.m4a"
+      ],
+      "ffmpeg_commands": [
+        [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<tmp>/BV1xx411c7mD_p2_video.m4s",
+          "-i",
+          "<tmp>/BV1xx411c7mD_p2_audio.m4s",
+          "-c",
+          "copy",
+          "<tmp>/BV1xx411c7mD_p2.merge.mp4"
+        ]
+      ]
+    },
+    {
+      "label": "video primary fails then backup wins",
+      "url": "https://www.bilibili.com/video/BV1xx411c7mD?p=2",
+      "responses": {
+        "https://api.bilibili.com/x/web-interface/view?bvid=BV1xx411c7mD": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "{\"code\": 0, \"data\": {\"bvid\": \"BV1xx411c7mD\", \"aid\": 170001, \"title\": \" ç¤ºä¾è§é¢ \", \"pages\": [{\"cid\": 111, \"page\": 1, \"part\": \" ç¬¬ä¸è¯ \", \"duration\": 100}, {\"cid\": 222, \"page\": 0, \"part\": \"\", \"duration\": 200}, {\"cid\": 0, \"page\": 3, \"part\": \"è·³è¿\", \"duration\": 300}, {\"not\": \"a page\"}]}}",
+            "url": ""
+          }
+        ],
+        "https://api.bilibili.com/x/player/playurl?bvid=BV1xx411c7mD&cid=222&fnval=4048&fnver=0&fourk=1": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "{\"code\": 0, \"data\": {\"support_formats\": [{\"quality\": 80, \"new_description\": \"1080P é«æ¸\"}, {\"quality\": 64, \"display_desc\": \"720P\"}], \"dash\": {\"video\": [{\"id\": 64, \"codecid\": 7, \"bandwidth\": 900, \"width\": 1280, \"height\": 720, \"baseUrl\": \"https://cdn.example/avc.mp4\", \"backupUrl\": [\"https://cdn.example/avc-2.mp4\"]}, {\"id\": 80, \"codecid\": 13, \"bandwidth\": 500, \"width\": 1920, \"height\": 1080, \"base_url\": \"https://cdn.example/av1.mp4\", \"backup_url\": \"https://cdn.example/av1-2.mp4\"}, {\"id\": 80, \"codecid\": 13, \"bandwidth\": 500, \"width\": 1920, \"height\": 1080, \"baseUrl\": \"https://cdn.example/av1-alt.mp4\"}, {\"id\": 32, \"codecid\": 7, \"bandwidth\": 100, \"width\": 640, \"height\": 360}, \"not-a-stream\"], \"audio\": [{\"id\": 30280, \"bandwidth\": 320, \"baseUrl\": \"https://cdn.example/a1.m4a\", \"backupUrl\": [\"https://cdn.example/a1-2.m4a\", \"https://cdn.example/a1.m4a\"]}, {\"id\": 30232, \"bandwidth\": 128, \"base_url\": \"https://cdn.example/a2.m4a\"}]}}}",
+            "url": ""
+          }
+        ]
+      },
+      "downloads": {
+        "https://cdn.example/av1.mp4": [
+          {
+            "kind": "safe",
+            "code": "DOWNLOAD_HTTP_STATUS_INVALID",
+            "message": "boom"
+          }
+        ],
+        "https://cdn.example/av1-2.mp4": [
+          {
+            "payload": "video-backup"
+          }
+        ],
+        "https://cdn.example/a1.m4a": [
+          {
+            "payload": "audio-bytes"
+          }
+        ]
+      },
+      "ffmpeg_returncode": 0,
+      "outcome": {
+        "path": "BV1xx411c7mD_p2.mp4",
+        "bytes": "merged-mp4",
+        "leftover": []
+      },
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "bilibili.metadata.resolving"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 26,
+          "message_code": "bilibili.stream.probing"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 30,
+          "message_code": "bilibili.video.downloading"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 32,
+          "message_code": "bilibili.audio.downloading"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 34,
+          "message_code": "bilibili.media.merging"
+        }
+      ],
+      "get_calls": [
+        "https://api.bilibili.com/x/web-interface/view?bvid=BV1xx411c7mD",
+        "https://api.bilibili.com/x/player/playurl?bvid=BV1xx411c7mD&cid=222&fnval=4048&fnver=0&fourk=1"
+      ],
+      "download_calls": [
+        "https://cdn.example/av1.mp4",
+        "https://cdn.example/av1-2.mp4",
+        "https://cdn.example/a1.m4a"
+      ],
+      "ffmpeg_commands": [
+        [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<tmp>/BV1xx411c7mD_p2_video.m4s",
+          "-i",
+          "<tmp>/BV1xx411c7mD_p2_audio.m4s",
+          "-c",
+          "copy",
+          "<tmp>/BV1xx411c7mD_p2.merge.mp4"
+        ]
+      ]
+    },
+    {
+      "label": "audio fails entirely",
+      "url": "https://www.bilibili.com/video/BV1xx411c7mD?p=2",
+      "responses": {
+        "https://api.bilibili.com/x/web-interface/view?bvid=BV1xx411c7mD": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "{\"code\": 0, \"data\": {\"bvid\": \"BV1xx411c7mD\", \"aid\": 170001, \"title\": \" ç¤ºä¾è§é¢ \", \"pages\": [{\"cid\": 111, \"page\": 1, \"part\": \" ç¬¬ä¸è¯ \", \"duration\": 100}, {\"cid\": 222, \"page\": 0, \"part\": \"\", \"duration\": 200}, {\"cid\": 0, \"page\": 3, \"part\": \"è·³è¿\", \"duration\": 300}, {\"not\": \"a page\"}]}}",
+            "url": ""
+          }
+        ],
+        "https://api.bilibili.com/x/player/playurl?bvid=BV1xx411c7mD&cid=222&fnval=4048&fnver=0&fourk=1": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "{\"code\": 0, \"data\": {\"support_formats\": [{\"quality\": 80, \"new_description\": \"1080P é«æ¸\"}, {\"quality\": 64, \"display_desc\": \"720P\"}], \"dash\": {\"video\": [{\"id\": 64, \"codecid\": 7, \"bandwidth\": 900, \"width\": 1280, \"height\": 720, \"baseUrl\": \"https://cdn.example/avc.mp4\", \"backupUrl\": [\"https://cdn.example/avc-2.mp4\"]}, {\"id\": 80, \"codecid\": 13, \"bandwidth\": 500, \"width\": 1920, \"height\": 1080, \"base_url\": \"https://cdn.example/av1.mp4\", \"backup_url\": \"https://cdn.example/av1-2.mp4\"}, {\"id\": 80, \"codecid\": 13, \"bandwidth\": 500, \"width\": 1920, \"height\": 1080, \"baseUrl\": \"https://cdn.example/av1-alt.mp4\"}, {\"id\": 32, \"codecid\": 7, \"bandwidth\": 100, \"width\": 640, \"height\": 360}, \"not-a-stream\"], \"audio\": [{\"id\": 30280, \"bandwidth\": 320, \"baseUrl\": \"https://cdn.example/a1.m4a\", \"backupUrl\": [\"https://cdn.example/a1-2.m4a\", \"https://cdn.example/a1.m4a\"]}, {\"id\": 30232, \"bandwidth\": 128, \"base_url\": \"https://cdn.example/a2.m4a\"}]}}}",
+            "url": ""
+          }
+        ]
+      },
+      "downloads": {
+        "https://cdn.example/av1.mp4": [
+          {
+            "payload": "video-bytes"
+          }
+        ],
+        "https://cdn.example/a1.m4a": [
+          {
+            "kind": "safe",
+            "code": "DOWNLOAD_HTTP_STATUS_INVALID",
+            "message": "network"
+          }
+        ],
+        "https://cdn.example/a1-2.m4a": [
+          {
+            "kind": "safe",
+            "code": "DOWNLOAD_STALLED",
+            "message": "boom"
+          }
+        ]
+      },
+      "ffmpeg_returncode": 0,
+      "outcome": {
+        "error": {
+          "code": "BILIBILI_DASH_DOWNLOAD_FAILED",
+          "message": "All Bilibili DASH media URLs failed to download."
+        },
+        "leftover": [
+          "BV1xx411c7mD_p2_video.m4s"
+        ]
+      },
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "bilibili.metadata.resolving"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 26,
+          "message_code": "bilibili.stream.probing"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 30,
+          "message_code": "bilibili.video.downloading"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 32,
+          "message_code": "bilibili.audio.downloading"
+        }
+      ],
+      "get_calls": [
+        "https://api.bilibili.com/x/web-interface/view?bvid=BV1xx411c7mD",
+        "https://api.bilibili.com/x/player/playurl?bvid=BV1xx411c7mD&cid=222&fnval=4048&fnver=0&fourk=1"
+      ],
+      "download_calls": [
+        "https://cdn.example/av1.mp4",
+        "https://cdn.example/a1.m4a",
+        "https://cdn.example/a1-2.m4a"
+      ],
+      "ffmpeg_commands": []
+    },
+    {
+      "label": "ffmpeg merge fails",
+      "url": "https://www.bilibili.com/video/BV1xx411c7mD?p=2",
+      "responses": {
+        "https://api.bilibili.com/x/web-interface/view?bvid=BV1xx411c7mD": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "{\"code\": 0, \"data\": {\"bvid\": \"BV1xx411c7mD\", \"aid\": 170001, \"title\": \" ç¤ºä¾è§é¢ \", \"pages\": [{\"cid\": 111, \"page\": 1, \"part\": \" ç¬¬ä¸è¯ \", \"duration\": 100}, {\"cid\": 222, \"page\": 0, \"part\": \"\", \"duration\": 200}, {\"cid\": 0, \"page\": 3, \"part\": \"è·³è¿\", \"duration\": 300}, {\"not\": \"a page\"}]}}",
+            "url": ""
+          }
+        ],
+        "https://api.bilibili.com/x/player/playurl?bvid=BV1xx411c7mD&cid=222&fnval=4048&fnver=0&fourk=1": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "{\"code\": 0, \"data\": {\"support_formats\": [{\"quality\": 80, \"new_description\": \"1080P é«æ¸\"}, {\"quality\": 64, \"display_desc\": \"720P\"}], \"dash\": {\"video\": [{\"id\": 64, \"codecid\": 7, \"bandwidth\": 900, \"width\": 1280, \"height\": 720, \"baseUrl\": \"https://cdn.example/avc.mp4\", \"backupUrl\": [\"https://cdn.example/avc-2.mp4\"]}, {\"id\": 80, \"codecid\": 13, \"bandwidth\": 500, \"width\": 1920, \"height\": 1080, \"base_url\": \"https://cdn.example/av1.mp4\", \"backup_url\": \"https://cdn.example/av1-2.mp4\"}, {\"id\": 80, \"codecid\": 13, \"bandwidth\": 500, \"width\": 1920, \"height\": 1080, \"baseUrl\": \"https://cdn.example/av1-alt.mp4\"}, {\"id\": 32, \"codecid\": 7, \"bandwidth\": 100, \"width\": 640, \"height\": 360}, \"not-a-stream\"], \"audio\": [{\"id\": 30280, \"bandwidth\": 320, \"baseUrl\": \"https://cdn.example/a1.m4a\", \"backupUrl\": [\"https://cdn.example/a1-2.m4a\", \"https://cdn.example/a1.m4a\"]}, {\"id\": 30232, \"bandwidth\": 128, \"base_url\": \"https://cdn.example/a2.m4a\"}]}}}",
+            "url": ""
+          }
+        ]
+      },
+      "downloads": {
+        "https://cdn.example/av1.mp4": [
+          {
+            "payload": "video-bytes"
+          }
+        ],
+        "https://cdn.example/a1.m4a": [
+          {
+            "payload": "audio-bytes"
+          }
+        ]
+      },
+      "ffmpeg_returncode": 1,
+      "outcome": {
+        "error": {
+          "code": "BILIBILI_FFMPEG_MERGE_FAILED",
+          "message": "ffmpeg exited with a non-zero status while merging Bilibili DASH streams."
+        },
+        "leftover": [
+          "BV1xx411c7mD_p2_audio.m4s",
+          "BV1xx411c7mD_p2_video.m4s"
+        ]
+      },
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "bilibili.metadata.resolving"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 26,
+          "message_code": "bilibili.stream.probing"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 30,
+          "message_code": "bilibili.video.downloading"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 32,
+          "message_code": "bilibili.audio.downloading"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 34,
+          "message_code": "bilibili.media.merging"
+        }
+      ],
+      "get_calls": [
+        "https://api.bilibili.com/x/web-interface/view?bvid=BV1xx411c7mD",
+        "https://api.bilibili.com/x/player/playurl?bvid=BV1xx411c7mD&cid=222&fnval=4048&fnver=0&fourk=1"
+      ],
+      "download_calls": [
+        "https://cdn.example/av1.mp4",
+        "https://cdn.example/a1.m4a"
+      ],
+      "ffmpeg_commands": [
+        [
+          "ffmpeg",
+          "-y",
+          "-i",
+          "<tmp>/BV1xx411c7mD_p2_video.m4s",
+          "-i",
+          "<tmp>/BV1xx411c7mD_p2_audio.m4s",
+          "-c",
+          "copy",
+          "<tmp>/BV1xx411c7mD_p2.merge.mp4"
+        ]
+      ]
+    },
+    {
+      "label": "part does not exist",
+      "url": "https://www.bilibili.com/video/BV1xx411c7mD?p=9",
+      "responses": {
+        "https://api.bilibili.com/x/web-interface/view?bvid=BV1xx411c7mD": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "{\"code\": 0, \"data\": {\"bvid\": \"BV1xx411c7mD\", \"aid\": 170001, \"title\": \" ç¤ºä¾è§é¢ \", \"pages\": [{\"cid\": 111, \"page\": 1, \"part\": \" ç¬¬ä¸è¯ \", \"duration\": 100}, {\"cid\": 222, \"page\": 0, \"part\": \"\", \"duration\": 200}, {\"cid\": 0, \"page\": 3, \"part\": \"è·³è¿\", \"duration\": 300}, {\"not\": \"a page\"}]}}",
+            "url": ""
+          }
+        ],
+        "https://api.bilibili.com/x/player/playurl?bvid=BV1xx411c7mD&cid=222&fnval=4048&fnver=0&fourk=1": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "{\"code\": 0, \"data\": {\"support_formats\": [{\"quality\": 80, \"new_description\": \"1080P é«æ¸\"}, {\"quality\": 64, \"display_desc\": \"720P\"}], \"dash\": {\"video\": [{\"id\": 64, \"codecid\": 7, \"bandwidth\": 900, \"width\": 1280, \"height\": 720, \"baseUrl\": \"https://cdn.example/avc.mp4\", \"backupUrl\": [\"https://cdn.example/avc-2.mp4\"]}, {\"id\": 80, \"codecid\": 13, \"bandwidth\": 500, \"width\": 1920, \"height\": 1080, \"base_url\": \"https://cdn.example/av1.mp4\", \"backup_url\": \"https://cdn.example/av1-2.mp4\"}, {\"id\": 80, \"codecid\": 13, \"bandwidth\": 500, \"width\": 1920, \"height\": 1080, \"baseUrl\": \"https://cdn.example/av1-alt.mp4\"}, {\"id\": 32, \"codecid\": 7, \"bandwidth\": 100, \"width\": 640, \"height\": 360}, \"not-a-stream\"], \"audio\": [{\"id\": 30280, \"bandwidth\": 320, \"baseUrl\": \"https://cdn.example/a1.m4a\", \"backupUrl\": [\"https://cdn.example/a1-2.m4a\", \"https://cdn.example/a1.m4a\"]}, {\"id\": 30232, \"bandwidth\": 128, \"base_url\": \"https://cdn.example/a2.m4a\"}]}}}",
+            "url": ""
+          }
+        ]
+      },
+      "downloads": {},
+      "ffmpeg_returncode": 0,
+      "outcome": {
+        "error": {
+          "code": "BILIBILI_PART_NOT_FOUND",
+          "message": "Requested Bilibili part does not exist."
+        },
+        "leftover": []
+      },
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "bilibili.metadata.resolving"
+        }
+      ],
+      "get_calls": [
+        "https://api.bilibili.com/x/web-interface/view?bvid=BV1xx411c7mD"
+      ],
+      "download_calls": [],
+      "ffmpeg_commands": []
+    },
+    {
+      "label": "login required",
+      "url": "https://www.bilibili.com/video/BV1xx411c7mD?p=2",
+      "responses": {
+        "https://api.bilibili.com/x/web-interface/view?bvid=BV1xx411c7mD": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "{\"code\": -101, \"message\": \"login\"}",
+            "url": ""
+          }
+        ]
+      },
+      "downloads": {},
+      "ffmpeg_returncode": 0,
+      "outcome": {
+        "error": {
+          "code": "BILIBILI_LOGIN_REQUIRED",
+          "message": "Bilibili video requires login or account authorization."
+        },
+        "leftover": []
+      },
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "bilibili.metadata.resolving"
+        }
+      ],
+      "get_calls": [
+        "https://api.bilibili.com/x/web-interface/view?bvid=BV1xx411c7mD"
+      ],
+      "download_calls": [],
+      "ffmpeg_commands": []
+    },
+    {
+      "label": "drm stream is rejected",
+      "url": "https://www.bilibili.com/video/BV1xx411c7mD?p=2",
+      "responses": {
+        "https://api.bilibili.com/x/web-interface/view?bvid=BV1xx411c7mD": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "{\"code\": 0, \"data\": {\"bvid\": \"BV1xx411c7mD\", \"aid\": 170001, \"title\": \" ç¤ºä¾è§é¢ \", \"pages\": [{\"cid\": 111, \"page\": 1, \"part\": \" ç¬¬ä¸è¯ \", \"duration\": 100}, {\"cid\": 222, \"page\": 0, \"part\": \"\", \"duration\": 200}, {\"cid\": 0, \"page\": 3, \"part\": \"è·³è¿\", \"duration\": 300}, {\"not\": \"a page\"}]}}",
+            "url": ""
+          }
+        ],
+        "https://api.bilibili.com/x/player/playurl?bvid=BV1xx411c7mD&cid=222&fnval=4048&fnver=0&fourk=1": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "{\"code\": 0, \"data\": {\"dash\": {\"video\": [{\"baseUrl\": \"https://x/v\", \"drm_tech_type\": 1}], \"audio\": [{\"baseUrl\": \"https://x/a\"}]}}}",
+            "url": ""
+          }
+        ]
+      },
+      "downloads": {},
+      "ffmpeg_returncode": 0,
+      "outcome": {
+        "error": {
+          "code": "BILIBILI_DRM_PROTECTED",
+          "message": "Selected Bilibili DASH stream is DRM protected."
+        },
+        "leftover": []
+      },
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "bilibili.metadata.resolving"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 26,
+          "message_code": "bilibili.stream.probing"
+        }
+      ],
+      "get_calls": [
+        "https://api.bilibili.com/x/web-interface/view?bvid=BV1xx411c7mD",
+        "https://api.bilibili.com/x/player/playurl?bvid=BV1xx411c7mD&cid=222&fnval=4048&fnver=0&fourk=1"
+      ],
+      "download_calls": [],
+      "ffmpeg_commands": []
+    }
+  ]
+}

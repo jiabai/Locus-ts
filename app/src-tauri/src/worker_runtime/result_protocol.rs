@@ -1,0 +1,1459 @@
+use super::runner::WorkerOperation;
+use crate::task_manifest::{self, TASK_ARTIFACT_KEYS};
+use serde::{Deserialize, Deserializer, Serialize};
+use std::collections::HashMap;
+
+pub(crate) const WORKER_PROTOCOL_VIOLATION: &str = "WORKER_PROTOCOL_VIOLATION";
+pub(crate) const WORKER_PROTOCOL_MESSAGE: &str = "Worker result violated the terminal protocol.";
+const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+const DEFAULT_ASR_MODEL: &str = "iic/SenseVoiceSmall";
+const MODEL_DOWNLOAD_FAILED_MESSAGE: &str = "ASR model download failed.";
+const MODEL_ARCHIVE_INVALID_MESSAGE: &str = "Downloaded ASR model archive was invalid.";
+
+#[cfg(test)]
+pub(crate) const TASK_RESULT_FIELDS: &[&str] = &[
+    "status",
+    "task_id",
+    "task_dir",
+    "artifacts",
+    "text",
+    "summary",
+    "insights",
+    "transcript",
+    "dissection",
+    "draft",
+    "error",
+];
+#[cfg(test)]
+pub(crate) const TASK_RESULT_OPTIONAL_FIELDS: &[&str] = &["dissection_source_status", "note_title", "task_created", "source", "markdown"];
+#[cfg(test)]
+pub(crate) const TASK_INSIGHT_FIELDS: &[&str] = &[
+    "id",
+    "topic",
+    "matchReason",
+    "followUpQuestions",
+    "suitableUse",
+    "sourceChunkId",
+];
+#[cfg(test)]
+pub(crate) const TASK_TERMINAL_STATUSES: &[&str] = &["completed", "partial_completed", "failed"];
+
+#[cfg(test)]
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) struct TerminalOperationFamilies {
+    process_video: &'static str,
+    process_local_media: &'static str,
+    process_web_page: &'static str,
+    retry_insights: &'static str,
+    resolve_source_identity: &'static str,
+    download_asr_model: &'static str,
+}
+
+#[cfg(test)]
+pub(crate) const TERMINAL_OPERATION_FAMILIES: TerminalOperationFamilies =
+    TerminalOperationFamilies {
+        process_video: "mediaTask",
+        process_local_media: "mediaTask",
+        process_web_page: "webPage",
+        retry_insights: "task",
+        resolve_source_identity: "sourceIdentity",
+        download_asr_model: "modelDownload",
+    };
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum TaskTerminalStatus {
+    Completed,
+    PartialCompleted,
+    Failed,
+}
+
+impl TaskTerminalStatus {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Completed => "completed",
+            Self::PartialCompleted => "partial_completed",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum TaskErrorStage {
+    WaitingInput,
+    VideoExtracting,
+    VideoTranscribing,
+    WebLoading,
+    WebExtracting,
+    WebSaving,
+    InsightsGenerating,
+    TitleGenerating,
+    // Error-only stage for draft generation failures; draft progress reuses
+    // InsightsGenerating so it never appears as a live progress phase.
+    DraftGenerating,
+    Completed,
+    PartialCompleted,
+    Failed,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct TaskInsight {
+    pub(crate) id: u64,
+    pub(crate) topic: String,
+    pub(crate) match_reason: String,
+    pub(crate) follow_up_questions: Vec<String>,
+    pub(crate) suitable_use: String,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub(crate) source_chunk_id: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum TaskTranscriptSource {
+    Asr,
+    Subtitle,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TaskTranscript {
+    pub(crate) source: TaskTranscriptSource,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub(crate) language: Option<String>,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub(crate) engine: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct TaskDissectionSourceChunk {
+    pub(crate) id: u64,
+    pub(crate) start_byte: u64,
+    pub(crate) end_byte: u64,
+    pub(crate) sha256: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct TaskDissectionNarrative {
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub(crate) opening_hook: Option<String>,
+    pub(crate) structure_type: String,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub(crate) turning_point: Option<String>,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub(crate) closing_type: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct TaskDissectionSegment {
+    pub(crate) id: u64,
+    pub(crate) title: String,
+    pub(crate) source_chunk_ids: Vec<u64>,
+    pub(crate) core_claim: String,
+    pub(crate) supporting_points: Vec<String>,
+    pub(crate) rhetorical_devices: Vec<String>,
+    pub(crate) rhythm_note: String,
+    pub(crate) reusable_pattern: String,
+    pub(crate) risk_flags: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TaskDissectionTemplate {
+    pub(crate) name: String,
+    pub(crate) skeleton: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum TaskDissectionAudienceFitLevel {
+    High,
+    Medium,
+    Low,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TaskDissectionAudienceFit {
+    pub(crate) audience: String,
+    pub(crate) fit: TaskDissectionAudienceFitLevel,
+    pub(crate) note: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct TaskDissection {
+    pub(crate) schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_present")]
+    pub(crate) source_transcript_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_present")]
+    pub(crate) source_kind: Option<TaskDissectionSourceKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_present")]
+    pub(crate) source_text_sha256: Option<String>,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub(crate) source_language: Option<String>,
+    pub(crate) source_chunks: Vec<TaskDissectionSourceChunk>,
+    pub(crate) overall_narrative: TaskDissectionNarrative,
+    pub(crate) segments: Vec<TaskDissectionSegment>,
+    pub(crate) highlights: Vec<String>,
+    pub(crate) reusable_template: TaskDissectionTemplate,
+    pub(crate) audience_fit: Vec<TaskDissectionAudienceFit>,
+    pub(crate) strengths: Vec<String>,
+    pub(crate) weaknesses: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum TaskDissectionSourceKind {
+    Article,
+}
+
+impl TaskDissection {
+    pub(crate) fn is_article(&self) -> bool { self.schema_version == 2 }
+    pub(crate) fn source_sha256(&self) -> &str {
+        if self.is_article() { self.source_text_sha256.as_deref().unwrap_or("") }
+        else { self.source_transcript_sha256.as_deref().unwrap_or("") }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, tag = "kind", rename_all = "snake_case")]
+pub(crate) enum TaskResultSource {
+    WebPage {
+        url: String,
+        title: String,
+        #[serde(rename = "extractedAt")]
+        extracted_at: String,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TaskError {
+    pub(crate) code: String,
+    pub(crate) message: String,
+    pub(crate) stage: TaskErrorStage,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TaskTerminalResult {
+    pub(crate) status: TaskTerminalStatus,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub(crate) task_id: Option<String>,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub(crate) task_dir: Option<String>,
+    pub(crate) artifacts: HashMap<String, String>,
+    pub(crate) text: String,
+    pub(crate) summary: String,
+    pub(crate) insights: Vec<TaskInsight>,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub(crate) transcript: Option<TaskTranscript>,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub(crate) dissection: Option<TaskDissection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) dissection_source_status: Option<task_manifest::DissectionSourceStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) note_title: Option<task_manifest::NoteTitle>,
+    #[serde(default)]
+    pub(crate) task_created: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_present")]
+    pub(crate) source: Option<TaskResultSource>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) markdown: String,
+    // Draft article markdown produced by target="draft" agent runs; empty string
+    // when the task has no draft (and for older worker output without the field).
+    #[serde(default)]
+    pub(crate) draft: String,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub(crate) error: Option<TaskError>,
+}
+
+impl TaskTerminalResult {
+    pub(crate) fn from_value(value: serde_json::Value) -> Result<Self, TerminalResultError> {
+        let result = serde_json::from_value(value).map_err(|_| TerminalResultError::Invalid)?;
+        validate_task_result(result)
+    }
+
+    pub(crate) fn from_saved_web_task(task: &task_manifest::SupportedTask) -> Result<Self, String> {
+        let task_manifest::TaskSourceSummary::WebPage { url, title, extracted_at } = task.source()
+            else { return Err("WEB_STORAGE_FAILED".into()); };
+        if task.status() != "completed" {
+            return Err("WEB_STORAGE_FAILED".into());
+        }
+        let source_text = task.read_source_text()?;
+        let result = Self {
+            status: TaskTerminalStatus::Completed,
+            task_id: Some(task.task_id().to_owned()),
+            task_dir: Some(task.task_dir_frontend_string()),
+            artifacts: task.existing_artifacts(),
+            text: source_text.text,
+            summary: String::new(),
+            insights: Vec::new(),
+            transcript: None,
+            dissection: None,
+            dissection_source_status: None,
+            note_title: None,
+            task_created: true,
+            source: Some(TaskResultSource::WebPage { url, title, extracted_at }),
+            markdown: task.read_article_markdown()?,
+            draft: String::new(),
+            error: None,
+        };
+        let bytes = serde_json::to_vec(&result).map_err(|_| "WEB_STORAGE_FAILED")?;
+        let ValidatedWorkerResult::Task(validated) = parse_terminal_result(
+            WorkerOperation::ProcessWebPage, &bytes,
+        ).map_err(|_| "WEB_STORAGE_FAILED")? else { return Err("WEB_STORAGE_FAILED".into()); };
+        if !validated.validate_source_task(task) {
+            return Err("WEB_STORAGE_FAILED".into());
+        }
+        Ok(validated)
+    }
+
+    pub(crate) fn validate_source_task(&self, task: &task_manifest::SupportedTask) -> bool {
+        if self.task_id.as_deref() != Some(task.task_id()) { return false; }
+        if self.task_dir.as_deref() != Some(task.task_dir_frontend_string().as_str()) { return false; }
+        match (&self.source, task.source()) {
+            (Some(TaskResultSource::WebPage { url, title, extracted_at }), task_manifest::TaskSourceSummary::WebPage { url: saved_url, title: saved_title, extracted_at: saved_at }) => {
+                url == &saved_url && title == &saved_title && extracted_at == &saved_at
+                    && task.read_source_text().is_ok_and(|source| source.text == self.text)
+                    && task.read_article_markdown().is_ok_and(|markdown| markdown == self.markdown)
+            }
+            (None, task_manifest::TaskSourceSummary::Url { .. } | task_manifest::TaskSourceSummary::LocalFile { .. }) => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct SourceIdentityFailure {
+    pub(crate) code: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum SourceIdentityTerminalResult {
+    Completed {
+        source_url: String,
+        source_identity: task_manifest::SourceIdentity,
+    },
+    Failed {
+        error: SourceIdentityFailure,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum ModelDownloadTerminalResult {
+    Completed { model: String },
+    Failed { code: String, message: String },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct StorageValidationTerminalResult {
+    pub(crate) schema_version: u8,
+    pub(crate) ready_models: Vec<String>,
+    pub(crate) component_state: String,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub(crate) component_fingerprint: Option<String>,
+    pub(crate) component_imported: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum ValidatedWorkerResult {
+    Task(TaskTerminalResult),
+    SourceIdentity(SourceIdentityTerminalResult),
+    ModelDownload(ModelDownloadTerminalResult),
+    StorageValidation(StorageValidationTerminalResult),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TerminalResultError {
+    Missing,
+    Invalid,
+}
+
+pub(crate) fn parse_terminal_result(
+    operation: WorkerOperation,
+    stdout: &[u8],
+) -> Result<ValidatedWorkerResult, TerminalResultError> {
+    if operation == WorkerOperation::ProcessWebPage
+        && stdout.len() > super::command::MAX_WEB_PAGE_MESSAGE_BYTES
+    {
+        return Err(TerminalResultError::Invalid);
+    }
+    let text = std::str::from_utf8(stdout).map_err(|_| TerminalResultError::Invalid)?;
+    let mut lines = text.lines().map(str::trim).filter(|line| !line.is_empty());
+    let line = lines.next().ok_or(TerminalResultError::Missing)?;
+    if lines.next().is_some() {
+        return Err(TerminalResultError::Invalid);
+    }
+
+    match operation {
+        WorkerOperation::ProcessVideo
+        | WorkerOperation::ProcessLocalMedia
+        | WorkerOperation::ProcessWebPage
+        | WorkerOperation::RetryInsights => {
+            let raw: serde_json::Value = serde_json::from_str(line).map_err(|_| TerminalResultError::Invalid)?;
+            if matches!(operation, WorkerOperation::ProcessVideo | WorkerOperation::ProcessLocalMedia)
+                && raw.as_object().is_some_and(|object| object.contains_key("source") || object.contains_key("markdown"))
+            {
+                return Err(TerminalResultError::Invalid);
+            }
+            let result: TaskTerminalResult = serde_json::from_value(raw).map_err(|_| TerminalResultError::Invalid)?;
+            if operation == WorkerOperation::RetryInsights && result.task_created {
+                return Err(TerminalResultError::Invalid);
+            }
+            if matches!(operation, WorkerOperation::ProcessVideo | WorkerOperation::ProcessLocalMedia)
+                && (result.source.is_some() || result.artifacts.contains_key("article_txt") || result.artifacts.contains_key("article_md"))
+            {
+                return Err(TerminalResultError::Invalid);
+            }
+            if operation == WorkerOperation::ProcessWebPage && result.source.is_none() {
+                if result.status != TaskTerminalStatus::Failed || result.task_id.is_some() || result.task_dir.is_some()
+                    || !result.artifacts.is_empty() || !result.text.is_empty() || !result.markdown.is_empty()
+                    || !result.summary.is_empty() || !result.insights.is_empty() || result.transcript.is_some()
+                    || result.dissection.is_some() || result.note_title.is_some() || !result.draft.is_empty()
+                {
+                    return Err(TerminalResultError::Invalid);
+                }
+            }
+            if operation == WorkerOperation::ProcessWebPage && result.source.is_some()
+                && (result.status != TaskTerminalStatus::Completed || !result.task_created
+                    || result.task_id.is_none() || result.task_dir.is_none()
+                    || result.artifacts.len() != 2 || !result.summary.is_empty() || !result.insights.is_empty()
+                    || result.dissection.is_some() || !result.draft.is_empty())
+            {
+                return Err(TerminalResultError::Invalid);
+            }
+            validate_task_result(result).map(ValidatedWorkerResult::Task)
+        }
+        WorkerOperation::ResolveSourceIdentity => {
+            parse_source_identity_result(line).map(ValidatedWorkerResult::SourceIdentity)
+        }
+        WorkerOperation::DownloadAsrModel => {
+            parse_model_download_result(line).map(ValidatedWorkerResult::ModelDownload)
+        }
+        WorkerOperation::StorageValidation => {
+            let value: StorageValidationTerminalResult = serde_json::from_str(line)
+                .map_err(|_| TerminalResultError::Invalid)?;
+            if value.schema_version != 1
+                || value.ready_models.len() > 2
+                || value.ready_models.iter().any(|model| !crate::SUPPORTED_ASR_MODELS.contains(&model.as_str()))
+                || value.ready_models.iter().collect::<std::collections::HashSet<_>>().len() != value.ready_models.len()
+                || !["ready", "missing", "stale", "ungated"].contains(&value.component_state.as_str())
+                || value.component_fingerprint.as_ref().is_some_and(|v| v.trim().is_empty() || v.len() > 256)
+                || value.component_state == "ready" && value.component_fingerprint.is_none()
+                || value.component_imported && value.component_state != "ready"
+            {
+                return Err(TerminalResultError::Invalid);
+            }
+            Ok(ValidatedWorkerResult::StorageValidation(value))
+        }
+    }
+}
+
+fn validate_task_result(
+    result: TaskTerminalResult,
+) -> Result<TaskTerminalResult, TerminalResultError> {
+    let error_is_coherent = match result.status {
+        TaskTerminalStatus::Completed => result.error.is_none(),
+        TaskTerminalStatus::PartialCompleted | TaskTerminalStatus::Failed => result.error.is_some(),
+    };
+    let artifacts_are_known = result
+        .artifacts
+        .iter()
+        .all(|(key, path)| TASK_ARTIFACT_KEYS.contains(&key.as_str())
+            && task_manifest::validate_artifact_relative_path(path, key).is_ok());
+    let source_is_safe = match &result.source {
+        Some(TaskResultSource::WebPage { url, title, extracted_at }) => {
+            let metadata = task_manifest::WebPageSource { title: title.clone(), extracted_at: extracted_at.clone() };
+            metadata.is_safe() && task_manifest::canonical_web_url(url).ok().as_deref() == Some(url.as_str())
+                && result.transcript.is_none() && result.note_title.is_none()
+                && !result.markdown.trim().is_empty() && result.markdown.len() <= 4 * 1024 * 1024
+                && !result.text.trim().is_empty() && result.text.len() <= 2 * 1024 * 1024
+                && result.artifacts.get("article_txt").map(String::as_str) == Some("article/article.txt")
+                && result.artifacts.get("article_md").map(String::as_str) == Some("article/article.md")
+                && !result.artifacts.keys().any(|key| ["audio", "video", "segments", "transcript_txt", "transcript_md"].contains(&key.as_str()))
+                && result.dissection.as_ref().is_none_or(TaskDissection::is_article)
+        }
+        None => result.markdown.is_empty()
+            && !result.artifacts.keys().any(|key| key.starts_with("article_"))
+            && result.dissection.as_ref().is_none_or(|report| !report.is_article()),
+    };
+    let insights_are_safe = result.insights.iter().all(|insight| {
+        insight.id <= MAX_SAFE_INTEGER
+            && insight
+                .source_chunk_id
+                .is_none_or(|source_chunk_id| source_chunk_id <= MAX_SAFE_INTEGER)
+    });
+    let error_is_safe = result
+        .error
+        .as_ref()
+        .is_none_or(|error| is_safe_error_code(&error.code));
+    let dissection_is_safe = result
+        .dissection
+        .as_ref()
+        .is_none_or(validate_task_dissection);
+
+    if error_is_coherent
+        && artifacts_are_known
+        && source_is_safe
+        && insights_are_safe
+        && error_is_safe
+        && dissection_is_safe
+        && result.note_title.as_ref().is_none_or(task_manifest::NoteTitle::is_valid)
+    {
+        Ok(result)
+    } else {
+        Err(TerminalResultError::Invalid)
+    }
+}
+
+#[cfg(test)]
+mod storage_validation_tests {
+    use super::*;
+
+    #[test]
+    fn storage_probe_requires_its_own_closed_result_family() {
+        let result = serde_json::json!({
+            "schema_version": 1, "ready_models": [], "component_state": "missing",
+            "component_fingerprint": null, "component_imported": false,
+        });
+        let bytes = serde_json::to_vec(&result).unwrap();
+        assert!(matches!(parse_terminal_result(WorkerOperation::StorageValidation, &bytes),
+            Ok(ValidatedWorkerResult::StorageValidation(_))));
+        assert!(parse_terminal_result(WorkerOperation::DownloadAsrModel, &bytes).is_err());
+        for (key, value) in [
+            ("extra", serde_json::json!(true)),
+            ("schema_version", serde_json::json!(2)),
+            ("ready_models", serde_json::json!(["other-model"])),
+            ("component_imported", serde_json::json!(true)),
+        ] {
+            let mut changed = result.clone(); changed[key] = value;
+            assert!(parse_terminal_result(WorkerOperation::StorageValidation,
+                &serde_json::to_vec(&changed).unwrap()).is_err());
+        }
+    }
+}
+
+pub(crate) fn validate_task_dissection(dissection: &TaskDissection) -> bool {
+    let valid_source = match dissection.schema_version {
+        1 => dissection.source_transcript_sha256.as_ref().is_some_and(|value| is_sha256(value)) && dissection.source_kind.is_none() && dissection.source_text_sha256.is_none(),
+        2 => dissection.source_transcript_sha256.is_none()
+            && dissection.source_kind == Some(TaskDissectionSourceKind::Article)
+            && dissection.source_text_sha256.as_ref().is_some_and(|value| is_sha256(value)),
+        _ => false,
+    };
+    if !valid_source
+        || dissection
+            .source_language
+            .as_ref()
+            .is_some_and(|language| !is_source_language(language))
+        || dissection.source_chunks.is_empty()
+        || dissection.source_chunks.len() > 16
+        || dissection.segments.is_empty()
+        || dissection.highlights.len() > 8
+        || dissection.strengths.len() > 6
+        || dissection.weaknesses.len() > 6
+        || !(3..=7).contains(&dissection.reusable_template.skeleton.len())
+        || !is_non_blank(&dissection.overall_narrative.structure_type)
+        || !optional_is_non_blank(&dissection.overall_narrative.opening_hook)
+        || !optional_is_non_blank(&dissection.overall_narrative.turning_point)
+        || !optional_is_non_blank(&dissection.overall_narrative.closing_type)
+        || !is_non_blank(&dissection.reusable_template.name)
+        || !all_non_blank(&dissection.reusable_template.skeleton)
+        || !all_non_blank(&dissection.highlights)
+        || !all_non_blank(&dissection.strengths)
+        || !all_non_blank(&dissection.weaknesses)
+        || dissection
+            .audience_fit
+            .iter()
+            .any(|fit| !is_non_blank(&fit.audience) || !is_non_blank(&fit.note))
+    {
+        return false;
+    }
+
+    let mut previous_end = 0;
+    for (index, chunk) in dissection.source_chunks.iter().enumerate() {
+        if chunk.id != (index + 1) as u64
+            || chunk.start_byte != previous_end
+            || chunk.end_byte <= chunk.start_byte
+            || !is_sha256(&chunk.sha256)
+        {
+            return false;
+        }
+        previous_end = chunk.end_byte;
+    }
+
+    for (index, segment) in dissection.segments.iter().enumerate() {
+        if segment.id != (index + 1) as u64
+            || !is_non_blank(&segment.title)
+            || !is_non_blank(&segment.core_claim)
+            || !is_non_blank(&segment.rhythm_note)
+            || !is_non_blank(&segment.reusable_pattern)
+            || !all_non_blank(&segment.supporting_points)
+            || !all_non_blank(&segment.rhetorical_devices)
+            || !all_non_blank(&segment.risk_flags)
+            || segment.source_chunk_ids.is_empty()
+        {
+            return false;
+        }
+        let mut previous_id = 0;
+        for source_id in &segment.source_chunk_ids {
+            if *source_id <= previous_id || *source_id as usize > dissection.source_chunks.len() {
+                return false;
+            }
+            previous_id = *source_id;
+        }
+    }
+    true
+}
+
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .as_bytes()
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
+}
+
+fn is_source_language(value: &str) -> bool {
+    (2..=35).contains(&value.len())
+        && value.split('-').all(|part| {
+            !part.is_empty()
+                && part.len() <= 8
+                && part.bytes().all(|byte| byte.is_ascii_alphanumeric())
+        })
+}
+
+fn is_non_blank(value: &str) -> bool {
+    !value.trim().is_empty()
+}
+
+fn optional_is_non_blank(value: &Option<String>) -> bool {
+    value.as_ref().is_none_or(|text| is_non_blank(text))
+}
+
+fn all_non_blank(values: &[String]) -> bool {
+    values.iter().all(|value| is_non_blank(value))
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum RawSourceIdentityTerminalResult {
+    Completed(RawSourceIdentityCompleted),
+    Failed(RawSourceIdentityFailed),
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawSourceIdentityCompleted {
+    status: String,
+    source_url: String,
+    source_identity: RawSourceIdentity,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawSourceIdentityFailed {
+    status: String,
+    error: RawSourceIdentityFailure,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawSourceIdentityFailure {
+    code: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawSourceIdentity {
+    version: u64,
+    platform: SourcePlatform,
+    stable_id: String,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    effective_part: Option<u64>,
+    canonical_url: String,
+}
+
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum SourcePlatform {
+    Douyin,
+    Xiaohongshu,
+    Bilibili,
+    Youtube,
+}
+
+impl SourcePlatform {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Douyin => "douyin",
+            Self::Xiaohongshu => "xiaohongshu",
+            Self::Bilibili => "bilibili",
+            Self::Youtube => "youtube",
+        }
+    }
+}
+
+fn parse_source_identity_result(
+    line: &str,
+) -> Result<SourceIdentityTerminalResult, TerminalResultError> {
+    let raw: RawSourceIdentityTerminalResult =
+        serde_json::from_str(line).map_err(|_| TerminalResultError::Invalid)?;
+    match raw {
+        RawSourceIdentityTerminalResult::Completed(completed) => {
+            if completed.status != "completed" || completed.source_identity.version != 1 {
+                return Err(TerminalResultError::Invalid);
+            }
+            let identity = task_manifest::SourceIdentity {
+                version: completed.source_identity.version,
+                platform: completed.source_identity.platform.as_str().to_string(),
+                stable_id: completed.source_identity.stable_id,
+                effective_part: completed.source_identity.effective_part,
+                canonical_url: completed.source_identity.canonical_url,
+            };
+            if completed.source_url != identity.canonical_url || !identity.is_safe() {
+                return Err(TerminalResultError::Invalid);
+            }
+            Ok(SourceIdentityTerminalResult::Completed {
+                source_url: completed.source_url,
+                source_identity: identity,
+            })
+        }
+        RawSourceIdentityTerminalResult::Failed(failed) => {
+            if failed.status != "failed" || !is_safe_error_code(&failed.error.code) {
+                return Err(TerminalResultError::Invalid);
+            }
+            Ok(SourceIdentityTerminalResult::Failed {
+                error: SourceIdentityFailure {
+                    code: failed.error.code,
+                },
+            })
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum RawModelDownloadTerminalResult {
+    Completed(RawModelDownloadCompleted),
+    Failed(RawModelDownloadFailed),
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawModelDownloadCompleted {
+    status: String,
+    model: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawModelDownloadFailed {
+    status: String,
+    code: String,
+    message: String,
+}
+
+fn parse_model_download_result(
+    line: &str,
+) -> Result<ModelDownloadTerminalResult, TerminalResultError> {
+    let raw: RawModelDownloadTerminalResult =
+        serde_json::from_str(line).map_err(|_| TerminalResultError::Invalid)?;
+    match raw {
+        RawModelDownloadTerminalResult::Completed(completed) => {
+            if completed.status != "completed" || completed.model != DEFAULT_ASR_MODEL {
+                return Err(TerminalResultError::Invalid);
+            }
+            Ok(ModelDownloadTerminalResult::Completed {
+                model: completed.model,
+            })
+        }
+        RawModelDownloadTerminalResult::Failed(failed) => {
+            if failed.status != "failed"
+                || !is_safe_error_code(&failed.code)
+                || !matches!(
+                    failed.message.as_str(),
+                    MODEL_DOWNLOAD_FAILED_MESSAGE | MODEL_ARCHIVE_INVALID_MESSAGE
+                )
+            {
+                return Err(TerminalResultError::Invalid);
+            }
+            Ok(ModelDownloadTerminalResult::Failed {
+                code: failed.code,
+                message: failed.message,
+            })
+        }
+    }
+}
+
+fn is_safe_error_code(code: &str) -> bool {
+    let bytes = code.as_bytes();
+    (1..=64).contains(&bytes.len())
+        && bytes[0].is_ascii_uppercase()
+        && bytes
+            .iter()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || *byte == b'_')
+}
+
+fn deserialize_present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where D: Deserializer<'de>, T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
+}
+
+fn deserialize_required_nullable<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        parse_terminal_result, ModelDownloadTerminalResult, SourceIdentityTerminalResult,
+        TerminalResultError, ValidatedWorkerResult, TASK_ARTIFACT_KEYS, TASK_INSIGHT_FIELDS,
+        TASK_RESULT_FIELDS, TASK_RESULT_OPTIONAL_FIELDS, TASK_TERMINAL_STATUSES,
+        TERMINAL_OPERATION_FAMILIES,
+    };
+    use crate::task_manifest;
+    use crate::worker_runtime::runner::WorkerOperation;
+    use serde_json::{json, Value};
+    use std::collections::BTreeSet;
+
+    fn valid_web_value() -> Value {
+        let mut value = valid_task_value();
+        value["artifacts"] = json!({"article_txt":"article/article.txt","article_md":"article/article.md"});
+        value["transcript"] = Value::Null;
+        value["source"] = json!({"kind":"web_page", "url":"https://example.com/article?id=12", "title":"网页标题", "extractedAt":"2026-11-01T08:00:00Z"});
+        value["markdown"] = json!("# article\n");
+        value["task_created"] = json!(true);
+        value["summary"] = json!("");
+        value["insights"] = json!([]);
+        value
+    }
+
+    #[test]
+    fn web_results_have_a_closed_source_and_are_rejected_by_media_operations() {
+        let web = valid_web_value();
+        let bytes = serde_json::to_vec(&web).unwrap();
+        assert!(parse_terminal_result(WorkerOperation::ProcessWebPage, &bytes).is_ok());
+        let mut retry = web.clone(); retry["task_created"] = json!(false);
+        assert!(parse_terminal_result(WorkerOperation::RetryInsights, &serde_json::to_vec(&retry).unwrap()).is_ok());
+        for operation in [WorkerOperation::ProcessVideo, WorkerOperation::ProcessLocalMedia] {
+            assert_eq!(parse_terminal_result(operation, &bytes), Err(TerminalResultError::Invalid));
+        }
+        for (key, invalid) in [("kind", json!("url")), ("extra", json!(true)), ("url", json!("https://example.com/?token=secret")), ("extractedAt", json!("2026-02-30T00:00:00Z"))] {
+            let mut changed = web.clone(); changed["source"][key] = invalid;
+            assert!(parse_terminal_result(WorkerOperation::ProcessWebPage, &serde_json::to_vec(&changed).unwrap()).is_err());
+        }
+        for invalid in [
+            { let mut changed = web.clone(); changed["transcript"] = json!({"source":"asr","language":null,"engine":null}); changed },
+            { let mut changed = web.clone(); changed["artifacts"]["article_txt"] = json!("article/elsewhere.txt"); changed },
+            { let mut changed = web.clone(); changed["artifacts"]["audio"] = json!("media/audio.wav"); changed },
+            { let mut changed = web.clone(); changed["dissection"] = valid_dissection_value(); changed },
+        ] {
+            assert!(parse_terminal_result(WorkerOperation::ProcessWebPage, &serde_json::to_vec(&invalid).unwrap()).is_err());
+        }
+        let mut failed_media = valid_task_value();
+        failed_media["status"] = json!("failed");
+        failed_media["error"] = json!({"code":"SAFE_ERROR","stage":"failed","message":"Failed."});
+        assert!(parse_terminal_result(WorkerOperation::ProcessWebPage, &serde_json::to_vec(&failed_media).unwrap()).is_err());
+    }
+
+    #[test]
+    fn article_dissection_protocol_requires_its_exact_versioned_header() {
+        let mut report = valid_dissection_value();
+        let hash = report.as_object_mut().unwrap().remove("sourceTranscriptSha256").unwrap();
+        report["schemaVersion"] = json!(2);
+        report["sourceKind"] = json!("article");
+        report["sourceTextSha256"] = hash;
+        let mut web = valid_web_value(); web["dissection"] = report.clone();
+        web["task_created"] = json!(false);
+        assert!(parse_terminal_result(WorkerOperation::RetryInsights, &serde_json::to_vec(&web).unwrap()).is_ok());
+        for (key, invalid) in [("schemaVersion", json!(1)), ("sourceKind", json!("transcript")), ("sourceTextSha256", Value::Null), ("sourceTranscriptSha256", json!(""))] {
+            let mut changed = web.clone(); changed["dissection"][key] = invalid;
+            assert!(parse_terminal_result(WorkerOperation::RetryInsights, &serde_json::to_vec(&changed).unwrap()).is_err());
+        }
+        let mut media = valid_task_value(); media["dissection"] = report;
+        assert!(parse_terminal_result(WorkerOperation::RetryInsights, &serde_json::to_vec(&media).unwrap()).is_err());
+    }
+
+    #[test]
+    fn webpage_result_must_match_its_saved_authoritative_source() {
+        let root = task_manifest::web_tests::output_root();
+        let dir = task_manifest::web_tests::write_task(&root, "web-result", &task_manifest::web_tests::manifest("web-result"));
+        let task = task_manifest::SupportedTask::open(&root, "web-result").unwrap();
+        let mut value = valid_web_value();
+        value["task_id"] = json!(task.task_id());
+        value["task_dir"] = json!(task.task_dir_frontend_string());
+        value["text"] = json!(task.read_source_text().unwrap().text);
+        value["markdown"] = json!(task.read_article_markdown().unwrap());
+        let result = super::TaskTerminalResult::from_value(value.clone()).unwrap();
+        assert!(result.validate_source_task(&task));
+        let recovered = super::TaskTerminalResult::from_saved_web_task(&task).unwrap();
+        assert_eq!(recovered, result);
+        value["source"]["title"] = json!("Other title");
+        assert!(!super::TaskTerminalResult::from_value(value).unwrap().validate_source_task(&task));
+        std::fs::write(dir.join("article/article.txt"), "Changed article body\n").unwrap();
+        assert!(!result.validate_source_task(&task));
+        let current = super::TaskTerminalResult::from_saved_web_task(&task).unwrap();
+        assert_eq!(current.text, "Changed article body\n");
+        std::fs::remove_file(dir.join("article/article.md")).unwrap();
+        assert!(super::TaskTerminalResult::from_saved_web_task(&task).is_err());
+    }
+
+    #[test]
+    #[ignore = "Runs real Python CLI processes; requires the installed worker Python environment"]
+    fn webpage_python_cli_retries_match_rust_authoritative_source() {
+        let project = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..").canonicalize().unwrap();
+        let python = std::env::var_os("APP_STORAGE_TEST_PYTHON")
+            .map(std::path::PathBuf::from).unwrap_or_else(|| project.join(
+                if cfg!(windows) { ".venv/Scripts/python.exe" } else { ".venv/bin/python" }
+            ));
+        let root = task_manifest::web_tests::output_root();
+        let output = std::process::Command::new(python)
+            .arg(project.join("worker/tests/helpers/web_result_interop.py"))
+            .arg(&root).env("PYTHONPATH", project.join("worker"))
+            .env("PYTHONUTF8", "1").env("PYTHONDONTWRITEBYTECODE", "1")
+            .current_dir(&project).output().unwrap();
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        let lines = output.stdout.split(|byte| *byte == b'\n')
+            .filter(|line| !line.iter().all(u8::is_ascii_whitespace)).collect::<Vec<_>>();
+        assert_eq!(lines.len(), 5);
+        let mut task_id = None;
+        let mut source_before = None;
+        for (index, line) in lines.into_iter().enumerate() {
+            let operation = if index == 0 { WorkerOperation::ProcessWebPage }
+                else { WorkerOperation::RetryInsights };
+            let ValidatedWorkerResult::Task(result) = parse_terminal_result(operation, line).unwrap()
+                else { panic!("Expected real task result"); };
+            if index == 0 {
+                task_id = result.task_id.clone();
+                source_before = result.source.clone();
+            }
+            assert_eq!(result.task_id, task_id);
+            assert_eq!(result.source, source_before);
+            let task = task_manifest::SupportedTask::open(
+                &root.join("outputs"), task_id.as_deref().unwrap(),
+            ).unwrap();
+            assert!(result.validate_source_task(&task), "retry index {index}");
+            assert!(result.text.ends_with("\r\n"));
+            assert_eq!(task.read_source_text().unwrap().raw_bytes, result.text.as_bytes());
+            assert!(result.transcript.is_none() && result.note_title.is_none());
+            if index > 0 {
+                assert_eq!(result.error.as_ref().unwrap().code,
+                    if index == 4 { "DRAFT_SEED_INVALID" } else { "AI_CONFIG_MISSING" });
+            }
+        }
+        let task_id = task_id.unwrap();
+        let detail = crate::history::load_history_detail_from_output_root(
+            &root.join("outputs"), serde_json::from_value(json!({"task_id": task_id})).unwrap(),
+        ).unwrap();
+        assert_eq!(detail.error.as_ref().unwrap().stage, "draft_generating");
+        if let Some(destination) = std::env::var_os("APP_WEB_HISTORY_DETAIL") {
+            let destination = std::path::PathBuf::from(destination);
+            assert!(destination.parent().unwrap().canonicalize().unwrap().starts_with(project.join("build")));
+            std::fs::write(destination, serde_json::to_vec(&detail).unwrap()).unwrap();
+        }
+        assert!(!root.join("runtime").exists());
+    }
+
+    #[test]
+    fn task_operations_accept_only_complete_closed_task_results() {
+        for operation in [
+            WorkerOperation::ProcessVideo,
+            WorkerOperation::ProcessLocalMedia,
+            WorkerOperation::RetryInsights,
+        ] {
+            let stdout = serde_json::to_vec(&valid_task_value()).expect("serialize task fixture");
+            let parsed = parse_terminal_result(operation, &stdout).expect("valid task result");
+
+            assert!(matches!(parsed, ValidatedWorkerResult::Task(_)));
+        }
+
+        let mut safe_unknown_code = valid_task_value();
+        safe_unknown_code["status"] = json!("partial_completed");
+        safe_unknown_code["error"] = json!({
+            "code": "FUTURE_SAFE_CODE_2",
+            "message": "A safe future failure.",
+            "stage": "insights_generating"
+        });
+        assert!(matches!(
+            parse_terminal_result(
+                WorkerOperation::RetryInsights,
+                &serde_json::to_vec(&safe_unknown_code).expect("serialize partial fixture"),
+            ),
+            Ok(ValidatedWorkerResult::Task(_))
+        ));
+
+        let mut dissection = valid_task_value();
+        dissection["dissection"] = valid_dissection_value();
+        assert!(matches!(
+            parse_terminal_result(
+                WorkerOperation::RetryInsights,
+                &serde_json::to_vec(&dissection).expect("serialize dissection fixture"),
+            ),
+            Ok(ValidatedWorkerResult::Task(_))
+        ));
+    }
+
+    #[test]
+    fn task_results_reject_unknown_nested_fields_and_wrong_types() {
+        let invalid_values = [
+            mutate_task(|value| value["extra"] = json!("secret")),
+            mutate_task(|value| value["artifacts"]["unknown"] = json!("secret")),
+            mutate_task(|value| value["transcript"]["extra"] = json!(true)),
+            mutate_task(|value| value["insights"][0]["extra"] = json!(true)),
+            mutate_task(|value| {
+                value["error"] = json!({
+                    "code": "SAFE_CODE",
+                    "message": "safe",
+                    "stage": "video_extracting",
+                    "extra": true
+                })
+            }),
+            mutate_task(|value| value["artifacts"]["audio"] = json!(7)),
+            mutate_task(|value| value["insights"][0]["id"] = json!("1")),
+            mutate_task(|value| value["insights"][0]["id"] = json!(9_007_199_254_740_992_u64)),
+            mutate_task(|value| value["insights"][0]["followUpQuestions"] = json!([1])),
+            mutate_task(|value| value["insights"][0]["sourceChunkId"] = json!(-1)),
+            mutate_task(|value| value["transcript"]["source"] = json!("generated")),
+            mutate_task(|value| value["dissection"] = valid_dissection_value_with_extra()),
+            mutate_task(|value| value["status"] = json!("running")),
+        ];
+
+        for value in invalid_values {
+            assert_eq!(
+                parse_terminal_result(
+                    WorkerOperation::ProcessVideo,
+                    &serde_json::to_vec(&value).expect("serialize invalid task"),
+                ),
+                Err(TerminalResultError::Invalid),
+            );
+        }
+    }
+
+    #[test]
+    fn task_results_reject_unsafe_codes_and_incoherent_status_errors() {
+        let invalid_values = [
+            mutate_task(|value| {
+                value["status"] = json!("failed");
+                value["error"] = json!({
+                    "code": "unsafe.code",
+                    "message": "unsafe",
+                    "stage": "video_extracting"
+                });
+            }),
+            mutate_task(|value| {
+                value["status"] = json!("failed");
+                value["error"] = Value::Null;
+            }),
+            mutate_task(|value| {
+                value["error"] = json!({
+                    "code": "UNEXPECTED_ERROR",
+                    "message": "unexpected",
+                    "stage": "video_extracting"
+                });
+            }),
+            mutate_task(|value| {
+                value["status"] = json!("partial_completed");
+                value["error"] = json!({
+                    "code": "SAFE_CODE",
+                    "message": "safe",
+                    "stage": "cancelling"
+                });
+            }),
+        ];
+
+        for value in invalid_values {
+            assert_eq!(
+                parse_terminal_result(
+                    WorkerOperation::ProcessVideo,
+                    &serde_json::to_vec(&value).expect("serialize incoherent task"),
+                ),
+                Err(TerminalResultError::Invalid),
+            );
+        }
+    }
+
+    #[test]
+    fn stdout_framing_requires_one_nonempty_utf8_json_line() {
+        assert_eq!(
+            parse_terminal_result(WorkerOperation::ProcessVideo, b" \r\n\t"),
+            Err(TerminalResultError::Missing),
+        );
+        assert_eq!(
+            parse_terminal_result(WorkerOperation::ProcessVideo, &[0xff, 0xfe]),
+            Err(TerminalResultError::Invalid),
+        );
+        assert_eq!(
+            parse_terminal_result(WorkerOperation::ProcessVideo, b"not-json"),
+            Err(TerminalResultError::Invalid),
+        );
+        let line = serde_json::to_string(&valid_task_value()).expect("serialize task line");
+        let multiple = format!("{line}\n{line}\n");
+        assert_eq!(
+            parse_terminal_result(WorkerOperation::ProcessVideo, multiple.as_bytes()),
+            Err(TerminalResultError::Invalid),
+        );
+    }
+
+    #[test]
+    fn source_identity_results_are_closed_and_semantically_safe() {
+        let completed = valid_source_identity_value();
+        let parsed = parse_terminal_result(
+            WorkerOperation::ResolveSourceIdentity,
+            &serde_json::to_vec(&completed).expect("serialize source identity"),
+        )
+        .expect("valid source identity result");
+        assert!(matches!(
+            parsed,
+            ValidatedWorkerResult::SourceIdentity(SourceIdentityTerminalResult::Completed { .. })
+        ));
+
+        let failed = json!({
+            "status": "failed",
+            "error": {"code": "SOURCE_IDENTITY_UNAVAILABLE"}
+        });
+        assert!(matches!(
+            parse_terminal_result(
+                WorkerOperation::ResolveSourceIdentity,
+                &serde_json::to_vec(&failed).expect("serialize source failure"),
+            ),
+            Ok(ValidatedWorkerResult::SourceIdentity(
+                SourceIdentityTerminalResult::Failed { .. }
+            ))
+        ));
+
+        let invalid_values = [
+            mutate_source(|value| value["extra"] = json!(true)),
+            mutate_source(|value| value["source_identity"]["extra"] = json!(true)),
+            mutate_source(|value| {
+                value["source_url"] = json!("https://www.youtube.com/watch?v=aaaaaaaaaaa")
+            }),
+            mutate_source(|value| value["source_identity"]["platform"] = json!("unknown")),
+            json!({"status": "failed", "error": {"code": "unsafe.code"}}),
+        ];
+        for value in invalid_values {
+            assert_eq!(
+                parse_terminal_result(
+                    WorkerOperation::ResolveSourceIdentity,
+                    &serde_json::to_vec(&value).expect("serialize invalid source"),
+                ),
+                Err(TerminalResultError::Invalid),
+            );
+        }
+    }
+
+    #[test]
+    fn model_download_results_are_closed_and_use_fixed_messages() {
+        let completed = json!({"status": "completed", "model": "iic/SenseVoiceSmall"});
+        assert!(matches!(
+            parse_terminal_result(
+                WorkerOperation::DownloadAsrModel,
+                &serde_json::to_vec(&completed).expect("serialize model success"),
+            ),
+            Ok(ValidatedWorkerResult::ModelDownload(
+                ModelDownloadTerminalResult::Completed { .. }
+            ))
+        ));
+
+        for message in [
+            "ASR model download failed.",
+            "Downloaded ASR model archive was invalid.",
+        ] {
+            let failed = json!({
+                "status": "failed",
+                "code": "FUTURE_SAFE_MODEL_CODE",
+                "message": message
+            });
+            assert!(matches!(
+                parse_terminal_result(
+                    WorkerOperation::DownloadAsrModel,
+                    &serde_json::to_vec(&failed).expect("serialize model failure"),
+                ),
+                Ok(ValidatedWorkerResult::ModelDownload(
+                    ModelDownloadTerminalResult::Failed { .. }
+                ))
+            ));
+        }
+
+        let invalid_values = [
+            json!({
+                "status": "completed",
+                "model": "iic/SenseVoiceSmall",
+                "model_dir": "C:/review-secret"
+            }),
+            json!({"status": "completed", "model": "other/model"}),
+            json!({
+                "status": "failed",
+                "code": "ASR_MODEL_DOWNLOAD_FAILED",
+                "message": "raw review-secret exception"
+            }),
+            json!({
+                "status": "failed",
+                "code": "unsafe.code",
+                "message": "ASR model download failed."
+            }),
+        ];
+        for value in invalid_values {
+            assert_eq!(
+                parse_terminal_result(
+                    WorkerOperation::DownloadAsrModel,
+                    &serde_json::to_vec(&value).expect("serialize invalid model"),
+                ),
+                Err(TerminalResultError::Invalid),
+            );
+        }
+    }
+
+    #[test]
+    fn operation_mismatch_is_rejected_instead_of_reinterpreted() {
+        let task = serde_json::to_vec(&valid_task_value()).expect("serialize task");
+        let source = serde_json::to_vec(&valid_source_identity_value()).expect("serialize source");
+
+        assert_eq!(
+            parse_terminal_result(WorkerOperation::ResolveSourceIdentity, &task),
+            Err(TerminalResultError::Invalid),
+        );
+        assert_eq!(
+            parse_terminal_result(WorkerOperation::ProcessVideo, &source),
+            Err(TerminalResultError::Invalid),
+        );
+    }
+
+    #[test]
+    fn rust_registry_matches_the_canonical_terminal_contract() {
+        let contract: Value = serde_json::from_str(include_str!(
+            "../../../../contracts/desktop-worker-contract.json"
+        ))
+        .expect("parse desktop worker contract");
+        let terminal = &contract["terminalResults"];
+
+        assert_eq!(terminal["operations"], json!(TERMINAL_OPERATION_FAMILIES));
+        assert_eq!(
+            terminal["schemas"]["task"]["required"],
+            json!(TASK_RESULT_FIELDS)
+        );
+        let contract_task_properties: BTreeSet<&str> = terminal["schemas"]["task"]["properties"]
+            .as_object()
+            .expect("task properties")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let contract_required: BTreeSet<&str> = TASK_RESULT_FIELDS.iter().copied().collect();
+        let contract_optional: BTreeSet<&str> = contract_task_properties
+            .difference(&contract_required)
+            .copied()
+            .collect();
+        assert_eq!(
+            contract_optional,
+            TASK_RESULT_OPTIONAL_FIELDS.iter().copied().collect()
+        );
+        assert_eq!(
+            terminal["schemas"]["task"]["properties"]["status"]["enum"],
+            json!(TASK_TERMINAL_STATUSES)
+        );
+        let contract_artifacts = terminal["schemas"]["task"]["properties"]["artifacts"]
+            ["properties"]
+            .as_object()
+            .expect("artifact properties")
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            contract_artifacts,
+            TASK_ARTIFACT_KEYS.iter().copied().collect::<BTreeSet<_>>()
+        );
+        assert_eq!(TASK_ARTIFACT_KEYS.len(), contract_artifacts.len());
+        let contract_insights = terminal["schemas"]["task"]["properties"]["insights"]["items"]
+            ["properties"]
+            .as_object()
+            .expect("insight properties")
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            contract_insights,
+            TASK_INSIGHT_FIELDS.iter().copied().collect::<BTreeSet<_>>()
+        );
+    }
+
+    fn valid_task_value() -> Value {
+        json!({
+            "status": "completed",
+            "task_id": "safe-task",
+            "task_dir": "C:/safe/tasks/safe-task",
+            "artifacts": {
+                "audio": "media/audio.wav",
+                "transcript_txt": "transcript/transcript.txt"
+            },
+            "text": "transcript",
+            "summary": "summary",
+            "insights": [{
+                "id": 1,
+                "topic": "topic",
+                "matchReason": "match",
+                "followUpQuestions": ["next"],
+                "suitableUse": "notes",
+                "sourceChunkId": 2
+            }],
+            "transcript": {
+                "source": "asr",
+                "language": "zh",
+                "engine": "SenseVoice"
+            },
+            "dissection": null,
+            "error": null
+        })
+    }
+
+    fn valid_dissection_value() -> Value {
+        json!({
+            "schemaVersion": 1,
+            "sourceTranscriptSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sourceLanguage": "zh-CN",
+            "sourceChunks": [{
+                "id": 1,
+                "startByte": 0,
+                "endByte": 6,
+                "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            }],
+            "overallNarrative": {
+                "openingHook": "question",
+                "structureType": "problem-solution",
+                "turningPoint": null,
+                "closingType": "call-to-action"
+            },
+            "segments": [{
+                "id": 1,
+                "title": "Opening",
+                "sourceChunkIds": [1],
+                "coreClaim": "A claim",
+                "supportingPoints": ["Evidence"],
+                "rhetoricalDevices": ["Question"],
+                "rhythmNote": "Fast",
+                "reusablePattern": "Question then answer",
+                "riskFlags": []
+            }],
+            "highlights": ["Source quote"],
+            "reusableTemplate": {
+                "name": "Template",
+                "skeleton": ["One", "Two", "Three"]
+            },
+            "audienceFit": [{
+                "audience": "Beginners",
+                "fit": "high",
+                "note": "Accessible"
+            }],
+            "strengths": ["Clear"],
+            "weaknesses": ["Brief"]
+        })
+    }
+
+    fn valid_dissection_value_with_extra() -> Value {
+        let mut value = valid_dissection_value();
+        value["secret"] = json!("hidden");
+        value
+    }
+
+    fn valid_source_identity_value() -> Value {
+        json!({
+            "status": "completed",
+            "source_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "source_identity": {
+                "version": 1,
+                "platform": "youtube",
+                "stable_id": "dQw4w9WgXcQ",
+                "effective_part": null,
+                "canonical_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+            }
+        })
+    }
+
+    fn mutate_task(mutate: impl FnOnce(&mut Value)) -> Value {
+        let mut value = valid_task_value();
+        mutate(&mut value);
+        value
+    }
+
+    fn task_with_dissection_source_status(status: &str) -> Value {
+        let mut value = valid_task_value();
+        value["dissection"] = valid_dissection_value();
+        value["dissection_source_status"] = json!(status);
+        value
+    }
+
+    #[test]
+    fn task_result_accepts_optional_dissection_source_status() {
+        // Worker stdout omits the field: parses as None (cache path not taken).
+        let stdout = serde_json::to_vec(&valid_task_value()).expect("serialize worker stdout");
+        let parsed = parse_terminal_result(WorkerOperation::ProcessVideo, &stdout)
+            .expect("worker stdout without dissection_source_status is valid");
+        match parsed {
+            ValidatedWorkerResult::Task(result) => {
+                assert_eq!(result.dissection_source_status, None);
+            }
+            other => panic!("expected Task variant, got {:?}", other),
+        }
+
+        // Cache path propagates "stale".
+        let stale = serde_json::to_vec(&task_with_dissection_source_status("stale"))
+            .expect("serialize stale cache result");
+        match parse_terminal_result(WorkerOperation::ProcessVideo, &stale)
+            .expect("stale dissection_source_status is valid")
+        {
+            ValidatedWorkerResult::Task(result) => {
+                assert_eq!(
+                    result.dissection_source_status,
+                    Some(task_manifest::DissectionSourceStatus::Stale)
+                );
+            }
+            other => panic!("expected Task variant, got {:?}", other),
+        }
+
+        // Cache path propagates "current".
+        let current = serde_json::to_vec(&task_with_dissection_source_status("current"))
+            .expect("serialize current cache result");
+        match parse_terminal_result(WorkerOperation::ProcessVideo, &current)
+            .expect("current dissection_source_status is valid")
+        {
+            ValidatedWorkerResult::Task(result) => {
+                assert_eq!(
+                    result.dissection_source_status,
+                    Some(task_manifest::DissectionSourceStatus::Current)
+                );
+            }
+            other => panic!("expected Task variant, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn task_result_rejects_unknown_dissection_source_status() {
+        let invalid = task_with_dissection_source_status("unknown");
+        assert_eq!(
+            parse_terminal_result(
+                WorkerOperation::ProcessVideo,
+                &serde_json::to_vec(&invalid).expect("serialize invalid status"),
+            ),
+            Err(TerminalResultError::Invalid),
+        );
+    }
+
+    fn mutate_source(mutate: impl FnOnce(&mut Value)) -> Value {
+        let mut value = valid_source_identity_value();
+        mutate(&mut value);
+        value
+    }
+}

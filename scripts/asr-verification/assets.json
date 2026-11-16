@@ -1,0 +1,16 @@
+{
+  "engine": {
+    "package": "onnxruntime-node",
+    "version": "1.29.0",
+    "note": "版本变化会改变低置信帧的 argmax 并改变识别文本；升级后必须重新生成 golden 并复核差异。该版本必须与 worker-ts/package.json 一致。"
+  },
+  "deno": {
+    "version": "2.9.1",
+    "permissions": ["--allow-read", "--allow-write", "--allow-ffi"],
+    "note": "安装包锁定的 Deno 版本。门禁默认在 Node 下运行；用 Deno 复跑时须带这三个权限，缺 --allow-ffi 会在加载原生模块时失败。"
+  },
+  "models": {
+    "note": "模型文件与哈希的唯一事实来源是生产代码 worker-ts/src/asr/model-assets.ts，此处不再复制；守卫测试校验它与 worker_core/model_download.py 逐项一致。",
+    "pinnedBy": "worker-ts/src/asr/model-assets.ts"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "asr-spike-ci",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "sherpa-onnx-node macOS platform load verification for the ASR spike",
+  "dependencies": {
+    "sherpa-onnx-node": "2.0.1"
+  }
+}

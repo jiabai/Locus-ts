@@ -1,0 +1,1291 @@
+{
+  "constants": {
+    "share_page_attempts": 3,
+    "retry_delay_range": [
+      3.0,
+      10.0
+    ],
+    "retryable_codes": [
+      "DOUYIN_ROUTER_DATA_MALFORMED",
+      "DOUYIN_ROUTER_DATA_MISSING",
+      "DOUYIN_SHARE_PAGE_UNAVAILABLE"
+    ],
+    "progress_interval_bytes": 8388608,
+    "progress_max_step": 3,
+    "play_qualities": [
+      "1080p",
+      "720p",
+      "540p",
+      "480p",
+      "360p"
+    ],
+    "share_url": "https://www.iesdouyin.com/share/video/7524373044106677544/?app=aweme"
+  },
+  "aweme_ids": [
+    {
+      "input": "https://www.douyin.com/video/7524373044106677544",
+      "result": "7524373044106677544"
+    },
+    {
+      "input": "https://www.douyin.com/video/7524373044106677544?previous_page=app_code_link",
+      "result": "7524373044106677544"
+    },
+    {
+      "input": "https://www.douyin.com/note/7524373044106677544",
+      "result": "7524373044106677544"
+    },
+    {
+      "input": "https://www.douyin.com/share/slides/7524373044106677544/",
+      "result": "7524373044106677544"
+    },
+    {
+      "input": "https://www.iesdouyin.com/share/video/7524373044106677544/?app=aweme",
+      "result": "7524373044106677544"
+    },
+    {
+      "input": "https://www.douyin.com/?modal_id=7524373044106677544",
+      "result": "7524373044106677544"
+    },
+    {
+      "input": "https://www.douyin.com/?aweme_id=7524373044106677544&x=1",
+      "result": "7524373044106677544"
+    },
+    {
+      "input": "分享链接 https://v.douyin.com/iRabcdef/ 复制打开抖音",
+      "result": null
+    },
+    {
+      "input": "https://www.douyin.com/video/12",
+      "result": "12"
+    },
+    {
+      "input": "https://www.douyin.com/user/abc",
+      "result": null
+    },
+    {
+      "input": "https://example.com/video/7524373044106677544",
+      "result": "7524373044106677544"
+    },
+    {
+      "input": "no url at all",
+      "result": null
+    },
+    {
+      "input": "https://www.douyin.com/video/7524373044106677544， 看这个",
+      "result": null
+    }
+  ],
+  "play_urls": [
+    {
+      "uri": "v0300fg10000abcdefghijklmnop",
+      "quality": "1080p",
+      "result": "https://www.iesdouyin.com/aweme/v1/play/?video_id=v0300fg10000abcdefghijklmnop&ratio=1080p&line=0"
+    },
+    {
+      "uri": "a/b+c=d",
+      "quality": "720p",
+      "result": "https://www.iesdouyin.com/aweme/v1/play/?video_id=a%2Fb%2Bc%3Dd&ratio=720p&line=0"
+    },
+    {
+      "uri": "中文 uri",
+      "quality": "540p",
+      "result": "https://www.iesdouyin.com/aweme/v1/play/?video_id=%E4%B8%AD%E6%96%87%20uri&ratio=540p&line=0"
+    },
+    {
+      "uri": "keep-_.~",
+      "quality": "360p",
+      "result": "https://www.iesdouyin.com/aweme/v1/play/?video_id=keep-_.~&ratio=360p&line=0"
+    },
+    {
+      "uri": "bang!star*quote'paren(s)",
+      "quality": "1080p",
+      "result": "https://www.iesdouyin.com/aweme/v1/play/?video_id=bang%21star%2Aquote%27paren%28s%29&ratio=1080p&line=0"
+    }
+  ],
+  "pages": [
+    {
+      "label": "valid share page",
+      "html": "<html><script>window._ROUTER_DATA = {\"loaderData\": {\"video_(id)/page\": {\"videoInfoRes\": {\"item_list\": [{\"aweme_id\": \"7524373044106677544\", \"video\": {\"play_addr\": {\"uri\": \"v0300fg10000abcdefghijklmnop\"}}}]}}}};</script></html>",
+      "result": {
+        "item": {
+          "aweme_id": "7524373044106677544",
+          "video": {
+            "play_addr": {
+              "uri": "v0300fg10000abcdefghijklmnop"
+            }
+          }
+        }
+      }
+    },
+    {
+      "label": "nested videoInfoRes",
+      "html": "<html><script>window._ROUTER_DATA = {\"loaderData\": {\"other\": [{\"x\": {\"videoInfoRes\": {\"item_list\": [{\"aweme_id\": \"1\"}, {\"aweme_id\": \"2\"}]}}}]}};</script></html>",
+      "result": {
+        "item": {
+          "aweme_id": "1"
+        }
+      }
+    },
+    {
+      "label": "degraded page without videoInfoRes",
+      "html": "<html><script>window._ROUTER_DATA = {\"loaderData\": {\"video_(id)/page\": {\"itemId\": \"7524373044106677544\"}}};</script></html>",
+      "result": {
+        "error": {
+          "code": "DOUYIN_ROUTER_DATA_MISSING",
+          "message": "Douyin share page did not include videoInfoRes."
+        }
+      }
+    },
+    {
+      "label": "missing router marker",
+      "html": "<html>nothing here</html>",
+      "result": {
+        "error": {
+          "code": "DOUYIN_ROUTER_DATA_MISSING",
+          "message": "Douyin share page did not include router data."
+        }
+      }
+    },
+    {
+      "label": "marker without assignment",
+      "html": "<script>window._ROUTER_DATA</script>",
+      "result": {
+        "error": {
+          "code": "DOUYIN_ROUTER_DATA_MISSING",
+          "message": "Douyin share page router data was not parseable."
+        }
+      }
+    },
+    {
+      "label": "malformed json",
+      "html": "<script>window._ROUTER_DATA = {oops};</script>",
+      "result": {
+        "error": {
+          "code": "DOUYIN_ROUTER_DATA_MALFORMED",
+          "message": "Douyin share page router data was malformed."
+        }
+      }
+    },
+    {
+      "label": "empty item list",
+      "html": "<html><script>window._ROUTER_DATA = {\"videoInfoRes\": {\"item_list\": []}};</script></html>",
+      "result": {
+        "error": {
+          "code": "DOUYIN_ROUTER_DATA_MISSING",
+          "message": "Douyin share page did not include a playable item."
+        }
+      }
+    },
+    {
+      "label": "non-object first item",
+      "html": "<html><script>window._ROUTER_DATA = {\"videoInfoRes\": {\"item_list\": [\"not-a-dict\"]}};</script></html>",
+      "result": {
+        "error": {
+          "code": "DOUYIN_ROUTER_DATA_MISSING",
+          "message": "Douyin share page did not include a playable item."
+        }
+      }
+    }
+  ],
+  "candidates": [
+    {
+      "label": "declared bit rates",
+      "item": {
+        "aweme_id": "7524373044106677544",
+        "video": {
+          "bit_rate": [
+            {
+              "gear_name": "720p",
+              "data_size": 3000,
+              "play_addr": {
+                "url_list": [
+                  "https://cdn.example/720.mp4"
+                ],
+                "width": 1280,
+                "height": 720
+              }
+            },
+            {
+              "gear_name": "1080p",
+              "data_size": 5000,
+              "play_addr": {
+                "url_list": [
+                  "https://cdn.example/1080.mp4"
+                ],
+                "width": 1920,
+                "height": 1080
+              }
+            },
+            {
+              "gear_name": "540p",
+              "data_size": 3000,
+              "play_addr": {
+                "url_list": [
+                  "https://cdn.example/540.mp4"
+                ],
+                "width": null,
+                "height": null
+              }
+            }
+          ]
+        }
+      },
+      "probe_responses": {},
+      "result": {
+        "candidates": [
+          {
+            "quality": "1080p",
+            "url": "https://cdn.example/1080.mp4",
+            "size_bytes": 5000,
+            "width": 1920,
+            "height": 1080,
+            "headers": {
+              "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1",
+              "Accept": "*/*",
+              "Referer": "https://www.iesdouyin.com/"
+            }
+          },
+          {
+            "quality": "720p",
+            "url": "https://cdn.example/720.mp4",
+            "size_bytes": 3000,
+            "width": 1280,
+            "height": 720,
+            "headers": {
+              "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1",
+              "Accept": "*/*",
+              "Referer": "https://www.iesdouyin.com/"
+            }
+          }
+        ]
+      },
+      "probe_calls": []
+    },
+    {
+      "label": "duplicate sizes keep first ranked",
+      "item": {
+        "aweme_id": "7524373044106677544",
+        "video": {
+          "bit_rate": [
+            {
+              "gear_name": "1080p",
+              "data_size": 5000,
+              "play_addr": {
+                "url_list": [
+                  "https://cdn.example/a.mp4"
+                ],
+                "width": null,
+                "height": null
+              }
+            },
+            {
+              "gear_name": "720p",
+              "data_size": 5000,
+              "play_addr": {
+                "url_list": [
+                  "https://cdn.example/b.mp4"
+                ],
+                "width": null,
+                "height": null
+              }
+            },
+            {
+              "gear_name": "360p",
+              "data_size": 0,
+              "play_addr": {
+                "url_list": [
+                  "https://cdn.example/zero.mp4"
+                ],
+                "width": null,
+                "height": null
+              }
+            }
+          ]
+        }
+      },
+      "probe_responses": {},
+      "result": {
+        "candidates": [
+          {
+            "quality": "1080p",
+            "url": "https://cdn.example/a.mp4",
+            "size_bytes": 5000,
+            "width": null,
+            "height": null,
+            "headers": {
+              "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1",
+              "Accept": "*/*",
+              "Referer": "https://www.iesdouyin.com/"
+            }
+          }
+        ]
+      },
+      "probe_calls": []
+    },
+    {
+      "label": "bit rate without size is skipped",
+      "item": {
+        "aweme_id": "7524373044106677544",
+        "video": {
+          "bit_rate": [
+            {
+              "gear_name": "1080p",
+              "play_addr": {
+                "url": "https://cdn.example/u.mp4"
+              }
+            }
+          ]
+        }
+      },
+      "probe_responses": {},
+      "result": {
+        "candidates": []
+      },
+      "probe_calls": []
+    },
+    {
+      "label": "item without video",
+      "item": {
+        "aweme_id": "7524373044106677544"
+      },
+      "probe_responses": {},
+      "result": {
+        "error": {
+          "code": "DOUYIN_NO_PLAYABLE_STREAM",
+          "message": "Douyin item has no video."
+        }
+      },
+      "probe_calls": []
+    },
+    {
+      "label": "probe play_addr uri",
+      "item": {
+        "aweme_id": "7524373044106677544",
+        "video": {
+          "play_addr": {
+            "uri": "v0300fg10000abcdefghijklmnop"
+          }
+        }
+      },
+      "probe_responses": {
+        "https://www.iesdouyin.com/aweme/v1/play/?video_id=v0300fg10000abcdefghijklmnop&ratio=1080p&line=0": [
+          {
+            "status": 206,
+            "headers": {
+              "Content-Type": "video/mp4",
+              "Content-Range": "bytes 0-1/5000"
+            },
+            "body": "ok",
+            "url": "https://cdn.example/1080.mp4"
+          }
+        ],
+        "https://www.iesdouyin.com/aweme/v1/play/?video_id=v0300fg10000abcdefghijklmnop&ratio=720p&line=0": [
+          {
+            "status": 206,
+            "headers": {
+              "Content-Type": "text/html",
+              "Content-Range": "bytes 0-1/4000"
+            },
+            "body": "ok",
+            "url": "https://cdn.example/720.mp4"
+          }
+        ],
+        "https://www.iesdouyin.com/aweme/v1/play/?video_id=v0300fg10000abcdefghijklmnop&ratio=540p&line=0": [
+          {
+            "status": 200,
+            "headers": {},
+            "body": "",
+            "url": "https://www.iesdouyin.com/aweme/v1/play/?video_id=v0300fg10000abcdefghijklmnop&ratio=540p&line=0"
+          }
+        ],
+        "https://www.iesdouyin.com/aweme/v1/play/?video_id=v0300fg10000abcdefghijklmnop&ratio=480p&line=0": [
+          {
+            "error": {
+              "code": "DOUYIN_SHARE_PAGE_UNAVAILABLE",
+              "message": "boom"
+            }
+          }
+        ],
+        "https://www.iesdouyin.com/aweme/v1/play/?video_id=v0300fg10000abcdefghijklmnop&ratio=360p&line=0": [
+          {
+            "status": 206,
+            "headers": {
+              "Content-Range": "bytes 0-1/2000"
+            },
+            "body": "ok",
+            "url": "https://cdn.example/360.mp4"
+          }
+        ]
+      },
+      "result": {
+        "candidates": [
+          {
+            "quality": "1080p",
+            "url": "https://cdn.example/1080.mp4",
+            "size_bytes": 5000,
+            "width": null,
+            "height": null,
+            "headers": {
+              "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1",
+              "Accept": "*/*",
+              "Referer": "https://www.iesdouyin.com/"
+            }
+          },
+          {
+            "quality": "360p",
+            "url": "https://cdn.example/360.mp4",
+            "size_bytes": 2000,
+            "width": null,
+            "height": null,
+            "headers": {
+              "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1",
+              "Accept": "*/*",
+              "Referer": "https://www.iesdouyin.com/"
+            }
+          }
+        ]
+      },
+      "probe_calls": [
+        "https://www.iesdouyin.com/aweme/v1/play/?video_id=v0300fg10000abcdefghijklmnop&ratio=1080p&line=0",
+        "https://www.iesdouyin.com/aweme/v1/play/?video_id=v0300fg10000abcdefghijklmnop&ratio=720p&line=0",
+        "https://www.iesdouyin.com/aweme/v1/play/?video_id=v0300fg10000abcdefghijklmnop&ratio=540p&line=0",
+        "https://www.iesdouyin.com/aweme/v1/play/?video_id=v0300fg10000abcdefghijklmnop&ratio=480p&line=0",
+        "https://www.iesdouyin.com/aweme/v1/play/?video_id=v0300fg10000abcdefghijklmnop&ratio=360p&line=0"
+      ]
+    }
+  ],
+  "selection": [
+    {
+      "candidates": [
+        {
+          "quality": "720p",
+          "url": "https://cdn.example/720.mp4",
+          "size_bytes": 3000,
+          "width": null,
+          "height": null,
+          "headers": {}
+        },
+        {
+          "quality": "unknown",
+          "url": "https://cdn.example/x.mp4",
+          "size_bytes": 3000,
+          "width": null,
+          "height": null,
+          "headers": {}
+        },
+        {
+          "quality": "1080p",
+          "url": "https://cdn.example/1080.mp4",
+          "size_bytes": 5000,
+          "width": null,
+          "height": null,
+          "headers": {}
+        },
+        {
+          "quality": "360p",
+          "url": "https://cdn.example/zero.mp4",
+          "size_bytes": 0,
+          "width": null,
+          "height": null,
+          "headers": {}
+        },
+        {
+          "quality": "480p",
+          "url": "https://cdn.example/dup.mp4",
+          "size_bytes": 5000,
+          "width": null,
+          "height": null,
+          "headers": {}
+        }
+      ],
+      "result": [
+        {
+          "quality": "1080p",
+          "url": "https://cdn.example/1080.mp4",
+          "size_bytes": 5000,
+          "width": null,
+          "height": null,
+          "headers": {}
+        },
+        {
+          "quality": "720p",
+          "url": "https://cdn.example/720.mp4",
+          "size_bytes": 3000,
+          "width": null,
+          "height": null,
+          "headers": {}
+        }
+      ]
+    }
+  ],
+  "progress_emitter": [
+    {
+      "steps": [
+        [
+          0,
+          100
+        ]
+      ],
+      "events": []
+    },
+    {
+      "steps": [
+        [
+          1,
+          0
+        ],
+        [
+          8388608,
+          0
+        ]
+      ],
+      "events": []
+    },
+    {
+      "steps": [
+        [
+          8388608,
+          33554432
+        ]
+      ],
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 31,
+          "message_code": "douyin.video.saving"
+        }
+      ]
+    },
+    {
+      "steps": [
+        [
+          8388608,
+          16777216
+        ],
+        [
+          16777216,
+          16777216
+        ],
+        [
+          25165824,
+          33554432
+        ],
+        [
+          33554432,
+          33554432
+        ]
+      ],
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 32,
+          "message_code": "douyin.video.saving"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 33,
+          "message_code": "douyin.video.saving"
+        }
+      ]
+    },
+    {
+      "steps": [
+        [
+          4194304,
+          100
+        ],
+        [
+          8388608,
+          100
+        ]
+      ],
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 33,
+          "message_code": "douyin.video.saving"
+        }
+      ]
+    }
+  ],
+  "retry_events": [
+    {
+      "failed_index": 0,
+      "total": 2,
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 30,
+          "message_code": "douyin.stream.retrying",
+          "message_args": {
+            "attempt": 2,
+            "total": 2
+          }
+        }
+      ]
+    },
+    {
+      "failed_index": 0,
+      "total": 1,
+      "events": []
+    },
+    {
+      "failed_index": 1,
+      "total": 3,
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 30,
+          "message_code": "douyin.stream.retrying",
+          "message_args": {
+            "attempt": 3,
+            "total": 3
+          }
+        }
+      ]
+    },
+    {
+      "failed_index": 2,
+      "total": 3,
+      "events": []
+    },
+    {
+      "failed_index": 0,
+      "total": 101,
+      "events": []
+    },
+    {
+      "failed_index": 0,
+      "total": 0,
+      "events": []
+    }
+  ],
+  "ordered_downloads": [
+    {
+      "label": "single candidate succeeds",
+      "candidates": [
+        {
+          "quality": "1080p",
+          "url": "https://cdn.example/1080.mp4",
+          "size_bytes": 6,
+          "width": null,
+          "height": null,
+          "headers": {}
+        }
+      ],
+      "downloads": {
+        "https://cdn.example/1080.mp4": [
+          {
+            "payload": "abcdef"
+          }
+        ]
+      },
+      "outcome": {
+        "path": "7524373044106677544.mp4",
+        "bytes": "abcdef"
+      },
+      "download_calls": [
+        {
+          "url": "https://cdn.example/1080.mp4",
+          "resume_from_bytes": 0
+        }
+      ],
+      "events": []
+    },
+    {
+      "label": "stalled candidate resumes once",
+      "candidates": [
+        {
+          "quality": "1080p",
+          "url": "https://cdn.example/1080.mp4",
+          "size_bytes": 6,
+          "width": null,
+          "height": null,
+          "headers": {}
+        }
+      ],
+      "downloads": {
+        "https://cdn.example/1080.mp4": [
+          {
+            "stalled": "DOWNLOAD_STALLED",
+            "part": "ab"
+          },
+          {
+            "payload": "abcdef"
+          }
+        ]
+      },
+      "outcome": {
+        "path": "7524373044106677544.mp4",
+        "bytes": "abcdef"
+      },
+      "download_calls": [
+        {
+          "url": "https://cdn.example/1080.mp4",
+          "resume_from_bytes": 0
+        },
+        {
+          "url": "https://cdn.example/1080.mp4",
+          "resume_from_bytes": 2
+        }
+      ],
+      "events": []
+    },
+    {
+      "label": "stalled candidate then next stream",
+      "candidates": [
+        {
+          "quality": "1080p",
+          "url": "https://cdn.example/1080.mp4",
+          "size_bytes": 6,
+          "width": null,
+          "height": null,
+          "headers": {}
+        },
+        {
+          "quality": "720p",
+          "url": "https://cdn.example/720.mp4",
+          "size_bytes": 5,
+          "width": null,
+          "height": null,
+          "headers": {}
+        }
+      ],
+      "downloads": {
+        "https://cdn.example/1080.mp4": [
+          {
+            "stalled": "DOWNLOAD_STALLED",
+            "part": "ab"
+          },
+          {
+            "stalled": "DOWNLOAD_STALLED",
+            "part": "abcd"
+          }
+        ],
+        "https://cdn.example/720.mp4": [
+          {
+            "payload": "vwxyz"
+          }
+        ]
+      },
+      "outcome": {
+        "path": "7524373044106677544.mp4",
+        "bytes": "vwxyz"
+      },
+      "download_calls": [
+        {
+          "url": "https://cdn.example/1080.mp4",
+          "resume_from_bytes": 0
+        },
+        {
+          "url": "https://cdn.example/1080.mp4",
+          "resume_from_bytes": 2
+        },
+        {
+          "url": "https://cdn.example/720.mp4",
+          "resume_from_bytes": 0
+        }
+      ],
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 30,
+          "message_code": "douyin.stream.retrying",
+          "message_args": {
+            "attempt": 2,
+            "total": 2
+          }
+        }
+      ]
+    },
+    {
+      "label": "first fails, second succeeds",
+      "candidates": [
+        {
+          "quality": "1080p",
+          "url": "https://cdn.example/1080.mp4",
+          "size_bytes": 6,
+          "width": null,
+          "height": null,
+          "headers": {}
+        },
+        {
+          "quality": "720p",
+          "url": "https://cdn.example/720.mp4",
+          "size_bytes": 5,
+          "width": null,
+          "height": null,
+          "headers": {}
+        }
+      ],
+      "downloads": {
+        "https://cdn.example/1080.mp4": [
+          {
+            "error": "network"
+          }
+        ],
+        "https://cdn.example/720.mp4": [
+          {
+            "payload": "hello"
+          }
+        ]
+      },
+      "outcome": {
+        "path": "7524373044106677544.mp4",
+        "bytes": "hello"
+      },
+      "download_calls": [
+        {
+          "url": "https://cdn.example/1080.mp4",
+          "resume_from_bytes": 0
+        },
+        {
+          "url": "https://cdn.example/720.mp4",
+          "resume_from_bytes": 0
+        }
+      ],
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 30,
+          "message_code": "douyin.stream.retrying",
+          "message_args": {
+            "attempt": 2,
+            "total": 2
+          }
+        }
+      ]
+    },
+    {
+      "label": "all candidates fail",
+      "candidates": [
+        {
+          "quality": "1080p",
+          "url": "https://cdn.example/1080.mp4",
+          "size_bytes": 6,
+          "width": null,
+          "height": null,
+          "headers": {}
+        },
+        {
+          "quality": "720p",
+          "url": "https://cdn.example/720.mp4",
+          "size_bytes": 5,
+          "width": null,
+          "height": null,
+          "headers": {}
+        }
+      ],
+      "downloads": {
+        "https://cdn.example/1080.mp4": [
+          {
+            "error": "network"
+          }
+        ],
+        "https://cdn.example/720.mp4": [
+          {
+            "stalled": "DOWNLOAD_STALLED",
+            "part": "xy"
+          },
+          {
+            "stalled": "DOWNLOAD_INCOMPLETE",
+            "part": "xy"
+          }
+        ]
+      },
+      "outcome": {
+        "error": {
+          "code": "DOUYIN_STREAM_DOWNLOAD_FAILED",
+          "message": "All Douyin fallback streams failed to download."
+        },
+        "bytes": null,
+        "part": null
+      },
+      "download_calls": [
+        {
+          "url": "https://cdn.example/1080.mp4",
+          "resume_from_bytes": 0
+        },
+        {
+          "url": "https://cdn.example/720.mp4",
+          "resume_from_bytes": 0
+        },
+        {
+          "url": "https://cdn.example/720.mp4",
+          "resume_from_bytes": 2
+        }
+      ],
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 30,
+          "message_code": "douyin.stream.retrying",
+          "message_args": {
+            "attempt": 2,
+            "total": 2
+          }
+        }
+      ]
+    }
+  ],
+  "full_downloads": [
+    {
+      "label": "direct url downloads largest stream",
+      "url": "https://www.douyin.com/video/7524373044106677544",
+      "responses": {
+        "https://www.iesdouyin.com/share/video/7524373044106677544/?app=aweme": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><script>window._ROUTER_DATA = {\"videoRes\": {\"videoInfoRes\": {\"item_list\": [{\"aweme_id\": \"7524373044106677544\", \"video\": {\"bit_rate\": [{\"gear_name\": \"1080p\", \"data_size\": 6, \"play_addr\": {\"url_list\": [\"https://cdn.example/1080.mp4\"], \"width\": null, \"height\": null}}, {\"gear_name\": \"720p\", \"data_size\": 5, \"play_addr\": {\"url_list\": [\"https://cdn.example/720.mp4\"], \"width\": null, \"height\": null}}]}}]}}};</script></html>",
+            "url": "share"
+          }
+        ]
+      },
+      "downloads": {
+        "https://cdn.example/1080.mp4": [
+          {
+            "payload": "abcdef"
+          }
+        ]
+      },
+      "outcome": {
+        "path": "7524373044106677544.mp4",
+        "bytes": "abcdef"
+      },
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "douyin.page.resolving"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 26,
+          "message_code": "douyin.stream.probing"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 30,
+          "message_code": "douyin.video.saving"
+        }
+      ],
+      "sleeps": [],
+      "get_calls": [
+        "https://www.iesdouyin.com/share/video/7524373044106677544/?app=aweme"
+      ]
+    },
+    {
+      "label": "degraded page retries then succeeds",
+      "url": "https://www.douyin.com/video/7524373044106677544",
+      "responses": {
+        "https://www.iesdouyin.com/share/video/7524373044106677544/?app=aweme": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><script>window._ROUTER_DATA = {\"loaderData\": {\"video_(id)/page\": {\"itemId\": \"7524373044106677544\"}}};</script></html>",
+            "url": "share"
+          },
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><script>window._ROUTER_DATA = {\"loaderData\": {\"video_(id)/page\": {\"itemId\": \"7524373044106677544\"}}};</script></html>",
+            "url": "share"
+          },
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><script>window._ROUTER_DATA = {\"videoRes\": {\"videoInfoRes\": {\"item_list\": [{\"aweme_id\": \"7524373044106677544\", \"video\": {\"bit_rate\": [{\"gear_name\": \"1080p\", \"data_size\": 6, \"play_addr\": {\"url_list\": [\"https://cdn.example/1080.mp4\"], \"width\": null, \"height\": null}}, {\"gear_name\": \"720p\", \"data_size\": 5, \"play_addr\": {\"url_list\": [\"https://cdn.example/720.mp4\"], \"width\": null, \"height\": null}}]}}]}}};</script></html>",
+            "url": "share"
+          }
+        ]
+      },
+      "downloads": {
+        "https://cdn.example/1080.mp4": [
+          {
+            "payload": "abcdef"
+          }
+        ]
+      },
+      "outcome": {
+        "path": "7524373044106677544.mp4",
+        "bytes": "abcdef"
+      },
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "douyin.page.resolving"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "douyin.page.retrying",
+          "message_args": {
+            "attempt": 2,
+            "total": 3
+          }
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "douyin.page.retrying",
+          "message_args": {
+            "attempt": 3,
+            "total": 3
+          }
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 26,
+          "message_code": "douyin.stream.probing"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 30,
+          "message_code": "douyin.video.saving"
+        }
+      ],
+      "sleeps": [
+        7.88626962285529,
+        6.258746503024479
+      ],
+      "get_calls": [
+        "https://www.iesdouyin.com/share/video/7524373044106677544/?app=aweme",
+        "https://www.iesdouyin.com/share/video/7524373044106677544/?app=aweme",
+        "https://www.iesdouyin.com/share/video/7524373044106677544/?app=aweme"
+      ]
+    },
+    {
+      "label": "degraded page exhausts attempts",
+      "url": "https://www.douyin.com/video/7524373044106677544",
+      "responses": {
+        "https://www.iesdouyin.com/share/video/7524373044106677544/?app=aweme": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><script>window._ROUTER_DATA = {\"loaderData\": {\"video_(id)/page\": {\"itemId\": \"7524373044106677544\"}}};</script></html>",
+            "url": "share"
+          },
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><script>window._ROUTER_DATA = {\"loaderData\": {\"video_(id)/page\": {\"itemId\": \"7524373044106677544\"}}};</script></html>",
+            "url": "share"
+          },
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><script>window._ROUTER_DATA = {\"loaderData\": {\"video_(id)/page\": {\"itemId\": \"7524373044106677544\"}}};</script></html>",
+            "url": "share"
+          }
+        ]
+      },
+      "downloads": {},
+      "outcome": {
+        "error": {
+          "code": "DOUYIN_ROUTER_DATA_MISSING",
+          "message": "Douyin share page did not include videoInfoRes."
+        }
+      },
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "douyin.page.resolving"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "douyin.page.retrying",
+          "message_args": {
+            "attempt": 2,
+            "total": 3
+          }
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "douyin.page.retrying",
+          "message_args": {
+            "attempt": 3,
+            "total": 3
+          }
+        }
+      ],
+      "sleeps": [
+        5.155418186282816,
+        7.094583399700795
+      ],
+      "get_calls": [
+        "https://www.iesdouyin.com/share/video/7524373044106677544/?app=aweme",
+        "https://www.iesdouyin.com/share/video/7524373044106677544/?app=aweme",
+        "https://www.iesdouyin.com/share/video/7524373044106677544/?app=aweme"
+      ]
+    },
+    {
+      "label": "page without playable item fails",
+      "url": "https://www.douyin.com/video/7524373044106677544",
+      "responses": {
+        "https://www.iesdouyin.com/share/video/7524373044106677544/?app=aweme": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><script>window._ROUTER_DATA = {\"x\": {}};</script></html>",
+            "url": "share"
+          },
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><script>window._ROUTER_DATA = {\"x\": {}};</script></html>",
+            "url": "share"
+          },
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><script>window._ROUTER_DATA = {\"x\": {}};</script></html>",
+            "url": "share"
+          }
+        ]
+      },
+      "downloads": {},
+      "outcome": {
+        "error": {
+          "code": "DOUYIN_ROUTER_DATA_MISSING",
+          "message": "Douyin share page did not include videoInfoRes."
+        }
+      },
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "douyin.page.resolving"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "douyin.page.retrying",
+          "message_args": {
+            "attempt": 2,
+            "total": 3
+          }
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "douyin.page.retrying",
+          "message_args": {
+            "attempt": 3,
+            "total": 3
+          }
+        }
+      ],
+      "sleeps": [
+        4.157572936726403,
+        7.295012853962454
+      ],
+      "get_calls": [
+        "https://www.iesdouyin.com/share/video/7524373044106677544/?app=aweme",
+        "https://www.iesdouyin.com/share/video/7524373044106677544/?app=aweme",
+        "https://www.iesdouyin.com/share/video/7524373044106677544/?app=aweme"
+      ]
+    },
+    {
+      "label": "unparseable input has no id",
+      "url": "no link here",
+      "responses": {},
+      "downloads": {},
+      "outcome": {
+        "error": {
+          "code": "DOUYIN_ID_PARSE_FAILED",
+          "message": "Could not extract Douyin video ID from URL."
+        }
+      },
+      "events": [],
+      "sleeps": [],
+      "get_calls": []
+    },
+    {
+      "label": "first stream fails then second wins",
+      "url": "https://www.douyin.com/video/7524373044106677544",
+      "responses": {
+        "https://www.iesdouyin.com/share/video/7524373044106677544/?app=aweme": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><script>window._ROUTER_DATA = {\"videoRes\": {\"videoInfoRes\": {\"item_list\": [{\"aweme_id\": \"7524373044106677544\", \"video\": {\"bit_rate\": [{\"gear_name\": \"1080p\", \"data_size\": 6, \"play_addr\": {\"url_list\": [\"https://cdn.example/1080.mp4\"], \"width\": null, \"height\": null}}, {\"gear_name\": \"720p\", \"data_size\": 5, \"play_addr\": {\"url_list\": [\"https://cdn.example/720.mp4\"], \"width\": null, \"height\": null}}]}}]}}};</script></html>",
+            "url": "share"
+          }
+        ]
+      },
+      "downloads": {
+        "https://cdn.example/1080.mp4": [
+          {
+            "error": "network"
+          }
+        ],
+        "https://cdn.example/720.mp4": [
+          {
+            "payload": "vwxyz"
+          }
+        ]
+      },
+      "outcome": {
+        "path": "7524373044106677544.mp4",
+        "bytes": "vwxyz"
+      },
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "douyin.page.resolving"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 26,
+          "message_code": "douyin.stream.probing"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 30,
+          "message_code": "douyin.video.saving"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 30,
+          "message_code": "douyin.stream.retrying",
+          "message_args": {
+            "attempt": 2,
+            "total": 2
+          }
+        }
+      ],
+      "sleeps": [],
+      "get_calls": [
+        "https://www.iesdouyin.com/share/video/7524373044106677544/?app=aweme"
+      ]
+    }
+  ]
+}

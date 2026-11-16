@@ -1,0 +1,409 @@
+import { describe, expect, test, vi } from "vitest";
+import {
+  ActivationCodeRequestError,
+  beginAuthFlow,
+  completeAuthFlow,
+  getAccountStatus,
+  logoutAccount,
+  requestActivationCode,
+  redeemActivationCode,
+  type AccountCommandRunner,
+} from "./accountClient";
+import { IpcProtocolError } from "./tauriIpcProtocol";
+
+describe("account client", () => {
+  test("maps account status from Tauri", async () => {
+    const calls: Array<{ command: string; args: unknown }> = [];
+    const runner: AccountCommandRunner = async (command, args) => {
+      calls.push({ command, args });
+      return {
+        authenticated: true,
+        email: "user@example.com",
+        entitlement_status: "active",
+        entitlement_expires_at: "2026-07-22T08:00:00.000Z",
+        llm_quota_limit: 20,
+        llm_quota_used: 3,
+        llm_quota_remaining: 17,
+        llm_quota_resets_at: "2026-07-22T08:00:00.000Z",
+        llm_configured: true,
+        last_verified_at: "2026-06-21T08:00:00.000Z",
+        can_process: true,
+        can_generate_ai: true,
+        can_request_activation_code: true,
+        server_error: null,
+      };
+    };
+
+    const status = await getAccountStatus(runner);
+
+    expect(calls).toEqual([{ command: "get_account_status", args: {} }]);
+    expect(status).toEqual({
+      authenticated: true,
+      email: "user@example.com",
+      entitlementStatus: "active",
+      entitlementExpiresAt: "2026-07-22T08:00:00.000Z",
+      llmQuotaLimit: 20,
+      llmQuotaUsed: 3,
+      llmQuotaRemaining: 17,
+      llmQuotaResetsAt: "2026-07-22T08:00:00.000Z",
+      llmConfigured: true,
+      lastVerifiedAt: "2026-06-21T08:00:00.000Z",
+      canProcess: true,
+      canGenerateAi: true,
+      canRequestActivationCode: true,
+      serverError: null,
+    });
+  });
+
+  test("defaults activation-code request capability to false for older account payloads", async () => {
+    const runner: AccountCommandRunner = async () => ({
+      authenticated: true,
+      email: "user@example.com",
+      entitlement_status: "inactive",
+      entitlement_expires_at: null,
+      llm_quota_limit: 20,
+      llm_quota_used: 3,
+      llm_quota_remaining: 17,
+      llm_quota_resets_at: "2026-07-22T08:00:00.000Z",
+      llm_configured: true,
+      last_verified_at: "2026-06-21T08:00:00.000Z",
+      can_process: false,
+      can_generate_ai: false,
+      server_error: null,
+    });
+
+    await expect(getAccountStatus(runner)).resolves.toMatchObject({
+      canRequestActivationCode: false,
+    });
+  });
+
+  test("rejects account status success payloads with extra fields", async () => {
+    const runner: AccountCommandRunner = async () => ({
+      authenticated: true,
+      email: "user@example.com",
+      entitlement_status: "inactive",
+      entitlement_expires_at: null,
+      llm_quota_limit: 20,
+      llm_quota_used: 3,
+      llm_quota_remaining: 17,
+      llm_quota_resets_at: "2026-07-22T08:00:00.000Z",
+      llm_configured: true,
+      last_verified_at: "2026-06-21T08:00:00.000Z",
+      can_process: false,
+      can_generate_ai: false,
+      can_request_activation_code: true,
+      server_error: null,
+      session_token: "secret-session-token",
+    });
+
+    await expect(getAccountStatus(runner)).rejects.toEqual(
+      new IpcProtocolError("ACCOUNT_IPC_RESPONSE_INVALID"),
+    );
+  });
+
+  test("invokes login, callback completion, logout, checkout, and order status commands", async () => {
+    const calls: Array<{ command: string; args: unknown }> = [];
+    const runner: AccountCommandRunner = async (command, args) => {
+      calls.push({ command, args });
+      if (command === "begin_auth_flow") {
+        return { auth_url: "https://app.example/login?state=state-1", state: "state-1" };
+      }
+      if (command === "complete_auth_flow") {
+        return {
+          authenticated: true,
+          email: "user@example.com",
+          can_process: false,
+          can_generate_ai: false,
+        };
+      }
+      if (command === "logout_account") {
+        return null;
+      }
+      return {};
+    };
+
+    await expect(beginAuthFlow(runner)).resolves.toEqual({
+      authUrl: "https://app.example/login?state=state-1",
+      state: "state-1",
+    });
+    await expect(
+      completeAuthFlow("pro.8xf.app://auth/callback?ticket=flt_abc&state=state-1", runner),
+    ).resolves.toEqual({
+      authenticated: true,
+      email: "user@example.com",
+      canProcess: false,
+      canGenerateAi: false,
+    });
+    await expect(logoutAccount(runner)).resolves.toBeUndefined();
+
+    expect(calls).toEqual([
+      { command: "begin_auth_flow", args: {} },
+      {
+        command: "complete_auth_flow",
+        args: { callbackUrl: "pro.8xf.app://auth/callback?ticket=flt_abc&state=state-1" },
+      },
+      { command: "logout_account", args: {} },
+    ]);
+  });
+
+  test("redeems an activation code and maps refreshed account status", async () => {
+    const calls: Array<{ command: string; args: unknown }> = [];
+    const runner: AccountCommandRunner = async (command, args) => {
+      calls.push({ command, args });
+      return {
+        authenticated: true,
+        email: "user@example.com",
+        entitlement_status: "active",
+        entitlement_expires_at: "2026-07-22T08:00:00.000Z",
+        llm_quota_limit: 20,
+        llm_quota_used: 0,
+        llm_quota_remaining: 20,
+        llm_quota_resets_at: "2026-07-22T08:00:00.000Z",
+        llm_configured: true,
+        last_verified_at: "2026-06-21T08:00:00.000Z",
+        can_process: true,
+        can_generate_ai: true,
+        can_request_activation_code: false,
+        server_error: null,
+      };
+    };
+
+    await expect(redeemActivationCode("fq-abcd-efgh-jklm-npqr", runner)).resolves.toEqual({
+      authenticated: true,
+      email: "user@example.com",
+      entitlementStatus: "active",
+      entitlementExpiresAt: "2026-07-22T08:00:00.000Z",
+      llmQuotaLimit: 20,
+      llmQuotaUsed: 0,
+      llmQuotaRemaining: 20,
+      llmQuotaResetsAt: "2026-07-22T08:00:00.000Z",
+      llmConfigured: true,
+      lastVerifiedAt: "2026-06-21T08:00:00.000Z",
+      canProcess: true,
+      canGenerateAi: true,
+      canRequestActivationCode: false,
+      serverError: null,
+    });
+    expect(calls).toEqual([
+      {
+        command: "redeem_activation_code",
+        args: { code: "fq-abcd-efgh-jklm-npqr" },
+      },
+    ]);
+  });
+
+  test("requests activation codes with a whitelisted locale when the payload matches the closed IPC shape", async () => {
+    const calls: Array<{ command: string; args: unknown }> = [];
+    const runner: AccountCommandRunner = async (command, args) => {
+      calls.push({ command, args });
+      return {
+        status: "sent",
+        retry_at: "2026-08-24T12:30:00.000Z",
+        redeem_by: "2026-08-31T00:00:00.000Z",
+      };
+    };
+
+    await expect(requestActivationCode("zh-CN", runner)).resolves.toEqual({
+      status: "sent",
+      retryAt: "2026-08-24T12:30:00.000Z",
+      redeemBy: "2026-08-31T00:00:00.000Z",
+    });
+    expect(calls).toEqual([
+      {
+        command: "request_activation_code",
+        args: { locale: "zh-CN" },
+      },
+    ]);
+  });
+
+  test("rejects activation-code requests with locales outside the client whitelist", async () => {
+    const runner = vi.fn<AccountCommandRunner>();
+
+    await expect(
+      requestActivationCode("ja-JP" as "zh-CN", runner),
+    ).rejects.toThrow("Activation code request locale must be one of zh-CN, zh-TW, en-US.");
+    expect(runner).not.toHaveBeenCalled();
+  });
+
+  test("rejects activation-code success payloads with extra fields and sanitizes sensitive values", async () => {
+    const payloads = [
+      {
+        status: "sent",
+        retry_at: "2026-08-24T12:30:00.000Z",
+        redeem_by: "2026-08-31T00:00:00.000Z",
+        code: "SECRET-CODE",
+      },
+      {
+        status: "sent",
+        retry_at: "2026-08-24T12:30:00.000Z",
+        redeem_by: "2026-08-31T00:00:00.000Z",
+        email: "user@example.com",
+      },
+      {
+        status: "sent",
+        retry_at: "2026-08-24T12:30:00.000Z",
+        redeem_by: "2026-08-31T00:00:00.000Z",
+        extra: { token: "SECRET-TOKEN" },
+      },
+    ];
+
+    for (const payload of payloads) {
+      await expect(
+        requestActivationCode("en-US", async () => payload),
+      ).rejects.toMatchObject({
+        name: "ActivationCodeRequestError",
+        errorCode: "INTERNAL_SERVER_ERROR",
+        retryAt: null,
+        httpStatus: null,
+      });
+
+      try {
+        await requestActivationCode("en-US", async () => payload);
+      } catch (error) {
+        expect(error).toBeInstanceOf(ActivationCodeRequestError);
+        expect(JSON.stringify(error)).not.toContain("SECRET");
+        expect(JSON.stringify(error)).not.toContain("user@example.com");
+      }
+    }
+  });
+
+  test("rejects malformed activation-code success payloads", async () => {
+    const invalidPayloads = [
+      {
+        retry_at: "2026-08-24T12:30:00.000Z",
+        redeem_by: "2026-08-31T00:00:00.000Z",
+      },
+      {
+        status: "queued",
+        retry_at: "2026-08-24T12:30:00.000Z",
+        redeem_by: "2026-08-31T00:00:00.000Z",
+      },
+      {
+        status: "sent",
+        redeem_by: "2026-08-31T00:00:00.000Z",
+      },
+      {
+        status: "sent",
+        retry_at: 123,
+        redeem_by: "2026-08-31T00:00:00.000Z",
+      },
+      {
+        status: "sent",
+        retry_at: "2026-08-24T12:30:00.000Z",
+        redeem_by: null,
+      },
+    ];
+
+    for (const payload of invalidPayloads) {
+      await expect(
+        requestActivationCode("en-US", async () => payload),
+      ).rejects.toMatchObject({
+        name: "ActivationCodeRequestError",
+        errorCode: "INTERNAL_SERVER_ERROR",
+        retryAt: null,
+        httpStatus: null,
+      });
+    }
+  });
+
+  test.each([
+    [{ error_code: "AUTH_REQUIRED", retry_at: "2026-08-24T13:00:00.000Z" }, "AUTH_REQUIRED", "2026-08-24T13:00:00.000Z", null],
+    [{ error_code: "FEATURE_NOT_AVAILABLE" }, "FEATURE_NOT_AVAILABLE", null, null],
+    [{ error_code: "ENTITLEMENT_ACTIVE" }, "ENTITLEMENT_ACTIVE", null, null],
+    [{ error_code: "ACTIVATION_REQUEST_RATE_LIMITED", retry_at: "2026-08-24T14:00:00.000Z", http_status: 429 }, "ACTIVATION_REQUEST_RATE_LIMITED", "2026-08-24T14:00:00.000Z", 429],
+    [{ error_code: "ACTIVATION_EMAIL_UNAVAILABLE", http_status: 503 }, "ACTIVATION_EMAIL_UNAVAILABLE", null, 503],
+    [{ error_code: "SERVER_TEMPORARILY_UNAVAILABLE", retry_at: 123, http_status: 503 }, "SERVER_TEMPORARILY_UNAVAILABLE", null, 503],
+    [{ error_code: "INTERNAL_SERVER_ERROR", message: "SECRET", http_status: 500 }, "INTERNAL_SERVER_ERROR", null, 500],
+  ])(
+    "maps stable activation-code request errors: %j",
+    async (rejection, expectedCode, expectedRetryAt, expectedStatus) => {
+      await expect(
+        requestActivationCode("en-US", async () => Promise.reject(rejection)),
+      ).rejects.toMatchObject({
+        name: "ActivationCodeRequestError",
+        errorCode: expectedCode,
+        retryAt: expectedRetryAt,
+        httpStatus: expectedStatus,
+      });
+
+      await expect(
+        requestActivationCode("en-US", async () => Promise.reject(rejection)),
+      ).rejects.not.toThrow("SECRET");
+    },
+  );
+
+  test.each([
+    [{ error_code: "UNKNOWN_SERVER_CODE", retry_at: "2026-08-24T14:00:00.000Z" }, "INTERNAL_SERVER_ERROR", null, null],
+    [{ error_code: 123, retry_at: "2026-08-24T14:00:00.000Z" }, "INTERNAL_SERVER_ERROR", null, null],
+    [{ message: "token-SECRET", http_status: 503 }, "SERVER_TEMPORARILY_UNAVAILABLE", null, 503],
+    ["raw-secret-error", "INTERNAL_SERVER_ERROR", null, null],
+  ])(
+    "sanitizes malformed or unknown activation-code request errors: %j",
+    async (rejection, expectedCode, expectedRetryAt, expectedStatus) => {
+      await expect(
+        requestActivationCode("zh-TW", async () => Promise.reject(rejection)),
+      ).rejects.toMatchObject({
+        name: "ActivationCodeRequestError",
+        errorCode: expectedCode,
+        retryAt: expectedRetryAt,
+        httpStatus: expectedStatus,
+      });
+
+      try {
+        await requestActivationCode("zh-TW", async () => Promise.reject(rejection));
+      } catch (error) {
+        expect(error).toBeInstanceOf(ActivationCodeRequestError);
+        expect(JSON.stringify(error)).not.toContain("SECRET");
+      }
+    },
+  );
+
+  test("rejects malformed account status before mapping defaults", async () => {
+    const secret = "user@example.com";
+    const runner: AccountCommandRunner = async () => ({
+      authenticated: true,
+      email: secret,
+      entitlement_status: "active",
+      entitlement_expires_at: null,
+      llm_quota_limit: -1,
+      llm_quota_used: 0,
+      llm_quota_remaining: 0,
+      llm_quota_resets_at: null,
+      llm_configured: true,
+      last_verified_at: null,
+      can_process: true,
+      can_generate_ai: true,
+      can_request_activation_code: true,
+      server_error: null,
+    });
+
+    await expect(getAccountStatus(runner)).rejects.toEqual(
+      new IpcProtocolError("ACCOUNT_IPC_RESPONSE_INVALID"),
+    );
+    await expect(getAccountStatus(runner)).rejects.not.toThrow(secret);
+  });
+
+  test("rejects malformed auth-flow responses with one stable account code", async () => {
+    await expect(
+      beginAuthFlow(async () => ({
+        auth_url: "https://app.example/login",
+        state: "state-1",
+        unexpected: true,
+      })),
+    ).rejects.toEqual(new IpcProtocolError("ACCOUNT_IPC_RESPONSE_INVALID"));
+
+    await expect(
+      completeAuthFlow("pro.8xf.app://auth/callback", async () => ({
+        authenticated: true,
+        email: "user@example.com",
+        can_process: true,
+      })),
+    ).rejects.toEqual(new IpcProtocolError("ACCOUNT_IPC_RESPONSE_INVALID"));
+  });
+
+  test("requires the serialized unit result for logout", async () => {
+    await expect(
+      logoutAccount(async () => ({ arbitrary: "value" })),
+    ).rejects.toEqual(new IpcProtocolError("ACCOUNT_IPC_RESPONSE_INVALID"));
+  });
+});

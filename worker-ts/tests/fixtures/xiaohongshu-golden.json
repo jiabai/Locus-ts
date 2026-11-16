@@ -1,0 +1,3155 @@
+{
+  "constants": {
+    "base_url": "https://www.xiaohongshu.com",
+    "note_id": "0123456789abcdef01234567",
+    "note_url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567",
+    "max_redirect_depth": 5,
+    "short_hosts": [
+      "www.xhslink.cn",
+      "www.xhslink.com",
+      "xhslink.cn",
+      "xhslink.com"
+    ],
+    "trailing_url_punctuation": " \t\r\n\"'<>[]{}()，。！？；：、,.;:!?",
+    "max_html_bytes": 10485760,
+    "max_video_bytes": 2147483648,
+    "max_subtitle_bytes": 2097152,
+    "download_chunk_bytes": 262144,
+    "no_progress_timeout_seconds": 120.0,
+    "desktop_user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+    "referer": "https://www.xiaohongshu.com/",
+    "subtitle_content_types": [
+      "application/x-subrip",
+      "application/srt",
+      "text/plain",
+      "text/vtt",
+      "application/octet-stream"
+    ],
+    "subtitle_host_suffixes": [
+      "xhscdn.com",
+      "xiaohongshu.com"
+    ],
+    "preferred_subtitle_groups": [
+      "source",
+      "zh-Hans",
+      "zh-CN",
+      "zh-Hant",
+      "zh",
+      "en-US",
+      "en",
+      "ja",
+      "ko"
+    ],
+    "page_headers": {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+      "Referer": "https://www.xiaohongshu.com/",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+      "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Connection": "keep-alive",
+      "Upgrade-Insecure-Requests": "1",
+      "Sec-Fetch-Dest": "document",
+      "Sec-Fetch-Mode": "navigate",
+      "Sec-Fetch-Site": "none",
+      "Sec-Fetch-User": "?1",
+      "Cache-Control": "max-age=0"
+    },
+    "media_headers": {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+      "Referer": "https://www.xiaohongshu.com/",
+      "Accept": "*/*"
+    }
+  },
+  "source": [
+    {
+      "label": "bare note id",
+      "input": "0123456789abcdef01234567",
+      "result": {
+        "parsed": {
+          "note_id": "0123456789abcdef01234567",
+          "full_url": "",
+          "xsec_token": ""
+        }
+      },
+      "responses": {},
+      "get_calls": []
+    },
+    {
+      "label": "upper case note id",
+      "input": "0123456789ABCDEF01234567",
+      "result": {
+        "parsed": {
+          "note_id": "0123456789abcdef01234567",
+          "full_url": "",
+          "xsec_token": ""
+        }
+      },
+      "responses": {},
+      "get_calls": []
+    },
+    {
+      "label": "explore url",
+      "input": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567",
+      "result": {
+        "parsed": {
+          "note_id": "0123456789abcdef01234567",
+          "full_url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567",
+          "xsec_token": ""
+        }
+      },
+      "responses": {},
+      "get_calls": []
+    },
+    {
+      "label": "explore url with token",
+      "input": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=ABCdef123&xsec_source=pc_share",
+      "result": {
+        "parsed": {
+          "note_id": "0123456789abcdef01234567",
+          "full_url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=ABCdef123&xsec_source=pc_share",
+          "xsec_token": "ABCdef123"
+        }
+      },
+      "responses": {},
+      "get_calls": []
+    },
+    {
+      "label": "discovery item url",
+      "input": "https://www.xiaohongshu.com/discovery/item/0123456789abcdef01234567?xsec_token=t",
+      "result": {
+        "parsed": {
+          "note_id": "0123456789abcdef01234567",
+          "full_url": "https://www.xiaohongshu.com/discovery/item/0123456789abcdef01234567?xsec_token=t",
+          "xsec_token": "t"
+        }
+      },
+      "responses": {},
+      "get_calls": []
+    },
+    {
+      "label": "share text",
+      "input": "67 小红书发布了一篇笔记，快来看吧！ 😆 abc https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=ABCdef123&xsec_source=pc_share",
+      "result": {
+        "parsed": {
+          "note_id": "0123456789abcdef01234567",
+          "full_url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=ABCdef123&xsec_source=pc_share",
+          "xsec_token": "ABCdef123"
+        }
+      },
+      "responses": {},
+      "get_calls": []
+    },
+    {
+      "label": "share text with chinese punctuation",
+      "input": "看这个https://www.xiaohongshu.com/explore/0123456789abcdef01234567，很有意思。",
+      "result": {
+        "error": {
+          "code": "XHS_ID_PARSE_FAILED",
+          "message": "Could not extract Xiaohongshu note ID from URL."
+        }
+      },
+      "responses": {},
+      "get_calls": []
+    },
+    {
+      "label": "html escaped ampersand",
+      "input": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=a&amp;b",
+      "result": {
+        "parsed": {
+          "note_id": "0123456789abcdef01234567",
+          "full_url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=a&b",
+          "xsec_token": "a"
+        }
+      },
+      "responses": {},
+      "get_calls": []
+    },
+    {
+      "label": "short link with location",
+      "input": "https://xhslink.com/aBcDeF",
+      "result": {
+        "parsed": {
+          "note_id": "0123456789abcdef01234567",
+          "full_url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567",
+          "xsec_token": ""
+        }
+      },
+      "responses": {
+        "https://xhslink.com/aBcDeF": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+            },
+            "body": "",
+            "url": "https://xhslink.com/aBcDeF"
+          }
+        ],
+        "http://xhslink.com/httpOnly": [
+          {
+            "error": {
+              "code": "DOWNLOAD_HTTP_STATUS_INVALID",
+              "message": "insecure"
+            }
+          }
+        ],
+        "https://xhslink.com/httpOnly": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=tok123"
+            },
+            "body": "",
+            "url": "https://xhslink.com/httpOnly"
+          }
+        ],
+        "https://xhslink.com/embedded": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><script>window.location.replace(\"https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=emb\")</script></html>",
+            "url": "https://xhslink.com/embedded"
+          }
+        ],
+        "https://xhslink.com/foreign": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://example.com/explore/0123456789abcdef01234567"
+            },
+            "body": "",
+            "url": "https://xhslink.com/foreign"
+          }
+        ],
+        "https://xhslink.com/ftp": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "ftp://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+            },
+            "body": "",
+            "url": "https://xhslink.com/ftp"
+          }
+        ],
+        "https://xhslink.com/noNote": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html>nothing here</html>",
+            "url": "https://xhslink.com/noNote"
+          }
+        ]
+      },
+      "get_calls": [
+        {
+          "url": "https://xhslink.com/aBcDeF",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0"
+          }
+        }
+      ]
+    },
+    {
+      "label": "short link http falls back to https",
+      "input": "http://xhslink.com/httpOnly",
+      "result": {
+        "parsed": {
+          "note_id": "0123456789abcdef01234567",
+          "full_url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=tok123",
+          "xsec_token": "tok123"
+        }
+      },
+      "responses": {
+        "https://xhslink.com/aBcDeF": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+            },
+            "body": "",
+            "url": "https://xhslink.com/aBcDeF"
+          }
+        ],
+        "http://xhslink.com/httpOnly": [
+          {
+            "error": {
+              "code": "DOWNLOAD_HTTP_STATUS_INVALID",
+              "message": "insecure"
+            }
+          }
+        ],
+        "https://xhslink.com/httpOnly": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=tok123"
+            },
+            "body": "",
+            "url": "https://xhslink.com/httpOnly"
+          }
+        ],
+        "https://xhslink.com/embedded": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><script>window.location.replace(\"https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=emb\")</script></html>",
+            "url": "https://xhslink.com/embedded"
+          }
+        ],
+        "https://xhslink.com/foreign": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://example.com/explore/0123456789abcdef01234567"
+            },
+            "body": "",
+            "url": "https://xhslink.com/foreign"
+          }
+        ],
+        "https://xhslink.com/ftp": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "ftp://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+            },
+            "body": "",
+            "url": "https://xhslink.com/ftp"
+          }
+        ],
+        "https://xhslink.com/noNote": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html>nothing here</html>",
+            "url": "https://xhslink.com/noNote"
+          }
+        ]
+      },
+      "get_calls": [
+        {
+          "url": "http://xhslink.com/httpOnly",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0"
+          }
+        },
+        {
+          "url": "https://xhslink.com/httpOnly",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0"
+          }
+        }
+      ]
+    },
+    {
+      "label": "short link with embedded url",
+      "input": "https://xhslink.com/embedded",
+      "result": {
+        "parsed": {
+          "note_id": "0123456789abcdef01234567",
+          "full_url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=emb",
+          "xsec_token": "emb"
+        }
+      },
+      "responses": {
+        "https://xhslink.com/aBcDeF": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+            },
+            "body": "",
+            "url": "https://xhslink.com/aBcDeF"
+          }
+        ],
+        "http://xhslink.com/httpOnly": [
+          {
+            "error": {
+              "code": "DOWNLOAD_HTTP_STATUS_INVALID",
+              "message": "insecure"
+            }
+          }
+        ],
+        "https://xhslink.com/httpOnly": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=tok123"
+            },
+            "body": "",
+            "url": "https://xhslink.com/httpOnly"
+          }
+        ],
+        "https://xhslink.com/embedded": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><script>window.location.replace(\"https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=emb\")</script></html>",
+            "url": "https://xhslink.com/embedded"
+          }
+        ],
+        "https://xhslink.com/foreign": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://example.com/explore/0123456789abcdef01234567"
+            },
+            "body": "",
+            "url": "https://xhslink.com/foreign"
+          }
+        ],
+        "https://xhslink.com/ftp": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "ftp://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+            },
+            "body": "",
+            "url": "https://xhslink.com/ftp"
+          }
+        ],
+        "https://xhslink.com/noNote": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html>nothing here</html>",
+            "url": "https://xhslink.com/noNote"
+          }
+        ]
+      },
+      "get_calls": [
+        {
+          "url": "https://xhslink.com/embedded",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0"
+          }
+        }
+      ]
+    },
+    {
+      "label": "short link to foreign host",
+      "input": "https://xhslink.com/foreign",
+      "result": {
+        "error": {
+          "code": "XHS_URL_INVALID",
+          "message": "Unsupported Xiaohongshu host."
+        }
+      },
+      "responses": {
+        "https://xhslink.com/aBcDeF": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+            },
+            "body": "",
+            "url": "https://xhslink.com/aBcDeF"
+          }
+        ],
+        "http://xhslink.com/httpOnly": [
+          {
+            "error": {
+              "code": "DOWNLOAD_HTTP_STATUS_INVALID",
+              "message": "insecure"
+            }
+          }
+        ],
+        "https://xhslink.com/httpOnly": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=tok123"
+            },
+            "body": "",
+            "url": "https://xhslink.com/httpOnly"
+          }
+        ],
+        "https://xhslink.com/embedded": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><script>window.location.replace(\"https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=emb\")</script></html>",
+            "url": "https://xhslink.com/embedded"
+          }
+        ],
+        "https://xhslink.com/foreign": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://example.com/explore/0123456789abcdef01234567"
+            },
+            "body": "",
+            "url": "https://xhslink.com/foreign"
+          }
+        ],
+        "https://xhslink.com/ftp": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "ftp://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+            },
+            "body": "",
+            "url": "https://xhslink.com/ftp"
+          }
+        ],
+        "https://xhslink.com/noNote": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html>nothing here</html>",
+            "url": "https://xhslink.com/noNote"
+          }
+        ]
+      },
+      "get_calls": [
+        {
+          "url": "https://xhslink.com/foreign",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0"
+          }
+        }
+      ]
+    },
+    {
+      "label": "short link to ftp scheme",
+      "input": "https://xhslink.com/ftp",
+      "result": {
+        "error": {
+          "code": "XHS_URL_INVALID",
+          "message": "Xiaohongshu URL must use http or https."
+        }
+      },
+      "responses": {
+        "https://xhslink.com/aBcDeF": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+            },
+            "body": "",
+            "url": "https://xhslink.com/aBcDeF"
+          }
+        ],
+        "http://xhslink.com/httpOnly": [
+          {
+            "error": {
+              "code": "DOWNLOAD_HTTP_STATUS_INVALID",
+              "message": "insecure"
+            }
+          }
+        ],
+        "https://xhslink.com/httpOnly": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=tok123"
+            },
+            "body": "",
+            "url": "https://xhslink.com/httpOnly"
+          }
+        ],
+        "https://xhslink.com/embedded": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><script>window.location.replace(\"https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=emb\")</script></html>",
+            "url": "https://xhslink.com/embedded"
+          }
+        ],
+        "https://xhslink.com/foreign": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://example.com/explore/0123456789abcdef01234567"
+            },
+            "body": "",
+            "url": "https://xhslink.com/foreign"
+          }
+        ],
+        "https://xhslink.com/ftp": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "ftp://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+            },
+            "body": "",
+            "url": "https://xhslink.com/ftp"
+          }
+        ],
+        "https://xhslink.com/noNote": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html>nothing here</html>",
+            "url": "https://xhslink.com/noNote"
+          }
+        ]
+      },
+      "get_calls": [
+        {
+          "url": "https://xhslink.com/ftp",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0"
+          }
+        }
+      ]
+    },
+    {
+      "label": "short link without note url",
+      "input": "https://xhslink.com/noNote",
+      "result": {
+        "error": {
+          "code": "XHS_SHORT_LINK_RESOLUTION_FAILED",
+          "message": "Xiaohongshu short link could not be resolved."
+        }
+      },
+      "responses": {
+        "https://xhslink.com/aBcDeF": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+            },
+            "body": "",
+            "url": "https://xhslink.com/aBcDeF"
+          }
+        ],
+        "http://xhslink.com/httpOnly": [
+          {
+            "error": {
+              "code": "DOWNLOAD_HTTP_STATUS_INVALID",
+              "message": "insecure"
+            }
+          }
+        ],
+        "https://xhslink.com/httpOnly": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=tok123"
+            },
+            "body": "",
+            "url": "https://xhslink.com/httpOnly"
+          }
+        ],
+        "https://xhslink.com/embedded": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><script>window.location.replace(\"https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=emb\")</script></html>",
+            "url": "https://xhslink.com/embedded"
+          }
+        ],
+        "https://xhslink.com/foreign": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://example.com/explore/0123456789abcdef01234567"
+            },
+            "body": "",
+            "url": "https://xhslink.com/foreign"
+          }
+        ],
+        "https://xhslink.com/ftp": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "ftp://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+            },
+            "body": "",
+            "url": "https://xhslink.com/ftp"
+          }
+        ],
+        "https://xhslink.com/noNote": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html>nothing here</html>",
+            "url": "https://xhslink.com/noNote"
+          }
+        ]
+      },
+      "get_calls": [
+        {
+          "url": "https://xhslink.com/noNote",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0"
+          }
+        }
+      ]
+    },
+    {
+      "label": "too many redirects",
+      "input": "https://xhslink.com/l0",
+      "result": {
+        "error": {
+          "code": "XHS_SHORT_LINK_RESOLUTION_FAILED",
+          "message": "Xiaohongshu short link redirected too many times."
+        }
+      },
+      "responses": {
+        "https://xhslink.com/l0": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://xhslink.com/l1"
+            },
+            "body": "",
+            "url": "https://xhslink.com/l0"
+          }
+        ],
+        "https://xhslink.com/l1": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://xhslink.com/l2"
+            },
+            "body": "",
+            "url": "https://xhslink.com/l1"
+          }
+        ],
+        "https://xhslink.com/l2": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://xhslink.com/l3"
+            },
+            "body": "",
+            "url": "https://xhslink.com/l2"
+          }
+        ],
+        "https://xhslink.com/l3": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://xhslink.com/l4"
+            },
+            "body": "",
+            "url": "https://xhslink.com/l3"
+          }
+        ],
+        "https://xhslink.com/l4": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://xhslink.com/l5"
+            },
+            "body": "",
+            "url": "https://xhslink.com/l4"
+          }
+        ],
+        "https://xhslink.com/l5": [
+          {
+            "status": 302,
+            "headers": {
+              "Location": "https://xhslink.com/l6"
+            },
+            "body": "",
+            "url": "https://xhslink.com/l5"
+          }
+        ]
+      },
+      "get_calls": [
+        {
+          "url": "https://xhslink.com/l0",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0"
+          }
+        },
+        {
+          "url": "https://xhslink.com/l1",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0"
+          }
+        },
+        {
+          "url": "https://xhslink.com/l2",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0"
+          }
+        },
+        {
+          "url": "https://xhslink.com/l3",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0"
+          }
+        },
+        {
+          "url": "https://xhslink.com/l4",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0"
+          }
+        },
+        {
+          "url": "https://xhslink.com/l5",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0"
+          }
+        }
+      ]
+    },
+    {
+      "label": "non xiaohongshu host",
+      "input": "https://example.com/explore/0123456789abcdef01234567",
+      "result": {
+        "error": {
+          "code": "XHS_ID_PARSE_FAILED",
+          "message": "Could not extract Xiaohongshu note ID from input."
+        }
+      },
+      "responses": {},
+      "get_calls": []
+    },
+    {
+      "label": "ftp scheme",
+      "input": "ftp://www.xiaohongshu.com/explore/0123456789abcdef01234567",
+      "result": {
+        "error": {
+          "code": "XHS_ID_PARSE_FAILED",
+          "message": "Could not extract Xiaohongshu note ID from input."
+        }
+      },
+      "responses": {},
+      "get_calls": []
+    },
+    {
+      "label": "url without note id",
+      "input": "https://www.xiaohongshu.com/user/profile/abc",
+      "result": {
+        "error": {
+          "code": "XHS_ID_PARSE_FAILED",
+          "message": "Could not extract Xiaohongshu note ID from URL."
+        }
+      },
+      "responses": {},
+      "get_calls": []
+    },
+    {
+      "label": "plain text without url",
+      "input": "just some text",
+      "result": {
+        "error": {
+          "code": "XHS_ID_PARSE_FAILED",
+          "message": "Could not extract Xiaohongshu note ID from input."
+        }
+      },
+      "responses": {},
+      "get_calls": []
+    },
+    {
+      "label": "empty input",
+      "input": "",
+      "result": {
+        "error": {
+          "code": "XHS_ID_PARSE_FAILED",
+          "message": "Could not extract Xiaohongshu note ID from input."
+        }
+      },
+      "responses": {},
+      "get_calls": []
+    },
+    {
+      "label": "uppercase host",
+      "input": "https://WWW.XIAOHONGSHU.COM/explore/0123456789abcdef01234567",
+      "result": {
+        "parsed": {
+          "note_id": "0123456789abcdef01234567",
+          "full_url": "https://WWW.XIAOHONGSHU.COM/explore/0123456789abcdef01234567",
+          "xsec_token": ""
+        }
+      },
+      "responses": {},
+      "get_calls": []
+    },
+    {
+      "label": "trailing dot host",
+      "input": "https://www.xiaohongshu.com./explore/0123456789abcdef01234567",
+      "result": {
+        "parsed": {
+          "note_id": "0123456789abcdef01234567",
+          "full_url": "https://www.xiaohongshu.com./explore/0123456789abcdef01234567",
+          "xsec_token": ""
+        }
+      },
+      "responses": {},
+      "get_calls": []
+    }
+  ],
+  "build_urls": [
+    {
+      "label": "plain",
+      "note_id": "0123456789abcdef01234567",
+      "token": "",
+      "base_url": "https://www.xiaohongshu.com",
+      "result": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+    },
+    {
+      "label": "with token",
+      "note_id": "0123456789abcdef01234567",
+      "token": "ABCdef123",
+      "base_url": "https://www.xiaohongshu.com",
+      "result": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=ABCdef123"
+    },
+    {
+      "label": "trailing slash base",
+      "note_id": "0123456789abcdef01234567",
+      "token": " tok ",
+      "base_url": "https://www.xiaohongshu.com/",
+      "result": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567?xsec_token=tok"
+    }
+  ],
+  "page": {
+    "statuses": [
+      {
+        "label": "ok",
+        "status": 200,
+        "body": "<html>hi</html>",
+        "headers": {
+          "Content-Type": "text/html"
+        },
+        "result": {
+          "ok": true
+        }
+      },
+      {
+        "label": "empty body",
+        "status": 200,
+        "body": "",
+        "headers": {
+          "Content-Type": "text/html"
+        },
+        "result": {
+          "error": {
+            "code": "XHS_PAGE_UNAVAILABLE",
+            "message": "Xiaohongshu public note page was unavailable."
+          }
+        }
+      },
+      {
+        "label": "not found",
+        "status": 404,
+        "body": "<html>404</html>",
+        "headers": {
+          "Content-Type": "text/html"
+        },
+        "result": {
+          "error": {
+            "code": "XHS_NOTE_NOT_FOUND",
+            "message": "Xiaohongshu note was not found."
+          }
+        }
+      },
+      {
+        "label": "forbidden",
+        "status": 403,
+        "body": "<html>403</html>",
+        "headers": {
+          "Content-Type": "text/html"
+        },
+        "result": {
+          "error": {
+            "code": "XHS_NOTE_BLOCKED",
+            "message": "Xiaohongshu note requires login or is not public."
+          }
+        }
+      },
+      {
+        "label": "unauthorized",
+        "status": 401,
+        "body": "<html>401</html>",
+        "headers": {
+          "Content-Type": "text/html"
+        },
+        "result": {
+          "error": {
+            "code": "XHS_NOTE_BLOCKED",
+            "message": "Xiaohongshu note requires login or is not public."
+          }
+        }
+      },
+      {
+        "label": "rate limited",
+        "status": 429,
+        "body": "<html>429</html>",
+        "headers": {
+          "Content-Type": "text/html"
+        },
+        "result": {
+          "error": {
+            "code": "XHS_RATE_LIMITED",
+            "message": "Xiaohongshu request was rate limited."
+          }
+        }
+      },
+      {
+        "label": "server error",
+        "status": 500,
+        "body": "<html>500</html>",
+        "headers": {
+          "Content-Type": "text/html"
+        },
+        "result": {
+          "error": {
+            "code": "XHS_PAGE_UNAVAILABLE",
+            "message": "Xiaohongshu public note page was unavailable."
+          }
+        }
+      },
+      {
+        "label": "redirect",
+        "status": 302,
+        "body": "<html>302</html>",
+        "headers": {
+          "Content-Type": "text/html"
+        },
+        "result": {
+          "error": {
+            "code": "XHS_PAGE_UNAVAILABLE",
+            "message": "Xiaohongshu public note page was unavailable."
+          }
+        }
+      }
+    ],
+    "decodes": [
+      {
+        "label": "plain",
+        "body": "<html>è§£ç åå®¹</html>",
+        "headers": {},
+        "result": {
+          "text": "<html>解码内容</html>"
+        }
+      },
+      {
+        "label": "gzip",
+        "body": "\u001f\b\u0000úñùj\u0002ÿ³É(ÉÍ±{±|ñó\u0005OÛZ®Ûi£\u000f\u0016\u0002\u0000²¯¢\"\u0019\u0000\u0000\u0000",
+        "headers": {
+          "Content-Encoding": "gzip"
+        },
+        "result": {
+          "text": "<html>解码内容</html>"
+        }
+      },
+      {
+        "label": "br",
+        "body": "\u000b\f<html>è§£ç åå®¹</html>\u0003",
+        "headers": {
+          "Content-Encoding": "br"
+        },
+        "result": {
+          "text": "<html>解码内容</html>"
+        }
+      },
+      {
+        "label": "deflate",
+        "body": "x³É(ÉÍ±{±|ñó\u0005OÛZ®Ûi£\u000f\u0016\u0002\u0000­E\r\u0004",
+        "headers": {
+          "Content-Encoding": "deflate"
+        },
+        "result": {
+          "text": "<html>解码内容</html>"
+        }
+      },
+      {
+        "label": "raw deflate",
+        "body": "³É(ÉÍ±{±|ñó\u0005OÛZ®Ûi£\u000f\u0016\u0002\u0000",
+        "headers": {
+          "Content-Encoding": "deflate"
+        },
+        "result": {
+          "text": "<html>解码内容</html>"
+        }
+      },
+      {
+        "label": "encoding list",
+        "body": "\u001f\b\u0000úñùj\u0002ÿ³É(ÉÍ±{±|ñó\u0005OÛZ®Ûi£\u000f\u0016\u0002\u0000²¯¢\"\u0019\u0000\u0000\u0000",
+        "headers": {
+          "Content-Encoding": "gzip, br"
+        },
+        "result": {
+          "text": "<html>解码内容</html>"
+        }
+      },
+      {
+        "label": "broken gzip",
+        "body": "not gzip",
+        "headers": {
+          "Content-Encoding": "gzip"
+        },
+        "result": {
+          "error": {
+            "code": "XHS_RESPONSE_DECODE_FAILED",
+            "message": "Xiaohongshu response body could not be decoded."
+          }
+        }
+      },
+      {
+        "label": "unknown encoding",
+        "body": "<html>è§£ç åå®¹</html>",
+        "headers": {
+          "Content-Encoding": "zstd"
+        },
+        "result": {
+          "text": "<html>解码内容</html>"
+        }
+      },
+      {
+        "label": "invalid utf8",
+        "body": "ÿþ<html>",
+        "headers": {},
+        "result": {
+          "text": "��<html>"
+        }
+      }
+    ],
+    "limit": {
+      "within": "xxxxxxxx",
+      "within_body": "xxxxxxxx",
+      "within_max_bytes": 16,
+      "exceeded": {
+        "error": {
+          "code": "XHS_RESPONSE_TOO_LARGE",
+          "message": "Xiaohongshu page response exceeded the safety limit."
+        }
+      },
+      "exceeded_body": "xxxxxxxxxxxxxxxxx",
+      "exceeded_max_bytes": 16
+    },
+    "max_html_bytes": 10485760
+  },
+  "state": {
+    "states": [
+      {
+        "label": "valid",
+        "body": "<html><head><title>小红书</title></head><body><script>window.__INITIAL_STATE__ = {\"note\": {\"noteDetailMap\": {\"0123456789abcdef01234567\": {\"note\": {\"type\": \"video\", \"video\": {\"media\": {\"stream\": [{\"masterUrl\": \"https://sns-video-bd.xhscdn.com/stream/1080.mp4\", \"backupUrls\": [\"https://sns-video-hw.xhscdn.com/stream/1080.mp4\"], \"streamType\": 259, \"qualityType\": \"hd\", \"size\": 5000000, \"width\": 1080, \"height\": 1920, \"videoCodec\": \"h264\", \"videoBitrate\": 2000000, \"weight\": 10, \"defaultStream\": 1}]}}}}}}};</script></body></html>",
+        "note_id": "0123456789abcdef01234567",
+        "result": {
+          "note_keys": [
+            "type",
+            "video"
+          ],
+          "type": "video"
+        }
+      },
+      {
+        "label": "missing marker",
+        "body": "<html><body>nothing</body></html>",
+        "note_id": "0123456789abcdef01234567",
+        "result": {
+          "error": {
+            "code": "XHS_INITIAL_STATE_MISSING",
+            "message": "Xiaohongshu page did not include initial state."
+          }
+        }
+      },
+      {
+        "label": "error code marker",
+        "body": "<html>error_code: -100</html>",
+        "note_id": "0123456789abcdef01234567",
+        "result": {
+          "error": {
+            "code": "XHS_NOTE_BLOCKED",
+            "message": "Xiaohongshu note requires login or is not public."
+          }
+        }
+      },
+      {
+        "label": "blocked text",
+        "body": "<html>当前笔记暂时无法浏览</html>",
+        "note_id": "0123456789abcdef01234567",
+        "result": {
+          "error": {
+            "code": "XHS_NOTE_BLOCKED",
+            "message": "Xiaohongshu note requires login or is not public."
+          }
+        }
+      },
+      {
+        "label": "malformed json",
+        "body": "<html>window.__INITIAL_STATE__ = {oops}</html>",
+        "note_id": "0123456789abcdef01234567",
+        "result": {
+          "error": {
+            "code": "XHS_INITIAL_STATE_MALFORMED",
+            "message": "Xiaohongshu initial state was malformed."
+          }
+        }
+      },
+      {
+        "label": "array state",
+        "body": "<html>window.__INITIAL_STATE__ = []</html>",
+        "note_id": "0123456789abcdef01234567",
+        "result": {
+          "error": {
+            "code": "XHS_INITIAL_STATE_MISSING",
+            "message": "Xiaohongshu initial state was not parseable."
+          }
+        }
+      },
+      {
+        "label": "incomplete object",
+        "body": "<html>window.__INITIAL_STATE__ = {\"note\": </html>",
+        "note_id": "0123456789abcdef01234567",
+        "result": {
+          "error": {
+            "code": "XHS_INITIAL_STATE_MISSING",
+            "message": "Xiaohongshu initial state object was incomplete."
+          }
+        }
+      },
+      {
+        "label": "unknown note id",
+        "body": "<html><head><title>小红书</title></head><body><script>window.__INITIAL_STATE__ = {\"note\": {\"noteDetailMap\": {\"0123456789abcdef01234567\": {\"note\": {\"type\": \"video\", \"video\": {\"media\": {\"stream\": [{\"masterUrl\": \"https://sns-video-bd.xhscdn.com/stream/1080.mp4\", \"backupUrls\": [\"https://sns-video-hw.xhscdn.com/stream/1080.mp4\"], \"streamType\": 259, \"qualityType\": \"hd\", \"size\": 5000000, \"width\": 1080, \"height\": 1920, \"videoCodec\": \"h264\", \"videoBitrate\": 2000000, \"weight\": 10, \"defaultStream\": 1}]}}}}}}};</script></body></html>",
+        "note_id": "fedcba9876543210fedcba98",
+        "result": {
+          "error": {
+            "code": "XHS_NOTE_NOT_FOUND",
+            "message": "Xiaohongshu note was not found."
+          }
+        }
+      }
+    ],
+    "js_to_json": [
+      {
+        "label": "undefined value",
+        "input": "{\"a\": undefined, \"b\": 1}",
+        "result": "{\"a\": null, \"b\": 1}"
+      },
+      {
+        "label": "void expression",
+        "input": "{\"a\": void 0, \"b\": 1}",
+        "result": "{\"a\": null, \"b\": 1}"
+      },
+      {
+        "label": "undefined at end",
+        "input": "{\"a\": undefined}",
+        "result": "{\"a\": null}"
+      },
+      {
+        "label": "trailing comma",
+        "input": "{\"a\": 1, \"b\": [1, 2,], }",
+        "result": "{\"a\": 1, \"b\": [1, 2] }"
+      },
+      {
+        "label": "string keeps text",
+        "input": "{\"a\": \"undefined\", \"b\": \"void 0\"}",
+        "result": "{\"a\": \"undefined\", \"b\": \"void 0\"}"
+      }
+    ],
+    "is_image_only": [
+      {
+        "label": "video note",
+        "note": {
+          "type": "video",
+          "video": {
+            "media": {
+              "stream": [
+                {
+                  "masterUrl": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+                  "backupUrls": [
+                    "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+                  ],
+                  "streamType": 259,
+                  "qualityType": "hd",
+                  "size": 5000000,
+                  "width": 1080,
+                  "height": 1920,
+                  "videoCodec": "h264",
+                  "videoBitrate": 2000000,
+                  "weight": 10,
+                  "defaultStream": 1
+                }
+              ]
+            }
+          }
+        },
+        "result": false
+      },
+      {
+        "label": "image type",
+        "note": {
+          "type": "image",
+          "video": {},
+          "imageList": [
+            {
+              "url": "x"
+            }
+          ]
+        },
+        "result": true
+      },
+      {
+        "label": "image list only",
+        "note": {
+          "type": "video",
+          "video": {},
+          "imageList": []
+        },
+        "result": true
+      },
+      {
+        "label": "album type",
+        "note": {
+          "type": "album",
+          "video": {}
+        },
+        "result": true
+      },
+      {
+        "label": "unknown type",
+        "note": {
+          "type": "",
+          "video": {}
+        },
+        "result": false
+      }
+    ]
+  },
+  "streams": {
+    "candidates": [
+      {
+        "label": "single stream",
+        "note": {
+          "type": "video",
+          "video": {
+            "media": {
+              "stream": [
+                {
+                  "masterUrl": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+                  "backupUrls": [
+                    "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+                  ],
+                  "streamType": 259,
+                  "qualityType": "hd",
+                  "size": 5000000,
+                  "width": 1080,
+                  "height": 1920,
+                  "videoCodec": "h264",
+                  "videoBitrate": 2000000,
+                  "weight": 10,
+                  "defaultStream": 1
+                }
+              ]
+            }
+          }
+        },
+        "result": {
+          "candidates": [
+            {
+              "quality_key": "hd_259",
+              "url": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+              "backup_urls": [
+                "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+              ],
+              "size_bytes": 5000000,
+              "width": 1080,
+              "height": 1920,
+              "video_codec": "h264",
+              "video_bitrate": 2000000,
+              "stream_type": 259,
+              "weight": 10,
+              "default_stream": 1,
+              "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+                "Referer": "https://www.xiaohongshu.com/",
+                "Accept": "*/*"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "label": "mapping form without codec",
+        "note": {
+          "type": "video",
+          "video": {
+            "media": {
+              "stream": {
+                "h265": [
+                  {
+                    "masterUrl": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+                    "backupUrls": [
+                      "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+                    ],
+                    "streamType": 115,
+                    "qualityType": "",
+                    "size": 9,
+                    "width": 1080,
+                    "height": 1920,
+                    "videoCodec": "",
+                    "videoBitrate": 2000000,
+                    "weight": 10,
+                    "defaultStream": 1
+                  }
+                ],
+                "avc": [
+                  {
+                    "masterUrl": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+                    "backupUrls": [
+                      "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+                    ],
+                    "streamType": 259,
+                    "qualityType": "hd",
+                    "size": 4,
+                    "width": 1080,
+                    "height": 1920,
+                    "videoCodec": "",
+                    "videoBitrate": 2000000,
+                    "weight": 10,
+                    "defaultStream": 1
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "result": {
+          "candidates": [
+            {
+              "quality_key": "stream_115",
+              "url": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+              "backup_urls": [
+                "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+              ],
+              "size_bytes": 9,
+              "width": 1080,
+              "height": 1920,
+              "video_codec": "h265",
+              "video_bitrate": 2000000,
+              "stream_type": 115,
+              "weight": 10,
+              "default_stream": 1,
+              "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+                "Referer": "https://www.xiaohongshu.com/",
+                "Accept": "*/*"
+              }
+            },
+            {
+              "quality_key": "hd_259",
+              "url": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+              "backup_urls": [
+                "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+              ],
+              "size_bytes": 4,
+              "width": 1080,
+              "height": 1920,
+              "video_codec": "avc",
+              "video_bitrate": 2000000,
+              "stream_type": 259,
+              "weight": 10,
+              "default_stream": 1,
+              "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+                "Referer": "https://www.xiaohongshu.com/",
+                "Accept": "*/*"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "label": "same quality keeps better",
+        "note": {
+          "type": "video",
+          "video": {
+            "media": {
+              "stream": [
+                {
+                  "masterUrl": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+                  "backupUrls": [
+                    "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+                  ],
+                  "streamType": 259,
+                  "qualityType": "hd",
+                  "size": 1,
+                  "width": 720,
+                  "height": 1280,
+                  "videoCodec": "h264",
+                  "videoBitrate": 1,
+                  "weight": 10,
+                  "defaultStream": 1
+                },
+                {
+                  "masterUrl": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+                  "backupUrls": [
+                    "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+                  ],
+                  "streamType": 259,
+                  "qualityType": "hd",
+                  "size": 9,
+                  "width": 1080,
+                  "height": 1920,
+                  "videoCodec": "h264",
+                  "videoBitrate": 9,
+                  "weight": 20,
+                  "defaultStream": 1
+                }
+              ]
+            }
+          }
+        },
+        "result": {
+          "candidates": [
+            {
+              "quality_key": "hd_259",
+              "url": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+              "backup_urls": [
+                "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+              ],
+              "size_bytes": 9,
+              "width": 1080,
+              "height": 1920,
+              "video_codec": "h264",
+              "video_bitrate": 9,
+              "stream_type": 259,
+              "weight": 20,
+              "default_stream": 1,
+              "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+                "Referer": "https://www.xiaohongshu.com/",
+                "Accept": "*/*"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "label": "stream without url is dropped",
+        "note": {
+          "type": "video",
+          "video": {
+            "media": {
+              "stream": [
+                {
+                  "masterUrl": "   ",
+                  "backupUrls": [],
+                  "streamType": 259,
+                  "qualityType": "hd",
+                  "size": 5000000,
+                  "width": 1080,
+                  "height": 1920,
+                  "videoCodec": "h264",
+                  "videoBitrate": 2000000,
+                  "weight": 10,
+                  "defaultStream": 1
+                },
+                {
+                  "masterUrl": "https://sns-video-bd.xhscdn.com/only.mp4",
+                  "backupUrls": [
+                    "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+                  ],
+                  "streamType": 259,
+                  "qualityType": "hd",
+                  "size": 5000000,
+                  "width": 1080,
+                  "height": 1920,
+                  "videoCodec": "h264",
+                  "videoBitrate": 2000000,
+                  "weight": 10,
+                  "defaultStream": 1
+                }
+              ]
+            }
+          }
+        },
+        "result": {
+          "candidates": [
+            {
+              "quality_key": "hd_259",
+              "url": "https://sns-video-bd.xhscdn.com/only.mp4",
+              "backup_urls": [
+                "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+              ],
+              "size_bytes": 5000000,
+              "width": 1080,
+              "height": 1920,
+              "video_codec": "h264",
+              "video_bitrate": 2000000,
+              "stream_type": 259,
+              "weight": 10,
+              "default_stream": 1,
+              "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+                "Referer": "https://www.xiaohongshu.com/",
+                "Accept": "*/*"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "label": "no video mapping",
+        "note": {
+          "type": "image",
+          "video": {},
+          "imageList": []
+        },
+        "result": {
+          "candidates": []
+        }
+      },
+      {
+        "label": "empty stream list",
+        "note": {
+          "type": "video",
+          "video": {
+            "media": {
+              "stream": []
+            }
+          }
+        },
+        "result": {
+          "candidates": []
+        }
+      },
+      {
+        "label": "stream type without quality name",
+        "note": {
+          "type": "video",
+          "video": {
+            "media": {
+              "stream": [
+                {
+                  "masterUrl": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+                  "backupUrls": [
+                    "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+                  ],
+                  "streamType": 114,
+                  "qualityType": "",
+                  "size": 7,
+                  "width": 1080,
+                  "height": 1920,
+                  "videoCodec": "h264",
+                  "videoBitrate": 2000000,
+                  "weight": 10,
+                  "defaultStream": 1
+                }
+              ]
+            }
+          }
+        },
+        "result": {
+          "candidates": [
+            {
+              "quality_key": "stream_114",
+              "url": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+              "backup_urls": [
+                "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+              ],
+              "size_bytes": 7,
+              "width": 1080,
+              "height": 1920,
+              "video_codec": "h264",
+              "video_bitrate": 2000000,
+              "stream_type": 114,
+              "weight": 10,
+              "default_stream": 1,
+              "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+                "Referer": "https://www.xiaohongshu.com/",
+                "Accept": "*/*"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "label": "numeric like strings",
+        "note": {
+          "type": "video",
+          "video": {
+            "media": {
+              "stream": [
+                {
+                  "masterUrl": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+                  "backupUrls": [
+                    "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+                  ],
+                  "streamType": 259,
+                  "qualityType": "hd",
+                  "size": "123",
+                  "width": "1080",
+                  "height": " 1920 ",
+                  "videoCodec": "h264",
+                  "videoBitrate": 2000000,
+                  "weight": 1.9,
+                  "defaultStream": 1
+                }
+              ]
+            }
+          }
+        },
+        "result": {
+          "candidates": [
+            {
+              "quality_key": "hd_259",
+              "url": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+              "backup_urls": [
+                "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+              ],
+              "size_bytes": 123,
+              "width": 1080,
+              "height": 1920,
+              "video_codec": "h264",
+              "video_bitrate": 2000000,
+              "stream_type": 259,
+              "weight": 1,
+              "default_stream": 1,
+              "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+                "Referer": "https://www.xiaohongshu.com/",
+                "Accept": "*/*"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "collect": [
+      {
+        "label": "dedupe",
+        "primary": "https://a/1.mp4",
+        "backups": [
+          "https://a/1.mp4",
+          " https://b/2.mp4 ",
+          "",
+          "https://b/2.mp4"
+        ],
+        "result": [
+          "https://a/1.mp4",
+          "https://b/2.mp4"
+        ]
+      },
+      {
+        "label": "empty primary",
+        "primary": "",
+        "backups": [
+          "https://b/2.mp4"
+        ],
+        "result": [
+          "https://b/2.mp4"
+        ]
+      },
+      {
+        "label": "none",
+        "primary": "",
+        "backups": [],
+        "result": []
+      }
+    ]
+  },
+  "subtitles": {
+    "allowed_urls": [
+      {
+        "label": "cdn https",
+        "url": "https://sns-subtitle.xhscdn.com/a.srt",
+        "result": true
+      },
+      {
+        "label": "xiaohongshu https",
+        "url": "https://www.xiaohongshu.com/a.srt",
+        "result": true
+      },
+      {
+        "label": "http",
+        "url": "http://sns-subtitle.xhscdn.com/a.srt",
+        "result": false
+      },
+      {
+        "label": "other host",
+        "url": "https://example.com/a.srt",
+        "result": false
+      },
+      {
+        "label": "userinfo",
+        "url": "https://user:pw@sns-subtitle.xhscdn.com/a.srt",
+        "result": false
+      },
+      {
+        "label": "malformed",
+        "url": "https://[::1/a.srt",
+        "result": false
+      },
+      {
+        "label": "relative",
+        "url": "/a.srt",
+        "result": false
+      }
+    ],
+    "languages": [
+      {
+        "input": "zh-Hans",
+        "result": "zh-Hans"
+      },
+      {
+        "input": "zh_CN",
+        "result": "zh-CN"
+      },
+      {
+        "input": "EN-us",
+        "result": "en-US"
+      },
+      {
+        "input": "en",
+        "result": "en"
+      },
+      {
+        "input": "zh-Hant",
+        "result": "zh-Hant"
+      },
+      {
+        "input": "ja",
+        "result": "ja"
+      },
+      {
+        "input": "ko",
+        "result": "ko"
+      },
+      {
+        "input": "x",
+        "result": null
+      },
+      {
+        "input": "toolongcode",
+        "result": null
+      },
+      {
+        "input": "zh-Hans-CN-x",
+        "result": null
+      },
+      {
+        "input": "src",
+        "result": "src"
+      },
+      {
+        "input": "",
+        "result": null
+      },
+      {
+        "input": null,
+        "result": null
+      }
+    ],
+    "selection": [
+      {
+        "label": "no mediaV2",
+        "note": {
+          "type": "video",
+          "video": {
+            "media": {
+              "stream": [
+                {
+                  "masterUrl": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+                  "backupUrls": [
+                    "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+                  ],
+                  "streamType": 259,
+                  "qualityType": "hd",
+                  "size": 5000000,
+                  "width": 1080,
+                  "height": 1920,
+                  "videoCodec": "h264",
+                  "videoBitrate": 2000000,
+                  "weight": 10,
+                  "defaultStream": 1
+                }
+              ]
+            }
+          }
+        },
+        "result": null
+      },
+      {
+        "label": "broken mediaV2",
+        "note": {
+          "type": "video",
+          "video": {
+            "media": {
+              "stream": [
+                {
+                  "masterUrl": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+                  "backupUrls": [
+                    "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+                  ],
+                  "streamType": 259,
+                  "qualityType": "hd",
+                  "size": 5000000,
+                  "width": 1080,
+                  "height": 1920,
+                  "videoCodec": "h264",
+                  "videoBitrate": 2000000,
+                  "weight": 10,
+                  "defaultStream": 1
+                }
+              ]
+            },
+            "mediaV2": "\"not json\""
+          }
+        },
+        "result": null
+      },
+      {
+        "label": "preferred order",
+        "note": {
+          "type": "video",
+          "video": {
+            "media": {
+              "stream": [
+                {
+                  "masterUrl": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+                  "backupUrls": [
+                    "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+                  ],
+                  "streamType": 259,
+                  "qualityType": "hd",
+                  "size": 5000000,
+                  "width": 1080,
+                  "height": 1920,
+                  "videoCodec": "h264",
+                  "videoBitrate": 2000000,
+                  "weight": 10,
+                  "defaultStream": 1
+                }
+              ]
+            },
+            "mediaV2": "{\"video\": {\"subtitles\": {\"zh-Hans\": [{\"url\": \"https://sns-subtitle.xhscdn.com/stream/subtitle/abc\", \"language\": \"zh-Hans\"}], \"source\": [{\"url\": \"https://sns-subtitle.xhscdn.com/stream/subtitle/abc\", \"language\": \"en-US\", \"format\": \"vtt\"}]}}}"
+          }
+        },
+        "result": {
+          "language": "en-US",
+          "url": "https://sns-subtitle.xhscdn.com/stream/subtitle/abc",
+          "suffix": ".vtt"
+        }
+      },
+      {
+        "label": "source group without language",
+        "note": {
+          "type": "video",
+          "video": {
+            "media": {
+              "stream": [
+                {
+                  "masterUrl": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+                  "backupUrls": [
+                    "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+                  ],
+                  "streamType": 259,
+                  "qualityType": "hd",
+                  "size": 5000000,
+                  "width": 1080,
+                  "height": 1920,
+                  "videoCodec": "h264",
+                  "videoBitrate": 2000000,
+                  "weight": 10,
+                  "defaultStream": 1
+                }
+              ]
+            },
+            "mediaV2": "{\"video\": {\"subtitles\": {\"source\": [{\"url\": \"https://sns-subtitle.xhscdn.com/stream/subtitle/abc\"}]}}}"
+          }
+        },
+        "result": null
+      },
+      {
+        "label": "group name as language",
+        "note": {
+          "type": "video",
+          "video": {
+            "media": {
+              "stream": [
+                {
+                  "masterUrl": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+                  "backupUrls": [
+                    "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+                  ],
+                  "streamType": 259,
+                  "qualityType": "hd",
+                  "size": 5000000,
+                  "width": 1080,
+                  "height": 1920,
+                  "videoCodec": "h264",
+                  "videoBitrate": 2000000,
+                  "weight": 10,
+                  "defaultStream": 1
+                }
+              ]
+            },
+            "mediaV2": "{\"video\": {\"subtitles\": {\"ja\": [{\"url\": \"https://sns-subtitle.xhscdn.com/stream/subtitle/abc\"}]}}}"
+          }
+        },
+        "result": {
+          "language": "ja",
+          "url": "https://sns-subtitle.xhscdn.com/stream/subtitle/abc",
+          "suffix": ".srt"
+        }
+      },
+      {
+        "label": "explicit unsupported format",
+        "note": {
+          "type": "video",
+          "video": {
+            "media": {
+              "stream": [
+                {
+                  "masterUrl": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+                  "backupUrls": [
+                    "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+                  ],
+                  "streamType": 259,
+                  "qualityType": "hd",
+                  "size": 5000000,
+                  "width": 1080,
+                  "height": 1920,
+                  "videoCodec": "h264",
+                  "videoBitrate": 2000000,
+                  "weight": 10,
+                  "defaultStream": 1
+                }
+              ]
+            },
+            "mediaV2": "{\"video\": {\"subtitles\": {\"zh\": [{\"url\": \"https://sns-subtitle.xhscdn.com/stream/subtitle/abc\", \"format\": \"ass\"}, {\"url\": \"https://sns-subtitle.xhscdn.com/stream/subtitle/abc\", \"format\": \"srt\"}]}}}"
+          }
+        },
+        "result": {
+          "language": "zh",
+          "url": "https://sns-subtitle.xhscdn.com/stream/subtitle/abc",
+          "suffix": ".srt"
+        }
+      },
+      {
+        "label": "format zero falls back to path",
+        "note": {
+          "type": "video",
+          "video": {
+            "media": {
+              "stream": [
+                {
+                  "masterUrl": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+                  "backupUrls": [
+                    "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+                  ],
+                  "streamType": 259,
+                  "qualityType": "hd",
+                  "size": 5000000,
+                  "width": 1080,
+                  "height": 1920,
+                  "videoCodec": "h264",
+                  "videoBitrate": 2000000,
+                  "weight": 10,
+                  "defaultStream": 1
+                }
+              ]
+            },
+            "mediaV2": "{\"video\": {\"subtitles\": {\"zh\": [{\"url\": \"https://sns-subtitle.xhscdn.com/stream/subtitle/abc\", \"format\": 0}]}}}"
+          }
+        },
+        "result": {
+          "language": "zh",
+          "url": "https://sns-subtitle.xhscdn.com/stream/subtitle/abc",
+          "suffix": ".srt"
+        }
+      },
+      {
+        "label": "path with other extension",
+        "note": {
+          "type": "video",
+          "video": {
+            "media": {
+              "stream": [
+                {
+                  "masterUrl": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+                  "backupUrls": [
+                    "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+                  ],
+                  "streamType": 259,
+                  "qualityType": "hd",
+                  "size": 5000000,
+                  "width": 1080,
+                  "height": 1920,
+                  "videoCodec": "h264",
+                  "videoBitrate": 2000000,
+                  "weight": 10,
+                  "defaultStream": 1
+                }
+              ]
+            },
+            "mediaV2": "{\"video\": {\"subtitles\": {\"zh\": [{\"url\": \"https://sns-subtitle.xhscdn.com/a.json\"}]}}}"
+          }
+        },
+        "result": null
+      },
+      {
+        "label": "disallowed host is skipped",
+        "note": {
+          "type": "video",
+          "video": {
+            "media": {
+              "stream": [
+                {
+                  "masterUrl": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+                  "backupUrls": [
+                    "https://sns-video-hw.xhscdn.com/stream/1080.mp4"
+                  ],
+                  "streamType": 259,
+                  "qualityType": "hd",
+                  "size": 5000000,
+                  "width": 1080,
+                  "height": 1920,
+                  "videoCodec": "h264",
+                  "videoBitrate": 2000000,
+                  "weight": 10,
+                  "defaultStream": 1
+                }
+              ]
+            },
+            "mediaV2": "{\"video\": {\"subtitles\": {\"zh\": [{\"url\": \"https://example.com/a.srt\"}], \"en\": [{\"url\": \"https://sns-subtitle.xhscdn.com/b.srt\"}]}}}"
+          }
+        },
+        "result": {
+          "language": "en",
+          "url": "https://sns-subtitle.xhscdn.com/b.srt",
+          "suffix": ".srt"
+        }
+      }
+    ],
+    "preferred_groups": [
+      "source",
+      "zh-Hans",
+      "zh-CN",
+      "zh-Hant",
+      "zh",
+      "en-US",
+      "en",
+      "ja",
+      "ko"
+    ],
+    "host_suffixes": [
+      "xhscdn.com",
+      "xiaohongshu.com"
+    ]
+  },
+  "full_downloads": [
+    {
+      "label": "happy path",
+      "result": {
+        "video": "0123456789abcdef01234567.mp4",
+        "files": [
+          "0123456789abcdef01234567.mp4",
+          "0123456789abcdef01234567.zh-Hans.srt"
+        ]
+      },
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "xiaohongshu.page.resolving"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 30,
+          "message_code": "xiaohongshu.video.saving"
+        }
+      ],
+      "responses": {
+        "https://www.xiaohongshu.com/explore/0123456789abcdef01234567": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><head><title>å°çº¢ä¹¦</title></head><body><script>window.__INITIAL_STATE__ = {\"note\": {\"noteDetailMap\": {\"0123456789abcdef01234567\": {\"note\": {\"type\": \"video\", \"video\": {\"media\": {\"stream\": [{\"masterUrl\": \"https://sns-video-bd.xhscdn.com/stream/1080.mp4\", \"backupUrls\": [\"https://sns-video-hw.xhscdn.com/stream/1080.mp4\"], \"streamType\": 259, \"qualityType\": \"hd\", \"size\": 5000000, \"width\": 1080, \"height\": 1920, \"videoCodec\": \"h264\", \"videoBitrate\": 2000000, \"weight\": 10, \"defaultStream\": 1}]}, \"mediaV2\": \"{\\\"video\\\": {\\\"subtitles\\\": {\\\"zh-Hans\\\": [{\\\"url\\\": \\\"https://sns-subtitle.xhscdn.com/stream/subtitle/abc\\\", \\\"language\\\": \\\"zh-Hans\\\"}]}}}\"}}}}}};</script></body></html>",
+            "url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+          }
+        ]
+      },
+      "downloads": {
+        "https://sns-video-bd.xhscdn.com/stream/1080.mp4": [
+          {
+            "payload": "fake-video-bytes"
+          }
+        ],
+        "https://sns-subtitle.xhscdn.com/stream/subtitle/abc": [
+          {
+            "payload": "1\n00:00:01,000 --> 00:00:02,000\nhello\n"
+          }
+        ]
+      },
+      "download_calls": [
+        {
+          "url": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+          "destination": "0123456789abcdef01234567.mp4",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "*/*"
+          },
+          "timeout_seconds": 30.0,
+          "max_bytes": 2147483648,
+          "no_progress_timeout_seconds": 120.0,
+          "allowed_content_types": [],
+          "allowed_host_suffixes": []
+        },
+        {
+          "url": "https://sns-subtitle.xhscdn.com/stream/subtitle/abc",
+          "destination": "0123456789abcdef01234567.zh-Hans.srt",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "*/*"
+          },
+          "timeout_seconds": 20.0,
+          "max_bytes": 2097152,
+          "no_progress_timeout_seconds": 30.0,
+          "allowed_content_types": [
+            "application/x-subrip",
+            "application/srt",
+            "text/plain",
+            "text/vtt",
+            "application/octet-stream"
+          ],
+          "allowed_host_suffixes": [
+            "xhscdn.com",
+            "xiaohongshu.com"
+          ]
+        }
+      ]
+    },
+    {
+      "label": "image only",
+      "result": {
+        "error": {
+          "code": "XHS_IMAGE_ONLY",
+          "message": "Xiaohongshu note is image-only and has no playable video."
+        }
+      },
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "xiaohongshu.page.resolving"
+        }
+      ],
+      "responses": {
+        "https://www.xiaohongshu.com/explore/0123456789abcdef01234567": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><head><title>å°çº¢ä¹¦</title></head><body><script>window.__INITIAL_STATE__ = {\"note\": {\"noteDetailMap\": {\"0123456789abcdef01234567\": {\"note\": {\"type\": \"image\", \"video\": {}, \"imageList\": []}}}}};</script></body></html>",
+            "url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+          }
+        ]
+      },
+      "downloads": {},
+      "download_calls": []
+    },
+    {
+      "label": "no playable stream",
+      "result": {
+        "error": {
+          "code": "XHS_NO_PLAYABLE_STREAM",
+          "message": "Xiaohongshu public note returned no playable video stream."
+        }
+      },
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "xiaohongshu.page.resolving"
+        }
+      ],
+      "responses": {
+        "https://www.xiaohongshu.com/explore/0123456789abcdef01234567": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><head><title>å°çº¢ä¹¦</title></head><body><script>window.__INITIAL_STATE__ = {\"note\": {\"noteDetailMap\": {\"0123456789abcdef01234567\": {\"note\": {\"type\": \"video\", \"video\": {}}}}}};</script></body></html>",
+            "url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+          }
+        ]
+      },
+      "downloads": {},
+      "download_calls": []
+    },
+    {
+      "label": "all streams fail",
+      "result": {
+        "error": {
+          "code": "XHS_STREAM_DOWNLOAD_FAILED",
+          "message": "All Xiaohongshu fallback streams failed to download."
+        }
+      },
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "xiaohongshu.page.resolving"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 30,
+          "message_code": "xiaohongshu.video.saving"
+        }
+      ],
+      "responses": {
+        "https://www.xiaohongshu.com/explore/0123456789abcdef01234567": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><head><title>å°çº¢ä¹¦</title></head><body><script>window.__INITIAL_STATE__ = {\"note\": {\"noteDetailMap\": {\"0123456789abcdef01234567\": {\"note\": {\"type\": \"video\", \"video\": {\"media\": {\"stream\": [{\"masterUrl\": \"https://sns-video-bd.xhscdn.com/stream/1080.mp4\", \"backupUrls\": [\"https://sns-video-hw.xhscdn.com/stream/1080.mp4\"], \"streamType\": 259, \"qualityType\": \"hd\", \"size\": 5000000, \"width\": 1080, \"height\": 1920, \"videoCodec\": \"h264\", \"videoBitrate\": 2000000, \"weight\": 10, \"defaultStream\": 1}]}}}}}}};</script></body></html>",
+            "url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+          }
+        ]
+      },
+      "downloads": {
+        "https://sns-video-bd.xhscdn.com/stream/1080.mp4": [
+          {
+            "kind": "safe",
+            "code": "DOWNLOAD_HTTP_STATUS_INVALID",
+            "message": "bad status"
+          }
+        ],
+        "https://sns-video-hw.xhscdn.com/stream/1080.mp4": [
+          {
+            "kind": "safe",
+            "code": "DOWNLOAD_INCOMPLETE",
+            "message": "short"
+          }
+        ]
+      },
+      "download_calls": [
+        {
+          "url": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+          "destination": "0123456789abcdef01234567.mp4",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "*/*"
+          },
+          "timeout_seconds": 30.0,
+          "max_bytes": 2147483648,
+          "no_progress_timeout_seconds": 120.0,
+          "allowed_content_types": [],
+          "allowed_host_suffixes": []
+        },
+        {
+          "url": "https://sns-video-hw.xhscdn.com/stream/1080.mp4",
+          "destination": "0123456789abcdef01234567.mp4",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "*/*"
+          },
+          "timeout_seconds": 30.0,
+          "max_bytes": 2147483648,
+          "no_progress_timeout_seconds": 120.0,
+          "allowed_content_types": [],
+          "allowed_host_suffixes": []
+        }
+      ]
+    },
+    {
+      "label": "size exceeded",
+      "result": {
+        "error": {
+          "code": "XHS_VIDEO_TOO_LARGE",
+          "message": "Xiaohongshu video exceeded the configured size limit."
+        }
+      },
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "xiaohongshu.page.resolving"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 30,
+          "message_code": "xiaohongshu.video.saving"
+        }
+      ],
+      "responses": {
+        "https://www.xiaohongshu.com/explore/0123456789abcdef01234567": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><head><title>å°çº¢ä¹¦</title></head><body><script>window.__INITIAL_STATE__ = {\"note\": {\"noteDetailMap\": {\"0123456789abcdef01234567\": {\"note\": {\"type\": \"video\", \"video\": {\"media\": {\"stream\": [{\"masterUrl\": \"https://sns-video-bd.xhscdn.com/stream/1080.mp4\", \"backupUrls\": [\"https://sns-video-hw.xhscdn.com/stream/1080.mp4\"], \"streamType\": 259, \"qualityType\": \"hd\", \"size\": 5000000, \"width\": 1080, \"height\": 1920, \"videoCodec\": \"h264\", \"videoBitrate\": 2000000, \"weight\": 10, \"defaultStream\": 1}]}}}}}}};</script></body></html>",
+            "url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+          }
+        ]
+      },
+      "downloads": {
+        "https://sns-video-bd.xhscdn.com/stream/1080.mp4": [
+          {
+            "kind": "safe",
+            "code": "DOWNLOAD_SIZE_EXCEEDED",
+            "message": "too big"
+          }
+        ],
+        "https://sns-video-hw.xhscdn.com/stream/1080.mp4": [
+          {
+            "kind": "safe",
+            "code": "DOWNLOAD_SIZE_EXCEEDED",
+            "message": "too big"
+          }
+        ]
+      },
+      "download_calls": [
+        {
+          "url": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+          "destination": "0123456789abcdef01234567.mp4",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "*/*"
+          },
+          "timeout_seconds": 30.0,
+          "max_bytes": 2147483648,
+          "no_progress_timeout_seconds": 120.0,
+          "allowed_content_types": [],
+          "allowed_host_suffixes": []
+        },
+        {
+          "url": "https://sns-video-hw.xhscdn.com/stream/1080.mp4",
+          "destination": "0123456789abcdef01234567.mp4",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "*/*"
+          },
+          "timeout_seconds": 30.0,
+          "max_bytes": 2147483648,
+          "no_progress_timeout_seconds": 120.0,
+          "allowed_content_types": [],
+          "allowed_host_suffixes": []
+        }
+      ]
+    },
+    {
+      "label": "stalled",
+      "result": {
+        "error": {
+          "code": "XHS_DOWNLOAD_STALLED",
+          "message": "Xiaohongshu video download stalled."
+        }
+      },
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "xiaohongshu.page.resolving"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 30,
+          "message_code": "xiaohongshu.video.saving"
+        }
+      ],
+      "responses": {
+        "https://www.xiaohongshu.com/explore/0123456789abcdef01234567": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><head><title>å°çº¢ä¹¦</title></head><body><script>window.__INITIAL_STATE__ = {\"note\": {\"noteDetailMap\": {\"0123456789abcdef01234567\": {\"note\": {\"type\": \"video\", \"video\": {\"media\": {\"stream\": [{\"masterUrl\": \"https://sns-video-bd.xhscdn.com/stream/1080.mp4\", \"backupUrls\": [\"https://sns-video-hw.xhscdn.com/stream/1080.mp4\"], \"streamType\": 259, \"qualityType\": \"hd\", \"size\": 5000000, \"width\": 1080, \"height\": 1920, \"videoCodec\": \"h264\", \"videoBitrate\": 2000000, \"weight\": 10, \"defaultStream\": 1}]}}}}}}};</script></body></html>",
+            "url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+          }
+        ]
+      },
+      "downloads": {
+        "https://sns-video-bd.xhscdn.com/stream/1080.mp4": [
+          {
+            "kind": "safe",
+            "code": "DOWNLOAD_STALLED",
+            "message": "stalled"
+          }
+        ],
+        "https://sns-video-hw.xhscdn.com/stream/1080.mp4": [
+          {
+            "kind": "safe",
+            "code": "DOWNLOAD_STALLED",
+            "message": "stalled"
+          }
+        ]
+      },
+      "download_calls": [
+        {
+          "url": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+          "destination": "0123456789abcdef01234567.mp4",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "*/*"
+          },
+          "timeout_seconds": 30.0,
+          "max_bytes": 2147483648,
+          "no_progress_timeout_seconds": 120.0,
+          "allowed_content_types": [],
+          "allowed_host_suffixes": []
+        },
+        {
+          "url": "https://sns-video-hw.xhscdn.com/stream/1080.mp4",
+          "destination": "0123456789abcdef01234567.mp4",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "*/*"
+          },
+          "timeout_seconds": 30.0,
+          "max_bytes": 2147483648,
+          "no_progress_timeout_seconds": 120.0,
+          "allowed_content_types": [],
+          "allowed_host_suffixes": []
+        }
+      ]
+    },
+    {
+      "label": "second candidate succeeds",
+      "result": {
+        "video": "0123456789abcdef01234567.mp4",
+        "files": [
+          "0123456789abcdef01234567.mp4"
+        ]
+      },
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "xiaohongshu.page.resolving"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 30,
+          "message_code": "xiaohongshu.video.saving"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 30,
+          "message_code": "xiaohongshu.stream.retrying",
+          "message_args": {
+            "attempt": 2,
+            "total": 2
+          }
+        }
+      ],
+      "responses": {
+        "https://www.xiaohongshu.com/explore/0123456789abcdef01234567": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><head><title>å°çº¢ä¹¦</title></head><body><script>window.__INITIAL_STATE__ = {\"note\": {\"noteDetailMap\": {\"0123456789abcdef01234567\": {\"note\": {\"type\": \"video\", \"video\": {\"media\": {\"stream\": [{\"masterUrl\": \"https://sns-video-bd.xhscdn.com/stream/1080.mp4\", \"backupUrls\": [\"https://sns-video-hw.xhscdn.com/stream/1080.mp4\"], \"streamType\": 259, \"qualityType\": \"hd\", \"size\": 16, \"width\": 1080, \"height\": 1920, \"videoCodec\": \"h264\", \"videoBitrate\": 2000000, \"weight\": 10, \"defaultStream\": 1}, {\"masterUrl\": \"https://sns-video-bd.xhscdn.com/stream/720.mp4\", \"backupUrls\": [], \"streamType\": 259, \"qualityType\": \"sd\", \"size\": 16, \"width\": 720, \"height\": 1280, \"videoCodec\": \"h264\", \"videoBitrate\": 2000000, \"weight\": 10, \"defaultStream\": 1}]}}}}}}};</script></body></html>",
+            "url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+          }
+        ]
+      },
+      "downloads": {
+        "https://sns-video-bd.xhscdn.com/stream/1080.mp4": [
+          {
+            "kind": "safe",
+            "code": "DOWNLOAD_HTTP_STATUS_INVALID",
+            "message": "bad status"
+          }
+        ],
+        "https://sns-video-hw.xhscdn.com/stream/1080.mp4": [
+          {
+            "kind": "safe",
+            "code": "DOWNLOAD_HTTP_STATUS_INVALID",
+            "message": "bad status"
+          }
+        ],
+        "https://sns-video-bd.xhscdn.com/stream/720.mp4": [
+          {
+            "payload": "fake-video-bytes"
+          }
+        ]
+      },
+      "download_calls": [
+        {
+          "url": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+          "destination": "0123456789abcdef01234567.mp4",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "*/*"
+          },
+          "timeout_seconds": 30.0,
+          "max_bytes": 2147483648,
+          "no_progress_timeout_seconds": 120.0,
+          "allowed_content_types": [],
+          "allowed_host_suffixes": []
+        },
+        {
+          "url": "https://sns-video-hw.xhscdn.com/stream/1080.mp4",
+          "destination": "0123456789abcdef01234567.mp4",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "*/*"
+          },
+          "timeout_seconds": 30.0,
+          "max_bytes": 2147483648,
+          "no_progress_timeout_seconds": 120.0,
+          "allowed_content_types": [],
+          "allowed_host_suffixes": []
+        },
+        {
+          "url": "https://sns-video-bd.xhscdn.com/stream/720.mp4",
+          "destination": "0123456789abcdef01234567.mp4",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "*/*"
+          },
+          "timeout_seconds": 30.0,
+          "max_bytes": 2147483648,
+          "no_progress_timeout_seconds": 120.0,
+          "allowed_content_types": [],
+          "allowed_host_suffixes": []
+        }
+      ]
+    },
+    {
+      "label": "subtitle download fails silently",
+      "result": {
+        "video": "0123456789abcdef01234567.mp4",
+        "files": [
+          "0123456789abcdef01234567.mp4"
+        ]
+      },
+      "events": [
+        {
+          "stage": "video_extracting",
+          "progress": 22,
+          "message_code": "xiaohongshu.page.resolving"
+        },
+        {
+          "stage": "video_extracting",
+          "progress": 30,
+          "message_code": "xiaohongshu.video.saving"
+        }
+      ],
+      "responses": {
+        "https://www.xiaohongshu.com/explore/0123456789abcdef01234567": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><head><title>å°çº¢ä¹¦</title></head><body><script>window.__INITIAL_STATE__ = {\"note\": {\"noteDetailMap\": {\"0123456789abcdef01234567\": {\"note\": {\"type\": \"video\", \"video\": {\"media\": {\"stream\": [{\"masterUrl\": \"https://sns-video-bd.xhscdn.com/stream/1080.mp4\", \"backupUrls\": [\"https://sns-video-hw.xhscdn.com/stream/1080.mp4\"], \"streamType\": 259, \"qualityType\": \"hd\", \"size\": 5000000, \"width\": 1080, \"height\": 1920, \"videoCodec\": \"h264\", \"videoBitrate\": 2000000, \"weight\": 10, \"defaultStream\": 1}]}, \"mediaV2\": \"{\\\"video\\\": {\\\"subtitles\\\": {\\\"zh-Hans\\\": [{\\\"url\\\": \\\"https://sns-subtitle.xhscdn.com/stream/subtitle/abc\\\", \\\"language\\\": \\\"zh-Hans\\\"}]}}}\"}}}}}};</script></body></html>",
+            "url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+          }
+        ]
+      },
+      "downloads": {
+        "https://sns-video-bd.xhscdn.com/stream/1080.mp4": [
+          {
+            "payload": "fake-video-bytes"
+          }
+        ],
+        "https://sns-subtitle.xhscdn.com/stream/subtitle/abc": [
+          {
+            "kind": "safe",
+            "code": "DOWNLOAD_SIZE_EXCEEDED",
+            "message": "too big"
+          }
+        ]
+      },
+      "download_calls": [
+        {
+          "url": "https://sns-video-bd.xhscdn.com/stream/1080.mp4",
+          "destination": "0123456789abcdef01234567.mp4",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "*/*"
+          },
+          "timeout_seconds": 30.0,
+          "max_bytes": 2147483648,
+          "no_progress_timeout_seconds": 120.0,
+          "allowed_content_types": [],
+          "allowed_host_suffixes": []
+        },
+        {
+          "url": "https://sns-subtitle.xhscdn.com/stream/subtitle/abc",
+          "destination": "0123456789abcdef01234567.zh-Hans.srt",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "*/*"
+          },
+          "timeout_seconds": 20.0,
+          "max_bytes": 2097152,
+          "no_progress_timeout_seconds": 30.0,
+          "allowed_content_types": [
+            "application/x-subrip",
+            "application/srt",
+            "text/plain",
+            "text/vtt",
+            "application/octet-stream"
+          ],
+          "allowed_host_suffixes": [
+            "xhscdn.com",
+            "xiaohongshu.com"
+          ]
+        }
+      ]
+    }
+  ],
+  "subtitle_probe": [
+    {
+      "label": "downloads preferred track",
+      "result": {
+        "name": "0123456789abcdef01234567.zh-Hans.srt",
+        "exists": true,
+        "text": "1\n00:00:01,000 --> 00:00:02,000\nprobe\n"
+      },
+      "responses": {
+        "https://www.xiaohongshu.com/explore/0123456789abcdef01234567": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><head><title>å°çº¢ä¹¦</title></head><body><script>window.__INITIAL_STATE__ = {\"note\": {\"noteDetailMap\": {\"0123456789abcdef01234567\": {\"note\": {\"type\": \"video\", \"video\": {\"media\": {\"stream\": [{\"masterUrl\": \"https://sns-video-bd.xhscdn.com/stream/1080.mp4\", \"backupUrls\": [\"https://sns-video-hw.xhscdn.com/stream/1080.mp4\"], \"streamType\": 259, \"qualityType\": \"hd\", \"size\": 5000000, \"width\": 1080, \"height\": 1920, \"videoCodec\": \"h264\", \"videoBitrate\": 2000000, \"weight\": 10, \"defaultStream\": 1}]}, \"mediaV2\": \"{\\\"video\\\": {\\\"subtitles\\\": {\\\"zh-Hans\\\": [{\\\"url\\\": \\\"https://sns-subtitle.xhscdn.com/stream/subtitle/abc\\\", \\\"language\\\": \\\"zh-Hans\\\"}]}}}\"}}}}}};</script></body></html>",
+            "url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+          }
+        ]
+      },
+      "downloads": {
+        "https://sns-subtitle.xhscdn.com/stream/subtitle/abc": [
+          {
+            "payload": "1\n00:00:01,000 --> 00:00:02,000\nprobe\n"
+          }
+        ]
+      },
+      "download_calls": [
+        {
+          "url": "https://sns-subtitle.xhscdn.com/stream/subtitle/abc",
+          "destination": "0123456789abcdef01234567.zh-Hans.srt",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "*/*"
+          },
+          "timeout_seconds": 20.0,
+          "max_bytes": 2097152,
+          "no_progress_timeout_seconds": 30.0,
+          "allowed_content_types": [
+            "application/x-subrip",
+            "application/srt",
+            "text/plain",
+            "text/vtt",
+            "application/octet-stream"
+          ],
+          "allowed_host_suffixes": [
+            "xhscdn.com",
+            "xiaohongshu.com"
+          ]
+        }
+      ],
+      "get_calls": [
+        {
+          "url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0"
+          }
+        }
+      ]
+    },
+    {
+      "label": "page blocked returns none",
+      "result": null,
+      "responses": {
+        "https://www.xiaohongshu.com/explore/0123456789abcdef01234567": [
+          {
+            "status": 403,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html>403</html>",
+            "url": ""
+          }
+        ]
+      },
+      "downloads": {},
+      "download_calls": [],
+      "get_calls": [
+        {
+          "url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0"
+          }
+        }
+      ]
+    },
+    {
+      "label": "note without subtitles returns none",
+      "result": null,
+      "responses": {
+        "https://www.xiaohongshu.com/explore/0123456789abcdef01234567": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><head><title>å°çº¢ä¹¦</title></head><body><script>window.__INITIAL_STATE__ = {\"note\": {\"noteDetailMap\": {\"0123456789abcdef01234567\": {\"note\": {\"type\": \"video\", \"video\": {\"media\": {\"stream\": [{\"masterUrl\": \"https://sns-video-bd.xhscdn.com/stream/1080.mp4\", \"backupUrls\": [\"https://sns-video-hw.xhscdn.com/stream/1080.mp4\"], \"streamType\": 259, \"qualityType\": \"hd\", \"size\": 5000000, \"width\": 1080, \"height\": 1920, \"videoCodec\": \"h264\", \"videoBitrate\": 2000000, \"weight\": 10, \"defaultStream\": 1}]}}}}}}};</script></body></html>",
+            "url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+          }
+        ]
+      },
+      "downloads": {},
+      "download_calls": [],
+      "get_calls": [
+        {
+          "url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0"
+          }
+        }
+      ]
+    },
+    {
+      "label": "subtitle download failure returns none",
+      "result": null,
+      "responses": {
+        "https://www.xiaohongshu.com/explore/0123456789abcdef01234567": [
+          {
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<html><head><title>å°çº¢ä¹¦</title></head><body><script>window.__INITIAL_STATE__ = {\"note\": {\"noteDetailMap\": {\"0123456789abcdef01234567\": {\"note\": {\"type\": \"video\", \"video\": {\"media\": {\"stream\": [{\"masterUrl\": \"https://sns-video-bd.xhscdn.com/stream/1080.mp4\", \"backupUrls\": [\"https://sns-video-hw.xhscdn.com/stream/1080.mp4\"], \"streamType\": 259, \"qualityType\": \"hd\", \"size\": 5000000, \"width\": 1080, \"height\": 1920, \"videoCodec\": \"h264\", \"videoBitrate\": 2000000, \"weight\": 10, \"defaultStream\": 1}]}, \"mediaV2\": \"{\\\"video\\\": {\\\"subtitles\\\": {\\\"zh-Hans\\\": [{\\\"url\\\": \\\"https://sns-subtitle.xhscdn.com/stream/subtitle/abc\\\", \\\"language\\\": \\\"zh-Hans\\\"}]}}}\"}}}}}};</script></body></html>",
+            "url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567"
+          }
+        ]
+      },
+      "downloads": {
+        "https://sns-subtitle.xhscdn.com/stream/subtitle/abc": [
+          {
+            "kind": "safe",
+            "code": "DOWNLOAD_HTTP_STATUS_INVALID",
+            "message": "bad status"
+          }
+        ]
+      },
+      "download_calls": [
+        {
+          "url": "https://sns-subtitle.xhscdn.com/stream/subtitle/abc",
+          "destination": "0123456789abcdef01234567.zh-Hans.srt",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "*/*"
+          },
+          "timeout_seconds": 20.0,
+          "max_bytes": 2097152,
+          "no_progress_timeout_seconds": 30.0,
+          "allowed_content_types": [
+            "application/x-subrip",
+            "application/srt",
+            "text/plain",
+            "text/vtt",
+            "application/octet-stream"
+          ],
+          "allowed_host_suffixes": [
+            "xhscdn.com",
+            "xiaohongshu.com"
+          ]
+        }
+      ],
+      "get_calls": [
+        {
+          "url": "https://www.xiaohongshu.com/explore/0123456789abcdef01234567",
+          "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.xiaohongshu.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0"
+          }
+        }
+      ]
+    }
+  ],
+  "download_errors": [
+    {
+      "label": "size exceeded",
+      "source": {
+        "code": "DOWNLOAD_SIZE_EXCEEDED",
+        "message": "big"
+      },
+      "result": {
+        "code": "XHS_VIDEO_TOO_LARGE",
+        "message": "Xiaohongshu video exceeded the configured size limit."
+      }
+    },
+    {
+      "label": "stalled",
+      "source": {
+        "code": "DOWNLOAD_STALLED",
+        "message": "no progress"
+      },
+      "result": {
+        "code": "XHS_DOWNLOAD_STALLED",
+        "message": "Xiaohongshu video download stalled."
+      }
+    },
+    {
+      "label": "invalid status",
+      "source": {
+        "code": "DOWNLOAD_HTTP_STATUS_INVALID",
+        "message": "500"
+      },
+      "result": {
+        "code": "XHS_STREAM_DOWNLOAD_FAILED",
+        "message": "All Xiaohongshu fallback streams failed to download."
+      }
+    },
+    {
+      "label": "incomplete",
+      "source": {
+        "code": "DOWNLOAD_INCOMPLETE",
+        "message": "short"
+      },
+      "result": {
+        "code": "XHS_STREAM_DOWNLOAD_FAILED",
+        "message": "All Xiaohongshu fallback streams failed to download."
+      }
+    },
+    {
+      "label": "no error",
+      "source": null,
+      "result": {
+        "code": "XHS_STREAM_DOWNLOAD_FAILED",
+        "message": "All Xiaohongshu fallback streams failed to download."
+      }
+    },
+    {
+      "label": "other error",
+      "source": {
+        "code": "",
+        "message": "boom"
+      },
+      "result": {
+        "code": "XHS_STREAM_DOWNLOAD_FAILED",
+        "message": "All Xiaohongshu fallback streams failed to download."
+      }
+    }
+  ]
+}

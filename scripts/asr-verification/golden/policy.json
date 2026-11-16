@@ -1,0 +1,5 @@
+{
+  "dither": 0,
+  "textCerTolerance": 0.005,
+  "note": "dither=0 是唯一能逐位复现的配置；生产 WavFrontend 的 dither 为 1.0，用当前时间做随机种子，同一段音频每次结果都不同，因此不能作为固定基线。textCerTolerance 是候选相对生产基线的 CER 上限（0.5 个百分点），与产品规格的质量门槛一致；它只用于容忍前端 float32/FFT 运算顺序造成的个别字符差异，不能用来掩盖分段或解码的结构性偏差。"
+}

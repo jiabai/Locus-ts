@@ -1,0 +1,224 @@
+import { resolveDatabaseUrlFrom } from "./database.js";
+
+export type RuntimeEnvironment = "development" | "test" | "production";
+
+export type SmtpConfig = Readonly<{
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass: string;
+  from: string;
+}>;
+
+export type RuntimeConfig = Readonly<{
+  environment: RuntimeEnvironment;
+  host: string;
+  port: number;
+  selfServiceActivationEnabled: boolean;
+  databaseUrl: string;
+  adminEmail: string;
+  llmConfigEncryptionKey: string | undefined;
+  smtp: SmtpConfig | null;
+  allowConsoleOtp: boolean;
+  trustLoopbackProxy: true;
+}>;
+
+export class RuntimeConfigurationError extends Error {
+  readonly variables: readonly string[];
+
+  constructor(variables: string[]) {
+    const normalized = [...new Set(variables)].sort();
+    super(`Invalid runtime configuration: ${normalized.join(", ")}`);
+    this.name = "RuntimeConfigurationError";
+    this.variables = Object.freeze(normalized);
+  }
+}
+
+const REQUIRED_SMTP_KEYS = [
+  "SMTP_HOST",
+  "SMTP_PORT",
+  "SMTP_USER",
+  "SMTP_PASS",
+  "SMTP_FROM",
+] as const;
+
+export function parseRuntimeConfig(env: NodeJS.ProcessEnv): RuntimeConfig {
+  const issues: string[] = [];
+  const environment = parseEnvironment(env.NODE_ENV, issues);
+  const host = clean(env.APP_SERVER_HOST) || "127.0.0.1";
+  const port = parsePort(env.APP_SERVER_PORT, "APP_SERVER_PORT", 8787, issues);
+  const selfServiceActivationEnabled = parseExplicitProductionFlag(
+    env.APP_SELF_SERVICE_ACTIVATION_ENABLED,
+    "APP_SELF_SERVICE_ACTIVATION_ENABLED",
+    environment,
+    issues,
+  );
+  const databaseUrl = clean(env.DATABASE_URL);
+  const adminEmail = clean(env.APP_ADMIN_EMAIL);
+  const llmConfigEncryptionKey = clean(env.APP_LLM_CONFIG_ENCRYPTION_KEY);
+  const allowConsoleOtp = parseFlag(
+    env.APP_ALLOW_CONSOLE_OTP,
+    "APP_ALLOW_CONSOLE_OTP",
+    issues,
+  );
+
+  if (environment === "production") {
+    requireValue(databaseUrl, "DATABASE_URL", issues);
+    requireValue(adminEmail, "APP_ADMIN_EMAIL", issues);
+    requireValue(llmConfigEncryptionKey, "APP_LLM_CONFIG_ENCRYPTION_KEY", issues);
+    if (llmConfigEncryptionKey && llmConfigEncryptionKey.length < 32) {
+      issues.push("APP_LLM_CONFIG_ENCRYPTION_KEY");
+    }
+    if (allowConsoleOtp) {
+      issues.push("APP_ALLOW_CONSOLE_OTP");
+    }
+  }
+
+  if (adminEmail && !isEmail(adminEmail)) {
+    issues.push("APP_ADMIN_EMAIL");
+  }
+
+  const smtp = parseSmtpConfig(env, environment, issues);
+  if (!smtp && environment !== "production" && !allowConsoleOtp) {
+    issues.push("APP_ALLOW_CONSOLE_OTP");
+  }
+
+  if (issues.length > 0) {
+    throw invalidConfiguration(issues);
+  }
+
+  const config: RuntimeConfig = {
+    environment,
+    host,
+    port,
+    selfServiceActivationEnabled,
+    databaseUrl: databaseUrl || resolveDatabaseUrlFrom(undefined),
+    adminEmail: adminEmail || "lantianye@163.com",
+    llmConfigEncryptionKey: llmConfigEncryptionKey || undefined,
+    smtp,
+    allowConsoleOtp,
+    trustLoopbackProxy: true,
+  };
+  return Object.freeze(config);
+}
+
+function parseEnvironment(value: string | undefined, issues: string[]): RuntimeEnvironment {
+  const normalized = clean(value) || "development";
+  if (normalized === "development" || normalized === "test" || normalized === "production") {
+    return normalized;
+  }
+  issues.push("NODE_ENV");
+  return "development";
+}
+
+function parseSmtpConfig(
+  env: NodeJS.ProcessEnv,
+  environment: RuntimeEnvironment,
+  issues: string[],
+): SmtpConfig | null {
+  const values = {
+    SMTP_HOST: clean(env.SMTP_HOST),
+    SMTP_PORT: clean(env.SMTP_PORT),
+    SMTP_USER: clean(env.SMTP_USER),
+    SMTP_PASS: clean(env.SMTP_PASS),
+    SMTP_FROM: clean(env.SMTP_FROM),
+  };
+  const hasAnyCredential = [
+    values.SMTP_HOST,
+    values.SMTP_USER,
+    values.SMTP_PASS,
+    values.SMTP_FROM,
+  ].some(Boolean);
+  if (environment !== "production" && !hasAnyCredential) {
+    return null;
+  }
+
+  for (const key of REQUIRED_SMTP_KEYS) {
+    requireValue(values[key], key, issues);
+  }
+  const port = parsePort(values.SMTP_PORT, "SMTP_PORT", 587, issues);
+  if (REQUIRED_SMTP_KEYS.some((key) => !values[key])) {
+    return null;
+  }
+
+  return Object.freeze({
+    host: values.SMTP_HOST,
+    port,
+    secure: port === 465,
+    user: values.SMTP_USER,
+    pass: values.SMTP_PASS,
+    from: values.SMTP_FROM,
+  });
+}
+
+function parsePort(
+  value: string | undefined,
+  name: string,
+  defaultValue: number,
+  issues: string[],
+): number {
+  const normalized = clean(value);
+  if (!normalized) {
+    return defaultValue;
+  }
+  const port = Number(normalized);
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    issues.push(name);
+    return defaultValue;
+  }
+  return port;
+}
+
+function parseFlag(value: string | undefined, name: string, issues: string[]): boolean {
+  const normalized = clean(value);
+  if (!normalized || normalized === "0" || normalized === "false") {
+    return false;
+  }
+  if (normalized === "1" || normalized === "true") {
+    return true;
+  }
+  issues.push(name);
+  return false;
+}
+
+function parseExplicitProductionFlag(
+  value: string | undefined,
+  name: string,
+  environment: RuntimeEnvironment,
+  issues: string[],
+): boolean {
+  const normalized = clean(value);
+  if (!normalized) {
+    if (environment === "production") {
+      issues.push(name);
+    }
+    return false;
+  }
+  if (normalized === "0" || normalized === "false") {
+    return false;
+  }
+  if (normalized === "1" || normalized === "true") {
+    return true;
+  }
+  issues.push(name);
+  return false;
+}
+
+function requireValue(value: string, name: string, issues: string[]): void {
+  if (!value) {
+    issues.push(name);
+  }
+}
+
+function isEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function clean(value: string | undefined): string {
+  return value?.trim() ?? "";
+}
+
+function invalidConfiguration(issues: string[]): Error {
+  return new RuntimeConfigurationError(issues);
+}

@@ -1,0 +1,478 @@
+{
+  "resumable_codes": [
+    "DOWNLOAD_INCOMPLETE",
+    "DOWNLOAD_STALLED"
+  ],
+  "response_cases": [
+    {
+      "kind": "response",
+      "label": "promotes part file",
+      "response": {
+        "status": 206,
+        "headers": {
+          "Content-Range": "bytes 0-3/4",
+          "Content-Type": "video/mp4"
+        },
+        "body": "data"
+      },
+      "chunks": null,
+      "options": null,
+      "destination_preexisting": null,
+      "part_preexisting": null,
+      "expected": {
+        "outcome": {
+          "written": 4
+        },
+        "files": {
+          "destination": "data",
+          "part": null
+        }
+      }
+    },
+    {
+      "kind": "response",
+      "label": "rejects non-media content type",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "text/html",
+          "Content-Length": "12"
+        },
+        "body": "<html></html>"
+      },
+      "chunks": null,
+      "options": null,
+      "destination_preexisting": "existing",
+      "part_preexisting": null,
+      "expected": {
+        "outcome": {
+          "error": {
+            "code": "DOWNLOAD_CONTENT_TYPE_INVALID",
+            "message": "Download response returned a non-media content type."
+          }
+        },
+        "files": {
+          "destination": "existing",
+          "part": null
+        }
+      }
+    },
+    {
+      "kind": "response",
+      "label": "rejects partial without total",
+      "response": {
+        "status": 206,
+        "headers": {
+          "Content-Type": "video/mp4"
+        },
+        "body": "data"
+      },
+      "chunks": null,
+      "options": null,
+      "destination_preexisting": null,
+      "part_preexisting": null,
+      "expected": {
+        "outcome": {
+          "error": {
+            "code": "DOWNLOAD_CONTENT_RANGE_INVALID",
+            "message": "Partial download response must include a valid Content-Range total."
+          }
+        },
+        "files": {
+          "destination": null,
+          "part": null
+        }
+      }
+    },
+    {
+      "kind": "response",
+      "label": "rejects oversized response",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "video/mp4",
+          "Content-Length": "5"
+        },
+        "body": "12345"
+      },
+      "chunks": null,
+      "options": {
+        "max_bytes": 4
+      },
+      "destination_preexisting": null,
+      "part_preexisting": null,
+      "expected": {
+        "outcome": {
+          "error": {
+            "code": "DOWNLOAD_SIZE_EXCEEDED",
+            "message": "Download response exceeds the configured size limit."
+          }
+        },
+        "files": {
+          "destination": null,
+          "part": null
+        }
+      }
+    },
+    {
+      "kind": "response",
+      "label": "rejects empty body",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "video/mp4",
+          "Content-Length": "5"
+        },
+        "body": ""
+      },
+      "chunks": null,
+      "options": null,
+      "destination_preexisting": null,
+      "part_preexisting": null,
+      "expected": {
+        "outcome": {
+          "error": {
+            "code": "DOWNLOAD_EMPTY_BODY",
+            "message": "Download response body is empty."
+          }
+        },
+        "files": {
+          "destination": null,
+          "part": null
+        }
+      }
+    },
+    {
+      "kind": "response",
+      "label": "rejects unexpected status",
+      "response": {
+        "status": 302,
+        "headers": {
+          "Location": "https://cdn.example/x"
+        },
+        "body": "body"
+      },
+      "chunks": null,
+      "options": null,
+      "destination_preexisting": null,
+      "part_preexisting": null,
+      "expected": {
+        "outcome": {
+          "error": {
+            "code": "DOWNLOAD_HTTP_STATUS_INVALID",
+            "message": "Unexpected HTTP status: 302"
+          }
+        },
+        "files": {
+          "destination": null,
+          "part": null
+        }
+      }
+    },
+    {
+      "kind": "response",
+      "label": "accepts octet-stream",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/octet-stream; charset=binary"
+        },
+        "body": "abc"
+      },
+      "chunks": null,
+      "options": null,
+      "destination_preexisting": null,
+      "part_preexisting": null,
+      "expected": {
+        "outcome": {
+          "written": 3
+        },
+        "files": {
+          "destination": "abc",
+          "part": null
+        }
+      }
+    }
+  ],
+  "stream_cases": [
+    {
+      "kind": "stream",
+      "label": "streams chunks to part then promotes",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "video/mp4",
+          "Content-Length": "10"
+        },
+        "body": ""
+      },
+      "chunks": [
+        "stream",
+        " mp4"
+      ],
+      "options": {
+        "max_bytes": 16
+      },
+      "destination_preexisting": null,
+      "part_preexisting": null,
+      "expected": {
+        "outcome": {
+          "written": 10
+        },
+        "files": {
+          "destination": "stream mp4",
+          "part": null
+        }
+      }
+    },
+    {
+      "kind": "stream",
+      "label": "appends a valid range part",
+      "response": {
+        "status": 206,
+        "headers": {
+          "Content-Type": "video/mp4",
+          "Content-Range": "bytes 3-6/7"
+        },
+        "body": ""
+      },
+      "chunks": [
+        "data"
+      ],
+      "options": {
+        "max_bytes": 16,
+        "resume_from_bytes": 3
+      },
+      "destination_preexisting": null,
+      "part_preexisting": "old",
+      "expected": {
+        "outcome": {
+          "written": 7
+        },
+        "files": {
+          "destination": "olddata",
+          "part": null
+        }
+      }
+    },
+    {
+      "kind": "stream",
+      "label": "rejects stalled download and keeps part",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "video/mp4",
+          "Content-Length": "4"
+        },
+        "body": ""
+      },
+      "chunks": [
+        "data"
+      ],
+      "options": {
+        "no_progress_timeout_seconds": 1.0,
+        "ticks": [
+          0.0,
+          5.0
+        ]
+      },
+      "destination_preexisting": "existing",
+      "part_preexisting": null,
+      "expected": {
+        "outcome": {
+          "error": {
+            "code": "DOWNLOAD_STALLED",
+            "message": "Download made no progress before the timeout."
+          }
+        },
+        "files": {
+          "destination": "existing",
+          "part": ""
+        }
+      }
+    },
+    {
+      "kind": "stream",
+      "label": "rejects incomplete stream and keeps part",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "video/mp4",
+          "Content-Length": "10"
+        },
+        "body": ""
+      },
+      "chunks": [
+        "stream"
+      ],
+      "options": null,
+      "destination_preexisting": null,
+      "part_preexisting": null,
+      "expected": {
+        "outcome": {
+          "error": {
+            "code": "DOWNLOAD_INCOMPLETE",
+            "message": "Download response ended before the declared size."
+          }
+        },
+        "files": {
+          "destination": null,
+          "part": "stream"
+        }
+      }
+    },
+    {
+      "kind": "stream",
+      "label": "accepts undeclared complete stream",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "video/mp4"
+        },
+        "body": ""
+      },
+      "chunks": [
+        "chunked",
+        " media"
+      ],
+      "options": null,
+      "destination_preexisting": null,
+      "part_preexisting": null,
+      "expected": {
+        "outcome": {
+          "written": 13
+        },
+        "files": {
+          "destination": "chunked media",
+          "part": null
+        }
+      }
+    },
+    {
+      "kind": "stream",
+      "label": "deletes part on validation failure",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "text/html",
+          "Content-Length": "5"
+        },
+        "body": ""
+      },
+      "chunks": [
+        "data"
+      ],
+      "options": null,
+      "destination_preexisting": null,
+      "part_preexisting": null,
+      "expected": {
+        "outcome": {
+          "error": {
+            "code": "DOWNLOAD_CONTENT_TYPE_INVALID",
+            "message": "Download response returned a non-media content type."
+          }
+        },
+        "files": {
+          "destination": null,
+          "part": null
+        }
+      }
+    },
+    {
+      "kind": "stream",
+      "label": "rejects resume without matching part",
+      "response": {
+        "status": 206,
+        "headers": {
+          "Content-Type": "video/mp4",
+          "Content-Range": "bytes 3-6/7"
+        },
+        "body": ""
+      },
+      "chunks": [
+        "data"
+      ],
+      "options": {
+        "resume_from_bytes": 3
+      },
+      "destination_preexisting": null,
+      "part_preexisting": null,
+      "expected": {
+        "outcome": {
+          "error": {
+            "code": "DOWNLOAD_RESUME_INVALID",
+            "message": "Partial download file does not match the expected resume offset."
+          }
+        },
+        "files": {
+          "destination": null,
+          "part": null
+        }
+      }
+    },
+    {
+      "kind": "stream",
+      "label": "rejects oversized stream while writing",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "video/mp4"
+        },
+        "body": ""
+      },
+      "chunks": [
+        "abc",
+        "def"
+      ],
+      "options": {
+        "max_bytes": 4
+      },
+      "destination_preexisting": null,
+      "part_preexisting": null,
+      "expected": {
+        "outcome": {
+          "error": {
+            "code": "DOWNLOAD_SIZE_EXCEEDED",
+            "message": "Download response exceeds the configured size limit."
+          }
+        },
+        "files": {
+          "destination": null,
+          "part": null
+        }
+      }
+    },
+    {
+      "kind": "stream",
+      "label": "resume response must be 206",
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "video/mp4",
+          "Content-Length": "7"
+        },
+        "body": ""
+      },
+      "chunks": [
+        "data"
+      ],
+      "options": {
+        "resume_from_bytes": 3
+      },
+      "destination_preexisting": null,
+      "part_preexisting": "old",
+      "expected": {
+        "outcome": {
+          "error": {
+            "code": "DOWNLOAD_CONTENT_RANGE_INVALID",
+            "message": "Resume response must start at the existing partial file size."
+          }
+        },
+        "files": {
+          "destination": null,
+          "part": "old"
+        }
+      }
+    }
+  ]
+}

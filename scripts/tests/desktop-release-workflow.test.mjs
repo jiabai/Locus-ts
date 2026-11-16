@@ -1,0 +1,91 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const workflowPath = resolve(
+  repositoryRoot,
+  ".github/workflows/desktop-release.yml",
+);
+
+function countMatches(text, pattern) {
+  return [...text.matchAll(pattern)].length;
+}
+
+test("desktop release uses Node.js 24-capable actions in every platform job", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.equal(countMatches(workflow, /uses:\s*actions\/checkout@v5/g), 2);
+  assert.equal(countMatches(workflow, /uses:\s*actions\/setup-node@v5/g), 2);
+  assert.equal(
+    countMatches(
+      workflow,
+      /uses:\s*astral-sh\/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990/g,
+    ),
+    2,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /actions\/checkout@v4|actions\/setup-node@v4|astral-sh\/setup-uv@(?:v6|v8)|node20/i,
+  );
+});
+
+test("the macOS release job verifies the packaged WebView host in the app and DMG", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const dmgScript = await readFile(
+    resolve(repositoryRoot, "scripts/make-macos-dmg.sh"),
+    "utf8",
+  );
+
+  assert.equal(
+    countMatches(workflow, /bash scripts\/make-macos-dmg\.sh aarch64-apple-darwin Locus/g),
+    1,
+  );
+  assert.doesNotMatch(workflow, /x86_64-apple-darwin/);
+  assert.match(dmgScript, /aarch64-apple-darwin\) ARCH_SUFFIX="aarch64"; NATIVE_TARGET="macos-arm64"/);
+  assert.doesNotMatch(dmgScript, /x86_64-apple-darwin/);
+  assert.match(dmgScript, /--target "\$\{NATIVE_TARGET\}" --verify-bundle "\$\{APP\}"/);
+  assert.match(dmgScript, /--target "\$\{NATIVE_TARGET\}" --verify-dmg "\$\{DMG\}"/);
+});
+
+test("desktop release reads runtime archives from the repository's existing secrets", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  // GitHub Secret names are repository-level external identities: renaming them
+  // requires re-entering the value, which GitHub never exposes. The 2026-11-09
+  // de-branding sweep renamed these references to APP_* and the first v0.6.0
+  // tag build failed with "PythonStandaloneUrl is required". Environment variable
+  // names stay neutral (APP_*) because build-installer.mjs reads those.
+  const expectedSecretReferences = [
+    "APP_PYTHON_STANDALONE_URL: ${{ secrets.FRAMEQ_PYTHON_STANDALONE_URL }}",
+    "APP_FFMPEG_ARCHIVE_URL: ${{ secrets.FRAMEQ_FFMPEG_ARCHIVE_URL }}",
+    "APP_PYTHON_STANDALONE_URL: ${{ secrets.FRAMEQ_PYTHON_STANDALONE_URL_ARM64 }}",
+    "APP_FFMPEG_ARCHIVE_URL: ${{ secrets.FRAMEQ_FFMPEG_ARCHIVE_URL_ARM64 }}",
+    "APP_FFPROBE_ARCHIVE_URL: ${{ secrets.FRAMEQ_FFPROBE_ARCHIVE_URL_ARM64 }}",
+  ];
+  for (const line of expectedSecretReferences) {
+    assert.ok(workflow.includes(line), `missing secret mapping: ${line}`);
+  }
+  assert.doesNotMatch(workflow, /secrets\.APP_/);
+  assert.doesNotMatch(workflow, /MACOS_X64/);
+  assert.equal(countMatches(workflow, /secrets\.FRAMEQ_[A-Z_]+/g), 5);
+  assert.equal(countMatches(workflow, /TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)?:/g), 0);
+});
+
+test("desktop release keeps its draft-first two-platform boundary", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(workflow, /push:\s*\r?\n\s+tags:\s*\r?\n\s+- "v\*"/);
+  assert.match(workflow, /permissions:\s*\r?\n\s+contents:\s*write/);
+  assert.match(workflow, /runs-on:\s*windows-latest/);
+  assert.doesNotMatch(workflow, /macos-15-intel/);
+  assert.match(workflow, /runs-on:\s*macos-15\r?\n/);
+  assert.match(
+    workflow,
+    /RELEASE_DRAFT:\s*\$\{\{ github\.event_name == 'push' \|\| inputs\.release_draft \}\}/,
+  );
+  assert.doesNotMatch(workflow, /includeUpdaterJson|TAURI_SIGNING/);
+  assert.match(workflow, /codesign --verify --deep --strict --verbose=4/);
+});

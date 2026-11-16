@@ -1,0 +1,117 @@
+{
+  "profile": {
+    "role": [
+      "content_creator",
+      "entrepreneur",
+      "general_learner",
+      "investor_business_analyst",
+      "marketing_sales",
+      "product_ops",
+      "student_researcher",
+      "teacher_trainer",
+      "unspecified"
+    ],
+    "domain": [
+      "content_media",
+      "education_training",
+      "freelance",
+      "general_perspective",
+      "investment_business",
+      "management_consulting",
+      "marketing_sales",
+      "product_operations",
+      "technology_rd",
+      "unspecified"
+    ],
+    "stage": [
+      "early_career",
+      "entrepreneur_operator",
+      "experienced_professional",
+      "manager",
+      "retired",
+      "student",
+      "unspecified"
+    ],
+    "cityContext": [
+      "county_township",
+      "lower_tier_city",
+      "new_tier1_city",
+      "overseas",
+      "tier1_city",
+      "unspecified"
+    ],
+    "genderPerspective": [
+      "female_perspective",
+      "male_perspective",
+      "neutral_perspective",
+      "unspecified"
+    ],
+    "platforms": [
+      "bilibili",
+      "course_community",
+      "douyin",
+      "internal_sharing",
+      "podcast",
+      "wechat_channels",
+      "wechat_official_account",
+      "xiaohongshu"
+    ]
+  },
+  "generation": {
+    "goal": [
+      "action_advice",
+      "business_insight",
+      "content_creation",
+      "controversy_discussion",
+      "learning_understanding",
+      "review_deconstruction"
+    ],
+    "scenario": [
+      "article_official_account",
+      "client_communication",
+      "course_community",
+      "livestream_podcast",
+      "personal_notes",
+      "short_video",
+      "team_sharing"
+    ],
+    "angles": [
+      "audience_pain_point",
+      "case_analogy",
+      "cognitive_refresh",
+      "contrarian_view",
+      "memorable_phrase",
+      "practical_advice",
+      "reusable_method",
+      "risk_controversy",
+      "topic_angle",
+      "trend_judgment"
+    ],
+    "audience": [
+      "beginners",
+      "boss_team",
+      "clients",
+      "fans_readers",
+      "peers",
+      "self"
+    ],
+    "styles": [
+      "direct_sharp",
+      "gentle_inspiring",
+      "grounded",
+      "long_form_friendly",
+      "professional_analysis",
+      "short_video_friendly",
+      "storytelling"
+    ],
+    "avoid": [
+      "academic",
+      "chicken_soup",
+      "clickbait",
+      "commercialized",
+      "grand_narrative",
+      "negative",
+      "vague"
+    ]
+  }
+}

@@ -1,0 +1,480 @@
+import { describe, expect, test } from "vitest";
+import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
+type TauriWindowConfig = {
+  title: string;
+  width: number;
+  height: number;
+  minWidth?: number;
+  minHeight?: number;
+  decorations?: boolean;
+  shadow?: boolean;
+  center?: boolean;
+};
+
+type TauriConfig = {
+  app: {
+    windows: TauriWindowConfig[];
+    security?: {
+      csp?: unknown;
+      assetProtocol?: {
+        enable?: boolean;
+        scope?: string[];
+      };
+    };
+  };
+  bundle: {
+    targets: string[];
+    resources: string[];
+    macOS?: {
+      signingIdentity?: string | null;
+      hardenedRuntime?: boolean;
+    };
+  };
+};
+
+const configPath = resolve(import.meta.dirname, "../src-tauri/tauri.conf.json");
+const capabilityPath = resolve(import.meta.dirname, "../src-tauri/capabilities/default.json");
+const cargoManifestPath = resolve(import.meta.dirname, "../src-tauri/Cargo.toml");
+const installerScriptPath = resolve(import.meta.dirname, "../../scripts/build-installer.mjs");
+const rootEnvExamplePath = resolve(import.meta.dirname, "../../.env.example");
+const desktopReleaseWorkflowPath = resolve(
+  import.meta.dirname,
+  "../../.github/workflows/desktop-release.yml",
+);
+const workerManifestPath = resolve(import.meta.dirname, "../../pyproject.toml");
+const bundledWorkerCliPath = resolve(
+  import.meta.dirname,
+  "../src-tauri/resources/worker/worker_core/cli.py",
+);
+const bundledWorkerModelDownloadPath = resolve(
+  import.meta.dirname,
+  "../src-tauri/resources/worker/worker_core/model_download.py",
+);
+
+describe("Tauri desktop window configuration", () => {
+  test("uses the custom macOS-style app chrome instead of the native titlebar", () => {
+    const config = JSON.parse(readFileSync(configPath, "utf8")) as TauriConfig;
+    const [mainWindow] = config.app.windows;
+
+    expect(mainWindow).toMatchObject({
+      title: "Locus",
+      width: 1180,
+      height: 760,
+      minWidth: 720,
+      minHeight: 640,
+      decorations: false,
+      shadow: true,
+      center: true,
+    });
+  });
+
+  test("allows the custom chrome to control the Tauri window", () => {
+    const capability = JSON.parse(readFileSync(capabilityPath, "utf8")) as {
+      permissions: string[];
+    };
+
+    expect(capability.permissions).toEqual(
+      expect.arrayContaining([
+        "core:window:allow-start-dragging",
+        "core:window:allow-close",
+        "core:window:allow-minimize",
+        "core:window:allow-toggle-maximize",
+      ]),
+    );
+  });
+
+  test("bundles the local runtime resources required for ordinary users", () => {
+    const config = JSON.parse(readFileSync(configPath, "utf8")) as TauriConfig;
+
+    expect(config.bundle.targets).toEqual(expect.arrayContaining(["nsis", "dmg"]));
+    expect(config.bundle.resources).toEqual(
+      expect.arrayContaining([
+        "resources/python/**/*",
+        "resources/worker/**/*",
+        "resources/bin/**/*",
+        "resources/pyproject.toml",
+        "resources/.env.template",
+      ]),
+    );
+    expect(config.bundle.resources).not.toContain("resources/models/**/*");
+  });
+
+  test("starts with no media access until the verified active library is authorized", () => {
+    const config = JSON.parse(readFileSync(configPath, "utf8")) as TauriConfig;
+    const manifest = readFileSync(cargoManifestPath, "utf8");
+
+    expect(config.app.security?.assetProtocol).toEqual({
+      enable: true,
+      scope: [],
+    });
+    expect(manifest).toContain('tauri = { version = "2", features = ["protocol-asset"] }');
+  });
+
+  test("ships no updater and does not bundle model resources", () => {
+    const config = JSON.parse(readFileSync(configPath, "utf8")) as TauriConfig;
+
+    expect(config.bundle).not.toHaveProperty("createUpdaterArtifacts");
+    expect(config.plugins).not.toHaveProperty("updater");
+    expect(config.bundle.resources).not.toContain("resources/models/**/*");
+  });
+
+  test("ad-hoc signs the macOS bundle so downloaded DMGs avoid the damaged-app Gatekeeper failure", () => {
+    const config = JSON.parse(readFileSync(configPath, "utf8")) as TauriConfig;
+
+    // Free ad-hoc signing (no paid Apple Developer ID): re-seals the injected
+    // python/ffmpeg/worker resources so first launch degrades to the bypassable
+    // "unidentified developer" prompt instead of the "app is damaged" dead end.
+    expect(config.bundle.macOS?.signingIdentity).toBe("-");
+    // Hardened runtime enforces library validation, which would block loading the
+    // bundled torch/ffmpeg/python dylibs under an ad-hoc (team-less) signature.
+    expect(config.bundle.macOS?.hardenedRuntime).toBe(false);
+  });
+
+  test("keeps restart behind the application storage guard without updater permissions", () => {
+    const capability = JSON.parse(readFileSync(capabilityPath, "utf8")) as {
+      permissions: string[];
+    };
+
+    expect(capability.permissions).not.toContain("updater:default");
+    expect(capability.permissions).not.toContain("process:default");
+    const library = readFileSync(resolve(import.meta.dirname, "../src-tauri/src/lib.rs"), "utf8");
+    expect(library).toContain("data_storage::restart_application");
+    expect(library).not.toContain(".plugin(tauri_plugin_process::init())");
+    expect(library).not.toContain("tauri_plugin_updater");
+  });
+
+  test("uses release-grade application metadata", () => {
+    const manifest = readFileSync(cargoManifestPath, "utf8");
+
+    expect(manifest).toContain('description = "Locus desktop video transcription client"');
+    expect(manifest).toContain('authors = ["Locus contributors"]');
+    expect(manifest).not.toContain("tauri-plugin-updater");
+    expect(manifest).not.toContain("tauri-plugin-process");
+    expect(manifest).not.toContain('description = "A Tauri App"');
+    expect(manifest).not.toContain('authors = ["you"]');
+  });
+
+  test("installer script builds a lightweight runtime without bundled model resources", () => {
+    const script = readFileSync(installerScriptPath, "utf8");
+
+    expect(script).not.toContain("SenseVoiceModelDir");
+    expect(script).not.toContain("APP_SENSEVOICE_MODEL_DIR");
+    expect(script).not.toContain("resources\\models");
+    expect(script).not.toContain("Copy-SenseVoiceModelCache");
+    expect(script).not.toContain("Require-DirectoryWithFiles");
+    expect(script).toContain("copyWorkerRuntime(workerRoot)");
+    expect(script).toContain('join(repoRoot, "worker", "worker_core")');
+    expect(script).toContain("normalizeUnixPythonLaunchers");
+    expect(script).toContain("PYTHONDONTWRITEBYTECODE");
+    expect(script).not.toContain("powershell");
+    expect(script).not.toContain("pwsh");
+  });
+
+  test("installer script can use a separate ffprobe archive when ffmpeg is split", () => {
+    const script = readFileSync(installerScriptPath, "utf8");
+
+    expect(script).toContain("ffprobeArchiveUrl");
+    expect(script).toContain("APP_FFPROBE_ARCHIVE_URL");
+    expect(script).toContain("--ffprobe-archive-url");
+    expect(script).toContain("const ffprobeArchive = options.ffprobeArchiveUrl");
+    expect(script).toContain("await copyFfmpegFromArchive(ffmpegArchive, ffprobeArchive, binRoot, options.target)");
+    // Archives download into per-role directories so URLs that share a leaf name
+    // (e.g. evermeet .../ffmpeg/zip and .../ffprobe/zip) cannot overwrite each other.
+    expect(script).toContain('basename(fallbackName, ".archive")');
+  });
+
+  test("installer script invokes uv through PATH without requiring a Windows cmd shim", () => {
+    const script = readFileSync(installerScriptPath, "utf8");
+    const commandNameBody = script.match(/function commandName\(name\) \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
+
+    expect(commandNameBody).toContain('name === "npm"');
+    expect(commandNameBody).not.toContain('name === "uv"');
+  });
+
+  test("installer selects the standalone Python root instead of venv template launchers", async () => {
+    const script = `
+      import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+      import { tmpdir } from "node:os";
+      import { join } from "node:path";
+      import { findStandalonePythonRuntimeRoot } from ${JSON.stringify(pathToFileURL(installerScriptPath).href)};
+
+      const tempRoot = await mkdtemp(join(tmpdir(), "app-python-root-"));
+      const runtimeRoot = join(tempRoot, "python");
+      try {
+        await mkdir(join(runtimeRoot, "Lib", "venv", "scripts", "nt"), { recursive: true });
+        await writeFile(join(runtimeRoot, "Lib", "venv", "scripts", "nt", "python.exe"), "");
+        await writeFile(join(runtimeRoot, "python.exe"), "");
+        const result = await findStandalonePythonRuntimeRoot(tempRoot);
+        if (result.executable !== join(runtimeRoot, "python.exe") || result.runtimeRoot !== runtimeRoot) {
+          throw new Error(JSON.stringify(result));
+        }
+        console.log("ok");
+      } finally {
+        await rm(tempRoot, { recursive: true, force: true });
+      }
+    `;
+    const result = spawnSync(process.execPath, ["--input-type=module", "-e", script], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(result.stdout.trim()).toBe("ok");
+  });
+
+  test("installer script normalizes macOS Python launchers when reusing runtime resources", () => {
+    const script = readFileSync(installerScriptPath, "utf8");
+    const mainScript = script.slice(script.indexOf("async function main("));
+    const skipDownloadsBranch =
+      mainScript.match(/} else \{([\s\S]*?)\r?\n  \}\r?\n\r?\n  await resetDirectory\(buildRoot\);/)?.[1] ?? "";
+
+    expect(skipDownloadsBranch).toContain("await findPythonExecutable(pythonRoot)");
+    expect(skipDownloadsBranch).toContain("requireBundledFfmpeg(binRoot, options.target)");
+    expect(skipDownloadsBranch).toContain("await normalizeUnixPythonLaunchers(pythonRoot)");
+  });
+
+  test("installer script normalizes Python launchers without pinning a CPython minor version", () => {
+    const script = readFileSync(installerScriptPath, "utf8");
+
+    // Launcher setup must detect python3.<minor> dynamically so bumping the
+    // bundled standalone does not require editing hardcoded 3.12 paths here.
+    expect(script).toContain("findVersionedUnixPythonLauncher");
+    expect(script).toContain(String.raw`/^python3\.\d+$/`);
+    expect(script).not.toContain('symlink("python3.12"');
+    expect(script).not.toContain('join(root, "bin", "python3.12")');
+  });
+
+  test("installer script has a tracked local settings template to bundle", () => {
+    expect(existsSync(rootEnvExamplePath)).toBe(true);
+    const script = readFileSync(installerScriptPath, "utf8");
+    const envExample = readFileSync(rootEnvExamplePath, "utf8");
+
+    expect(script).toContain('join(repoRoot, ".env.example")');
+    expect(envExample).toContain("APP_OUTPUT_DIR=");
+    expect(envExample).toContain("APP_ASR_MODEL=iic/SenseVoiceSmall");
+    expect(envExample).not.toContain("APP_LLM_API_KEY");
+    expect(envExample).not.toContain("APP_LLM_BASE_URL");
+    expect(envExample).not.toContain("APP_LLM_MODEL=");
+  });
+
+  test("installer script maps macOS targets to explicit Tauri triples", () => {
+    const script = readFileSync(installerScriptPath, "utf8");
+
+    expect(script).toContain("resolveTauriTargetTriple");
+    expect(script).toContain('case "macos-arm64":');
+    expect(script).toContain('return "aarch64-apple-darwin"');
+    expect(script).not.toContain('case "macos-x64":');
+    expect(script).not.toContain('return "x86_64-apple-darwin"');
+    expect(script).toContain('"tauri", "--", "build", "--target", tauriTarget');
+  });
+
+  test("desktop release workflow uploads the installer without updater metadata", () => {
+    expect(existsSync(desktopReleaseWorkflowPath)).toBe(true);
+    const workflow = readFileSync(desktopReleaseWorkflowPath, "utf8");
+
+    expect(workflow).toContain("build_windows:");
+    expect(workflow).toContain("if: ${{ github.event_name == 'push' || inputs.build_windows }}");
+    expect(workflow).toContain("tauri-apps/tauri-action@v0");
+    expect(workflow).not.toContain("includeUpdaterJson");
+    expect(workflow).not.toContain("updaterJsonPreferNsis");
+    expect(workflow).not.toContain("TAURI_SIGNING_PRIVATE_KEY");
+    expect(workflow).toContain("APP_PYTHON_STANDALONE_URL");
+    expect(workflow).toContain("APP_FFMPEG_ARCHIVE_URL");
+    expect(workflow).toContain("node scripts\\build-installer.mjs --target windows-x64 --skip-tauri-build");
+    expect(workflow).not.toContain("shell: pwsh");
+    expect(workflow).not.toContain("build-installer.ps1");
+  });
+
+  test("desktop release workflow builds the macOS Apple Silicon DMG", () => {
+    const workflow = readFileSync(desktopReleaseWorkflowPath, "utf8");
+
+    expect(workflow).not.toContain("macos-x64-dmg-artifact");
+    expect(workflow).not.toContain("build_macos_x64:");
+    expect(workflow).not.toContain("macos-15-intel");
+    expect(workflow).not.toContain("x86_64-apple-darwin");
+
+    expect(workflow).toContain("macos-arm64-dmg-artifact");
+    expect(workflow).toContain("build_macos_arm64:");
+    expect(workflow).toContain("github.event_name == 'push' || inputs.build_macos_arm64");
+    expect(workflow).toContain("runs-on: macos-15");
+    // Consumption stays neutral (APP_*); the arch suffix lives on the repository
+    // Secret, which cannot be renamed without re-entering its value.
+    expect(workflow).toContain("secrets.FRAMEQ_PYTHON_STANDALONE_URL_ARM64");
+    expect(workflow).toContain("secrets.FRAMEQ_FFMPEG_ARCHIVE_URL_ARM64");
+    expect(workflow).toContain("secrets.FRAMEQ_FFPROBE_ARCHIVE_URL_ARM64");
+    expect(workflow).toContain("node scripts/build-installer.mjs --target macos-arm64 --skip-tauri-build");
+    expect(workflow).toContain("npm --prefix app run tauri -- build --bundles app --target aarch64-apple-darwin");
+    expect(workflow).toContain("bash scripts/make-macos-dmg.sh aarch64-apple-darwin Locus");
+    expect(workflow).toContain("target/aarch64-apple-darwin/release/bundle/dmg/*.dmg");
+    expect(workflow).toContain(
+      'APP="app/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Locus.app"',
+    );
+    expect(workflow).toContain('RES="$APP/Contents/Resources/resources"');
+
+    // The macOS job imports the packaged runtime end to end (exercises the
+    // delocated @loader_path links inside the built .app). funasr 外置到组件，
+    // 包内冒烟只保 ONNX 路径。
+    expect(workflow).toContain(
+      'import funasr_onnx, modelscope, onnxruntime, yt_dlp; import worker_core; print(\'bundled runtime import OK\')',
+    );
+    expect(workflow).toContain('test -f "$RES/python/runtime-manifest.json"');
+  });
+
+  test("desktop release workflow does not mutate signed macOS app bundles during smoke tests", () => {
+    const workflow = readFileSync(desktopReleaseWorkflowPath, "utf8");
+
+    expect(workflow).toContain("PYTHONDONTWRITEBYTECODE=1");
+    expect(workflow).toContain("find \"$APP/Contents/Resources/resources\" \\( -name __pycache__ -o -name '*.pyc' \\)");
+    expect(workflow).toContain("codesign --verify --deep --strict --verbose=4 \"$APP\"");
+    expect(workflow).toContain("bash scripts/make-macos-dmg.sh aarch64-apple-darwin Locus");
+  });
+
+  test("installer verifies the macOS runtime is self-contained", () => {
+    const script = readFileSync(installerScriptPath, "utf8");
+    const verifyScript = readFileSync(
+      resolve(import.meta.dirname, "../../scripts/verify-macos-self-contained.mjs"),
+      "utf8",
+    );
+
+    // The runtime relies on upstream self-contained wheels, so the build only
+    // verifies self-containment and never rewrites dylibs with delocate-path.
+    expect(script).toContain("verifyMacRuntimeSelfContained");
+    expect(script).toContain("verify-macos-self-contained.mjs");
+    expect(script).not.toContain("delocate-path");
+
+    // The guard rejects Homebrew/MacPorts prefixes that break on clean Macs.
+    expect(verifyScript).toContain("delocate-listdeps");
+    expect(verifyScript).toContain('"/usr/local/"');
+    expect(verifyScript).toContain('"/opt/homebrew/"');
+    expect(verifyScript).toContain('"/opt/local/"');
+  });
+
+  test("macOS DMG packaging verifies the signed app bundle before creating the image", () => {
+    const script = readFileSync(resolve(import.meta.dirname, "../../scripts/make-macos-dmg.sh"), "utf8");
+
+    expect(script).toContain("codesign --verify --deep --strict --verbose=4 \"${APP}\"");
+    expect(script).toContain("find \"${APP}/Contents/Resources/resources\" \\( -name __pycache__ -o -name '*.pyc' \\)");
+    expect(script).toContain("Refusing to package");
+  });
+
+  test("installer runtime keeps the ONNX engine without the PyTorch component", () => {
+    const script = readFileSync(installerScriptPath, "utf8");
+
+    // 包内只保 ONNX 路径；PyTorch 运行时组件随账号服务一并下线。
+    expect(script).toContain(
+      "import funasr_onnx, modelscope, onnxruntime, yt_dlp; import worker_core",
+    );
+    expect(script).not.toContain('"--extra", "pytorch"');
+    expect(script).not.toContain("import funasr, torch, torchaudio; import worker_core");
+    expect(script).toContain('BUNDLED_MANIFEST_NAME = "runtime-manifest.json"');
+    expect(script).not.toContain("MODEL_VERSION.txt");
+  });
+
+  test("installer release manifest keeps the pytorch family in an extra, not base deps", () => {
+    const manifest = readFileSync(workerManifestPath, "utf8");
+    const projectDependencies = manifest.match(/dependencies = \[([\s\S]*?)\]\s*\n/)?.[1] ?? "";
+    const pytorchExtra = manifest.match(/pytorch = \[([\s\S]*?)\]/)?.[1] ?? "";
+
+    expect(projectDependencies).not.toContain("qwen");
+    expect(manifest).not.toContain("qwen-asr");
+    // PyTorch 族的运行时全部移到 pytorch extra，包内基础依赖不含它们。
+    // 断言用带引号的形式，避免撞上注释里的文字。
+    expect(pytorchExtra).toContain('"funasr>=1.2.7"');
+    expect(pytorchExtra).toContain('"torch==2.2.2');
+    expect(pytorchExtra).toContain('"torch>=2.10.0');
+    expect(pytorchExtra).toContain('"torchaudio==2.2.2');
+    expect(pytorchExtra).toContain('"torchaudio>=2.10.0');
+    expect(projectDependencies).not.toContain('"funasr>=1.2.7"');
+    expect(projectDependencies).not.toContain('"torch==2.2.2');
+    expect(projectDependencies).not.toContain('"torch>=2.10.0');
+    expect(projectDependencies).not.toContain('"torchaudio==2.2.2');
+    expect(projectDependencies).not.toContain('"torchaudio>=2.10.0');
+    expect(projectDependencies).toContain("numpy<2");
+    expect(projectDependencies).toContain("funasr-onnx==0.4.2");
+    expect(projectDependencies).toContain("platform_machine == 'x86_64'");
+    // macOS Intel pins numba/llvmlite to the last releases with prebuilt x86_64
+    // wheels, so pip never source-builds llvmlite (which needs LLVM). 两条路径
+    // 都会用到 numba（librosa），pin 留在基础依赖里保证两侧版本一致。
+    expect(projectDependencies).toContain("llvmlite==0.45.1");
+    expect(projectDependencies).toContain("numba==0.62.1");
+    expect(projectDependencies).toContain("cryptography<49");
+  });
+
+  test("installer forces llvmlite to install from a prebuilt wheel", () => {
+    const script = readFileSync(installerScriptPath, "utf8");
+
+    // Source builds of llvmlite (needs LLVM) and cryptography (links Homebrew
+    // OpenSSL) leak or fail, so the pip install must refuse to fall back to them.
+    expect(script).toContain('"--only-binary=llvmlite,cryptography"');
+  });
+
+  test("worker manifest documents the macOS Intel CPython constraint for the torch pin", () => {
+    const manifest = readFileSync(workerManifestPath, "utf8");
+
+    // torch==2.2.2 macOS x86_64 wheels stop at cp312, so the bundled standalone
+    // must stay on CPython 3.11/3.12. Keep that rationale next to the pin so the
+    // secret APP_PYTHON_STANDALONE_URL_MACOS_X64 is not bumped blindly.
+    expect(manifest).toContain("cp312");
+    expect(manifest).toContain("APP_PYTHON_STANDALONE_URL_MACOS_X64");
+  });
+
+  test("local bundled worker does not expose old history json helpers when present", () => {
+    if (!existsSync(bundledWorkerCliPath)) {
+      return;
+    }
+
+    const workerCli = readFileSync(bundledWorkerCliPath, "utf8");
+
+    expect(workerCli).not.toContain("update_history_item_after_insight_retry");
+    expect(workerCli).not.toContain("append_history_item");
+  });
+
+  test("local bundled worker uses canonical ASR model cache layout when present", () => {
+    if (!existsSync(bundledWorkerModelDownloadPath)) {
+      return;
+    }
+
+    const modelDownload = readFileSync(bundledWorkerModelDownloadPath, "utf8");
+
+    expect(modelDownload).toContain("def normalize_asr_model_cache_layout");
+    expect(modelDownload).toContain("modelscope_cache_dir = _canonical_model_root(cache_dir)");
+    expect(modelDownload).toContain("cache_dir=modelscope_cache_dir");
+  });
+
+  test("installer script prunes non-runtime Python artifacts before bundling", () => {
+    const script = readFileSync(installerScriptPath, "utf8");
+
+    expect(script).toContain("pruneBundledPythonRuntime(pythonRoot)");
+    expect(script).toContain('"*.pdb"');
+    expect(script).toContain('"*.lib"');
+    expect(script).toContain('"__pycache__"');
+    expect(script).toContain('"tests"');
+    expect(script).toContain('"include"');
+    expect(script).not.toContain('@("Lib", "site-packages", "torch", "testing")');
+    expect(script).not.toContain('"*.pyi"');
+  });
+
+  test("installer script prunes torch include/share on both Windows and macOS site-packages layouts", () => {
+    const script = readFileSync(installerScriptPath, "utf8");
+
+    expect(script).toContain("findSitePackagesDirectories");
+    expect(script).toContain('join("torch", "include")');
+    expect(script).toContain('join("torch", "share")');
+    // Windows keeps Lib/site-packages; python-build-standalone on macOS/Linux nests
+    // it under lib/python3.<minor>/site-packages, so both must be resolved.
+    expect(script).toContain('join(root, "Lib", "site-packages")');
+    expect(script).toContain('join(unixLib, entry.name, "site-packages")');
+  });
+
+  test("installer script fails when external build commands fail", () => {
+    const script = readFileSync(installerScriptPath, "utf8");
+
+    expect(script).toContain("function run(command, args, description");
+    expect(script).toContain("Python runtime smoke test");
+    expect(script).toContain("failed with exit code");
+  });
+});

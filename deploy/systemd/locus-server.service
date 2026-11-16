@@ -1,0 +1,31 @@
+[Unit]
+Description=Locus account and activation server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=frameq
+Group=frameq
+WorkingDirectory=/opt/frameq/FrameQ/server
+EnvironmentFile=/opt/frameq/FrameQ/server/.env
+Environment=NODE_ENV=production
+# Regenerate the Prisma client on every (re)start so a stale client never outlives a schema change.
+ExecStartPre=/opt/frameq/FrameQ/server/node_modules/.bin/prisma generate
+ExecStartPre=/opt/frameq/FrameQ/server/node_modules/.bin/prisma migrate status
+ExecStartPre=/usr/bin/node scripts/database-preflight.mjs --mode current
+ExecStart=/opt/frameq/FrameQ/server/node_modules/.bin/tsx src/index.ts
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+KillSignal=SIGTERM
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/frameq/FrameQ/server/data /opt/frameq/FrameQ/server/backups /opt/frameq/FrameQ/server/logs
+
+[Install]
+WantedBy=multi-user.target

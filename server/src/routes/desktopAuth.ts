@@ -1,0 +1,146 @@
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import type { AuthService } from "../auth.js";
+import { renderLoginPage } from "../loginPage.js";
+import { detectLocale, extractQueryLang, LANG_COOKIE_MAX_AGE, resolveCookieLocale, SUPPORTED_LOCALES } from "../i18n.js";
+import { sha256 } from "../security.js";
+import type { Store } from "../store.js";
+import { userSessionMaxAgeSeconds } from "../userAuth.js";
+import { emailStartSchema, emailVerifySchema } from "./authSchemas.js";
+import { firstHeader, setCookie } from "./cookies.js";
+import {
+  bearerToken,
+  isServerTemporarilyUnavailable,
+  publicAuthError,
+} from "./shared.js";
+
+type DesktopAuthRouteStore = Pick<Store, "revokeSession">;
+
+const ticketExchangeSchema = z.object({
+  ticket: z.string(),
+  state: z.string(),
+});
+
+type DesktopAuthRouteDependencies = {
+  store: DesktopAuthRouteStore;
+  auth: AuthService;
+  secureCookies: boolean;
+  now: () => Date;
+};
+
+export function registerDesktopAuthRoutes(
+  app: FastifyInstance,
+  dependencies: DesktopAuthRouteDependencies,
+): void {
+  app.get("/login", async (request, reply) => {
+    reply.type("text/html; charset=utf-8");
+    reply.header("cache-control", "no-store");
+    const queryLang = extractQueryLang(request.query);
+    const locale = detectLocale({
+      cookie: request.headers.cookie,
+      queryLang,
+      acceptLanguage: firstHeader(request.headers["accept-language"]),
+    });
+    // Persist an explicit desktop deep-link locale (?lang=) so post-login pages
+    // remember it, but never clobber an existing explicit cookie choice.
+    const hasCookieLocale = resolveCookieLocale(request.headers.cookie) != null;
+    if (
+      queryLang != null &&
+      (SUPPORTED_LOCALES as string[]).includes(queryLang) &&
+      !hasCookieLocale
+    ) {
+      setCookie(reply, "lang", queryLang, {
+        httpOnly: false,
+        maxAgeSeconds: LANG_COOKIE_MAX_AGE,
+        secure: dependencies.secureCookies,
+      });
+    }
+    return renderLoginPage(locale);
+  });
+
+  app.post("/auth/email/start", async (request, reply) => {
+    const parsed = emailStartSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_REQUEST" });
+    }
+    try {
+      await dependencies.auth.startEmailLogin({
+        email: parsed.data.email,
+        state: parsed.data.state,
+        ip: request.ip,
+      });
+      return { ok: true };
+    } catch (error) {
+      if (isServerTemporarilyUnavailable(error)) {
+        return reply.code(503).send({ error: "SERVER_TEMPORARILY_UNAVAILABLE" });
+      }
+      const publicMessage = publicAuthError(error);
+      return publicMessage
+        ? reply.code(400).send({ error: publicMessage })
+        : reply.code(500).send({ error: "INTERNAL_SERVER_ERROR" });
+    }
+  });
+
+  app.post("/auth/email/verify", async (request, reply) => {
+    const parsed = emailVerifySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_REQUEST" });
+    }
+    try {
+      const result = await dependencies.auth.verifyEmailCodeAndCreateWebSession(parsed.data);
+      setCookie(reply, "app_user_session", result.sessionToken, {
+        httpOnly: true,
+        maxAgeSeconds: userSessionMaxAgeSeconds,
+        secure: dependencies.secureCookies,
+      });
+      setCookie(reply, "app_user_csrf", result.csrfToken, {
+        httpOnly: false,
+        maxAgeSeconds: userSessionMaxAgeSeconds,
+        secure: dependencies.secureCookies,
+      });
+      return {
+        ticket: result.ticket,
+        redirect_url: result.redirectUrl,
+      };
+    } catch (error) {
+      if (isServerTemporarilyUnavailable(error)) {
+        return reply.code(503).send({ error: "SERVER_TEMPORARILY_UNAVAILABLE" });
+      }
+      const publicMessage = publicAuthError(error);
+      return publicMessage
+        ? reply.code(400).send({ error: publicMessage })
+        : reply.code(500).send({ error: "INTERNAL_SERVER_ERROR" });
+    }
+  });
+
+  app.post("/api/desktop/sessions/exchange", async (request, reply) => {
+    const parsed = ticketExchangeSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_REQUEST" });
+    }
+    try {
+      const result = await dependencies.auth.exchangeDesktopTicket(parsed.data);
+      return {
+        session_token: result.sessionToken,
+        email: result.email,
+        expires_at: result.expiresAt.toISOString(),
+      };
+    } catch (error) {
+      if (isServerTemporarilyUnavailable(error)) {
+        return reply.code(503).send({ error: "SERVER_TEMPORARILY_UNAVAILABLE" });
+      }
+      const publicMessage = publicAuthError(error);
+      return publicMessage
+        ? reply.code(400).send({ error: publicMessage })
+        : reply.code(500).send({ error: "INTERNAL_SERVER_ERROR" });
+    }
+  });
+
+  app.post("/api/desktop/logout", async (request) => {
+    const token = bearerToken(request.headers.authorization);
+    if (token) {
+      await dependencies.store.revokeSession(sha256(token), dependencies.now());
+    }
+    return { ok: true };
+  });
+}

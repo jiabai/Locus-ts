@@ -1,0 +1,529 @@
+use super::{
+    coordinator::{acquire_task, try_acquire_task, TaskLease},
+    dissection::build_dissection_view,
+    schema::{
+        parse_insights_payload, validate_relative_artifact_path, InsightView, SafeTaskError,
+        TaskArtifact, TaskManifest, TaskSourceSummary, TranscriptMetadata,
+    },
+    source_identity::SourceIdentity,
+    storage::{
+        artifact_path, encode_task_manifest, ensure_artifact_parent, list_task_manifest_paths,
+        load_task_manifest, path_to_frontend_string, read_task_manifest_path,
+        required_artifact_path, task_dir_for, validate_task_artifact_path,
+    },
+    transaction::{recover_task_artifacts, JOURNAL_FILE_NAME},
+};
+use std::collections::HashMap;
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+enum ScanCandidate {
+    Ready(SupportedTask),
+    Busy,
+    Unsupported,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SupportedTask {
+    manifest: TaskManifest,
+    task_dir: PathBuf,
+    directory_identity: crate::safe_filesystem::DirectoryIdentity,
+    _lease: Arc<TaskLease>,
+}
+
+#[derive(Debug)]
+pub(crate) struct TaskScan {
+    tasks: Vec<SupportedTask>,
+    ignored_count: usize,
+}
+
+impl TaskScan {
+    pub(crate) fn into_tasks(self) -> Vec<SupportedTask> {
+        self.tasks
+    }
+
+    pub(crate) fn ignored_count(&self) -> usize {
+        self.ignored_count
+    }
+}
+
+impl SupportedTask {
+    pub(crate) fn open(output_root: &Path, task_id: &str) -> Result<Self, String> {
+        let task_dir = task_dir_for(output_root, task_id)?;
+        let lease = acquire_task(&task_dir)?;
+        let directory_guard = crate::safe_filesystem::pin_directory(&task_dir)
+            .map_err(|error| if error.kind() == io::ErrorKind::NotFound {
+                "Task storage is unavailable."
+            } else {
+                "Task storage identity is unavailable."
+            }.to_string())?;
+        recover_task_artifacts(&task_dir)?;
+        let (manifest, task_dir) = load_task_manifest(output_root, task_id)?;
+        if !manifest.source_privacy_ready() {
+            return Err("Task is unavailable in the current history format.".to_string());
+        }
+        directory_guard.check().map_err(|_| "Task storage identity changed.".to_string())?;
+        let directory_identity = crate::safe_filesystem::identity(&task_dir)
+            .map_err(|_| "Task storage identity is unavailable.".to_string())?;
+        directory_guard.check().map_err(|_| "Task storage identity changed.".to_string())?;
+        Ok(Self {
+            manifest,
+            task_dir,
+            directory_identity,
+            _lease: lease,
+        })
+    }
+
+    pub(crate) fn scan(output_root: &Path) -> Result<TaskScan, String> {
+        Self::scan_using(output_root, Self::from_manifest_path)
+    }
+
+    pub(crate) fn scan_read_only(output_root: &Path) -> Result<TaskScan, String> {
+        Self::scan_using(output_root, Self::from_manifest_path_read_only)
+    }
+
+    fn scan_using(
+        output_root: &Path,
+        read_candidate: fn(&Path, &Path) -> Result<ScanCandidate, String>,
+    ) -> Result<TaskScan, String> {
+        let mut tasks = Vec::new();
+        let mut ignored_count = 0;
+        for manifest_path in list_task_manifest_paths(output_root)? {
+            match read_candidate(output_root, &manifest_path) {
+                Ok(ScanCandidate::Ready(task)) => tasks.push(task),
+                Ok(ScanCandidate::Busy) => {}
+                Ok(ScanCandidate::Unsupported) => ignored_count += 1,
+                Err(_) => ignored_count += 1,
+            }
+        }
+        Ok(TaskScan {
+            tasks,
+            ignored_count,
+        })
+    }
+
+    fn from_manifest_path(
+        output_root: &Path,
+        manifest_path: &Path,
+    ) -> Result<ScanCandidate, String> {
+        let task_dir = manifest_path
+            .parent()
+            .ok_or_else(|| "Task manifest has no parent directory.".to_string())?;
+        let Some(lease) = try_acquire_task(task_dir)? else {
+            return Ok(ScanCandidate::Busy);
+        };
+        recover_task_artifacts(task_dir)?;
+        Self::verified_manifest_snapshot(output_root, manifest_path, lease)
+    }
+
+    fn from_manifest_path_read_only(
+        output_root: &Path,
+        manifest_path: &Path,
+    ) -> Result<ScanCandidate, String> {
+        let task_dir = manifest_path
+            .parent()
+            .ok_or_else(|| "Task manifest has no parent directory.".to_string())?;
+        let Some(lease) = try_acquire_task(task_dir)? else {
+            return Ok(ScanCandidate::Busy);
+        };
+        match fs::symlink_metadata(task_dir.join(JOURNAL_FILE_NAME)) {
+            Ok(_) => return Ok(ScanCandidate::Unsupported),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(_) => return Err("Task transaction state is unavailable.".to_string()),
+        }
+        Self::verified_manifest_snapshot(output_root, manifest_path, lease)
+    }
+
+    fn verified_manifest_snapshot(
+        output_root: &Path,
+        manifest_path: &Path,
+        lease: Arc<TaskLease>,
+    ) -> Result<ScanCandidate, String> {
+        let directory_guard = crate::safe_filesystem::pin_directory(manifest_path.parent()
+            .ok_or_else(|| "Task manifest has no parent directory.".to_string())?)
+            .map_err(|_| "Task storage identity is unavailable.".to_string())?;
+        let (manifest, task_dir) = read_task_manifest_path(manifest_path)?;
+        let expected_task_dir = match task_dir_for(output_root, &manifest.task_id) {
+            Ok(path) => path,
+            Err(_) => return Ok(ScanCandidate::Unsupported),
+        };
+        if expected_task_dir != task_dir || !manifest.source_privacy_ready() {
+            return Ok(ScanCandidate::Unsupported);
+        }
+        directory_guard.check().map_err(|_| "Task storage identity changed.".to_string())?;
+        let directory_identity = crate::safe_filesystem::identity(&task_dir)
+            .map_err(|_| "Task storage identity is unavailable.".to_string())?;
+        directory_guard.check().map_err(|_| "Task storage identity changed.".to_string())?;
+        Ok(ScanCandidate::Ready(Self {
+            manifest,
+            task_dir,
+            directory_identity,
+            _lease: lease,
+        }))
+    }
+
+    pub(crate) fn task_id(&self) -> &str {
+        &self.manifest.task_id
+    }
+
+    pub(crate) fn note_metadata(&self) -> Result<super::NoteMetadataView, super::NoteMetadataError> {
+        super::note_metadata::load(&self.task_dir, self.task_id())
+    }
+
+    pub(crate) fn created_at(&self) -> &str {
+        &self.manifest.created_at
+    }
+
+    pub(crate) fn status(&self) -> &str {
+        &self.manifest.status
+    }
+
+    pub(crate) fn model(&self) -> &str {
+        match &self.manifest.model {
+            super::schema::RequiredNullable::Present(Some(value)) => value,
+            _ => "",
+        }
+    }
+
+    pub(crate) fn is_web_page(&self) -> bool {
+        matches!(self.source(), TaskSourceSummary::WebPage { .. })
+    }
+
+    pub(crate) fn read_source_text(&self) -> Result<super::SourceText, String> {
+        super::source_text::read(self)
+    }
+
+    pub(crate) fn read_article_markdown(&self) -> Result<String, String> {
+        self.verify_source_directory()?;
+        if !self.is_web_page() {
+            return Err("SOURCE_TEXT_INVALID".to_string());
+        }
+        let path = self.required_existing_artifact_path(TaskArtifact::ArticleMd)?;
+        let bytes = super::source_text::read_bounded(&path, 4 * 1024 * 1024)?;
+        let text = String::from_utf8(bytes).map_err(|_| "SOURCE_TEXT_INVALID".to_string())?;
+        if text.trim().is_empty() {
+            return Err("SOURCE_TEXT_INVALID".to_string());
+        }
+        self.verify_source_directory()?;
+        Ok(text)
+    }
+
+    pub(super) fn verify_source_directory(&self) -> Result<(), String> {
+        crate::safe_filesystem::check_identity(&self.task_dir, self.directory_identity)
+            .map_err(|_| "SOURCE_TEXT_INVALID".to_string())
+    }
+
+    pub(crate) fn safe_source_url(&self) -> &str {
+        self.manifest.safe_source_url()
+    }
+
+    pub(crate) fn source_identity(&self) -> Option<&SourceIdentity> {
+        self.manifest.safe_source_identity()
+    }
+
+    pub(crate) fn source(&self) -> TaskSourceSummary {
+        self.manifest
+            .safe_source_summary()
+            .expect("supported task source must remain valid")
+    }
+
+    pub(crate) fn transcript_metadata(&self) -> Option<TranscriptMetadata> {
+        self.manifest.transcript_metadata()
+    }
+
+    pub(crate) fn declared_artifacts(&self) -> HashMap<String, String> {
+        self.manifest.safe_artifacts()
+    }
+
+    pub(crate) fn existing_artifacts(&self) -> HashMap<String, String> {
+        self.manifest
+            .artifacts
+            .iter()
+            .filter_map(|(key, raw_path)| {
+                let relative = validate_relative_artifact_path(raw_path, key).ok()?;
+                let path = self.task_dir.join(relative);
+                if !path.is_file()
+                    || validate_task_artifact_path(&self.task_dir, &path, key).is_err()
+                {
+                    return None;
+                }
+                Some((key.clone(), raw_path.clone()))
+            })
+            .collect()
+    }
+
+    pub(crate) fn safe_error(&self) -> Option<SafeTaskError> {
+        self.manifest.error.as_ref().map(|error| SafeTaskError {
+            code: error.safe_code(),
+            message: error.safe_message(),
+            stage: error.stage.clone(),
+        })
+    }
+
+    pub(crate) fn text_preview(&self) -> &str {
+        &self.manifest.text_preview
+    }
+
+    pub(crate) fn note_title(&self) -> Option<super::NoteTitle> {
+        self.manifest.note_title.clone()
+    }
+
+    pub(crate) fn reload(&self, output_root: &Path) -> Result<Self, String> {
+        self.verify_source_directory()?;
+        recover_task_artifacts(&self.task_dir)?;
+        let (manifest, task_dir) = load_task_manifest(output_root, self.task_id())?;
+        if task_dir != self.task_dir || !manifest.source_privacy_ready() {
+            return Err("Task is unavailable in the current history format.".to_string());
+        }
+        self.verify_source_directory()?;
+        Ok(Self {
+            manifest,
+            task_dir,
+            directory_identity: self.directory_identity,
+            _lease: Arc::clone(&self._lease),
+        })
+    }
+
+    pub(crate) fn save_note_title(&mut self, title: super::NoteTitle) -> Result<(), String> {
+        if self.is_web_page() {
+            return Err("WEB_RETRY_TARGET_UNSUPPORTED".to_string());
+        }
+        if !title.is_valid() {
+            return Err("Invalid note title metadata.".to_string());
+        }
+        let mut manifest = self.manifest.clone();
+        manifest.note_title = Some(title);
+        super::commit_task_artifacts(
+            &self.task_dir,
+            vec![super::TaskArtifactMutation::manifest(encode_task_manifest(&manifest)?)],
+        )?;
+        self.manifest = manifest;
+        Ok(())
+    }
+
+    pub(crate) fn draft_seed_insight_id(&self) -> Option<i64> {
+        self.manifest.draft_seed_insight_id
+    }
+
+    pub(crate) fn insights_count(&self) -> usize {
+        self.manifest.insights_count
+    }
+
+    pub(crate) fn task_dir_frontend_string(&self) -> String {
+        path_to_frontend_string(&self.task_dir)
+    }
+
+    pub(crate) fn read_text_artifact(
+        &self,
+        artifact: TaskArtifact,
+    ) -> Result<Option<String>, String> {
+        let Some(path) = artifact_path(&self.task_dir, &self.manifest, artifact.as_str())? else {
+            return Ok(None);
+        };
+        validate_task_artifact_path(&self.task_dir, &path, artifact.as_str())?;
+        Ok(fs::read_to_string(path)
+            .ok()
+            .map(|text| text.trim().to_string()))
+    }
+
+    pub(crate) fn read_insights(&self) -> Result<Vec<InsightView>, String> {
+        let Some(path) = self.validated_existing_artifact_path(TaskArtifact::Insights)? else {
+            return Ok(vec![]);
+        };
+        let Ok(content) = fs::read_to_string(path) else {
+            return Ok(vec![]);
+        };
+        let Ok(payload) = serde_json::from_str::<serde_json::Value>(&content) else {
+            return Ok(vec![]);
+        };
+        Ok(parse_insights_payload(&payload))
+    }
+
+    pub(crate) fn read_dissection(&self) -> Result<Option<super::DissectionView>, String> {
+        let Some(report_path) = self.validated_existing_artifact_path(TaskArtifact::Dissection)?
+        else {
+            return Ok(None);
+        };
+        let report_bytes = super::source_text::read_bounded(&report_path, 4 * 1024 * 1024)
+            .map_err(|_| "Task dissection artifact is invalid.".to_string())?;
+        let source = self.read_source_text()?;
+        let report = serde_json::from_slice(&report_bytes)
+            .map_err(|_| "Task dissection artifact is invalid.".to_string())?;
+        build_dissection_view(report, &source.raw_bytes, source.kind).map(Some)
+    }
+
+    pub(crate) fn validated_existing_artifact_path(
+        &self,
+        artifact: TaskArtifact,
+    ) -> Result<Option<PathBuf>, String> {
+        let Some(path) = artifact_path(&self.task_dir, &self.manifest, artifact.as_str())? else {
+            return Ok(None);
+        };
+        if !path.exists() {
+            return Ok(None);
+        }
+        validate_task_artifact_path(&self.task_dir, &path, artifact.as_str())?;
+        Ok(Some(path))
+    }
+
+    pub(crate) fn required_existing_artifact_path(
+        &self,
+        artifact: TaskArtifact,
+    ) -> Result<PathBuf, String> {
+        self.validated_existing_artifact_path(artifact)?
+            .ok_or_else(|| format!("Task manifest is missing {} artifact.", artifact.as_str()))
+    }
+
+    pub(crate) fn artifact_path_or_default(
+        &self,
+        artifact: TaskArtifact,
+        default_relative_path: &str,
+    ) -> Result<PathBuf, String> {
+        if let Some(path) = artifact_path(&self.task_dir, &self.manifest, artifact.as_str())? {
+            return Ok(path);
+        }
+        let relative = validate_relative_artifact_path(default_relative_path, artifact.as_str())?;
+        Ok(self.task_dir.join(relative))
+    }
+
+    pub(crate) fn task_dir(&self) -> &Path {
+        &self.task_dir
+    }
+
+    pub(crate) fn validate_existing_path(
+        &self,
+        path: &Path,
+        artifact: TaskArtifact,
+    ) -> Result<(), String> {
+        validate_task_artifact_path(&self.task_dir, path, artifact.as_str())
+    }
+
+    pub(crate) fn into_edit_session(self) -> TaskEditSession {
+        TaskEditSession {
+            manifest: self.manifest,
+            task_dir: self.task_dir,
+            _lease: self._lease,
+        }
+    }
+}
+
+pub(crate) struct TaskEditSession {
+    manifest: TaskManifest,
+    task_dir: PathBuf,
+    _lease: Arc<TaskLease>,
+}
+
+impl TaskEditSession {
+    pub(crate) fn set_note_pinned(
+        &mut self,
+        pinned: bool,
+    ) -> Result<super::NoteMetadataView, super::NoteMetadataError> {
+        super::note_metadata::update(
+            &self.task_dir,
+            &self.manifest.task_id,
+            || self.verify_note_metadata_owner(),
+            |current| current.pinned = pinned,
+        )
+    }
+
+    pub(crate) fn set_note_display_title(
+        &mut self,
+        title: &str,
+    ) -> Result<super::NoteMetadataView, super::NoteMetadataError> {
+        let title = super::note_metadata::normalize_display_title(title)?;
+        super::note_metadata::update(
+            &self.task_dir,
+            &self.manifest.task_id,
+            || self.verify_note_metadata_owner(),
+            |current| current.display_title = Some(title),
+        )
+    }
+
+    fn verify_note_metadata_owner(&self) -> Result<(), super::NoteMetadataError> {
+        let (current, current_dir) = read_task_manifest_path(
+            &self.task_dir.join(super::TASK_MANIFEST_FILE_NAME),
+        )
+        .map_err(|_| super::NoteMetadataError::UnsafeStorage)?;
+        if current_dir != self.task_dir
+            || current.task_id != self.manifest.task_id
+            || current.created_at != self.manifest.created_at
+            || current.safe_source_summary() != self.manifest.safe_source_summary()
+        {
+            return Err(super::NoteMetadataError::UnsafeStorage);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn task_dir(&self) -> &Path {
+        &self.task_dir
+    }
+
+    pub(crate) fn required_existing_artifact_path(
+        &self,
+        artifact: TaskArtifact,
+    ) -> Result<PathBuf, String> {
+        let path = required_artifact_path(&self.task_dir, &self.manifest, artifact.as_str())?;
+        validate_task_artifact_path(&self.task_dir, &path, artifact.as_str())?;
+        Ok(path)
+    }
+
+    pub(crate) fn artifact_path_or_default(
+        &self,
+        artifact: TaskArtifact,
+        default_relative_path: &str,
+    ) -> Result<PathBuf, String> {
+        if let Some(path) = artifact_path(&self.task_dir, &self.manifest, artifact.as_str())? {
+            return Ok(path);
+        }
+        let relative = validate_relative_artifact_path(default_relative_path, artifact.as_str())?;
+        Ok(self.task_dir.join(relative))
+    }
+
+    pub(crate) fn has_artifact(&self, artifact: TaskArtifact) -> bool {
+        self.manifest.artifacts.contains_key(artifact.as_str())
+    }
+
+    pub(crate) fn validate_existing_path(
+        &self,
+        path: &Path,
+        artifact: TaskArtifact,
+    ) -> Result<(), String> {
+        validate_task_artifact_path(&self.task_dir, path, artifact.as_str())
+    }
+
+    pub(crate) fn ensure_artifact_parent(&self, path: &Path) -> Result<(), String> {
+        ensure_artifact_parent(&self.task_dir, path)
+    }
+
+    pub(crate) fn set_artifact(
+        &mut self,
+        artifact: TaskArtifact,
+        relative_path: &str,
+    ) -> Result<(), String> {
+        let is_web = matches!(self.manifest.safe_source_summary(), Some(TaskSourceSummary::WebPage { .. }));
+        if (is_web && matches!(artifact, TaskArtifact::Audio | TaskArtifact::TranscriptTxt | TaskArtifact::TranscriptMd | TaskArtifact::Segments))
+            || (!is_web && matches!(artifact, TaskArtifact::ArticleTxt | TaskArtifact::ArticleMd))
+        {
+            return Err("Task artifact does not match its source.".to_string());
+        }
+        validate_relative_artifact_path(relative_path, artifact.as_str())?;
+        self.manifest
+            .artifacts
+            .insert(artifact.as_str().to_string(), relative_path.to_string());
+        Ok(())
+    }
+
+    pub(crate) fn set_text_preview(&mut self, text_preview: String) {
+        self.manifest.text_preview = text_preview;
+    }
+
+    pub(crate) fn declared_artifacts(&self) -> HashMap<String, String> {
+        self.manifest.safe_artifacts()
+    }
+
+    pub(crate) fn encoded_manifest(&self) -> Result<Vec<u8>, String> {
+        encode_task_manifest(&self.manifest)
+    }
+}

@@ -1,0 +1,1144 @@
+# Security and Compliance
+
+## Webpage extraction isolation
+
+- Remote pages run in an independent native helper with the system WebView: direct WebView2 COM
+  on Windows, or WKWebView in its own macOS helper app. They have no Tauri runtime, application
+  origins, asset handler, host objects or page message bridge. Each operation uses a new exclusive
+  InPrivate UDF on Windows or nonpersistent data store on macOS, without importing user browser
+  credentials or the main app's session. The helper environment is explicitly constructed and
+  receives no account or LLM configuration. Its versioned stdin/stdout protocol accepts only
+  closed fields with matching operation/session and navigation generation.
+- Windows uses Stable Runtime 143.0.3650.58 or later, validates COM capabilities and rejects unsafe
+  Runtime overrides. Before navigation it disables web messages, host objects, SSO, autofill,
+  password saving, developer tools and default UI, then installs native denial of permissions,
+  new windows, external schemes, downloads, authentication and invalid certificates. A deferrable
+  `_22` resource event submits observable HTTP requests to the parent's public-address DNS check;
+  denial, timeout or cancellation supplies an explicit blocking response. The native network
+  retains Cookie/CORS behavior. DNS admission does not pin WebView2's actual connection address.
+- The macOS helper has its own `com.frameq.webview-host` identifier and App Sandbox entitlement,
+  with only `network.client`; no inherited app sandbox, file/device/location grants, app groups or
+  shared credentials. Its data store receives a task-specific HTTP CONNECT proxy before loading,
+  with failover disabled. Delegates cancel unsafe navigation, uploads, new windows, downloads,
+  script dialogs, camera/microphone and HTTP/proxy/client-certificate authentication. ServerTrust
+  uses system default handling and rejects trust failures. Final signed app/DMG entitlement and
+  sandbox behavior require validation on macOS before release.
+- The macOS proxy binds a random loopback port, has no authentication/file/admin endpoint, rejects
+  DNS answer sets containing private/reserved addresses, and connects to a validated public IP.
+  Each CONNECT tunnel retains its permit until closure. Limits apply to visible paths: Windows
+  permits 16 policy decisions in flight and 512 queued requests, with two-second active and
+  ten-second queue deadlines; macOS permits 16 active proxy connections with admission backpressure
+  and 64 MiB of proxy-visible traffic. CONNECT tunnels release their permits after five seconds
+  without actual transferred bytes. Cumulative request counts do not terminate valid pages.
+  Unsafe main documents terminate; unsafe subresources are individually blocked. Extraction still
+  requires native navigation completion, completed document policy checks, stable DOM and valid
+  article content. Diagnostics persist only closed reason/resource categories, capped at 16 records
+  per helper. Neither platform provides a
+  complete private-network firewall: resource events and HTTP proxies do not cover every native
+  network path, including macOS WebRTC. Browser flags do not establish an additional guarantee.
+- Windows additionally observes native CDP Document/Script/Stylesheet/XHR/Fetch completion before
+  accepting a stable article, with 1024 tracked requests and a 64 MiB completed encoded-byte budget.
+  This completion-time accounting excludes unfinished/failed payloads and other transport paths;
+  it is not a pre-download bound for all Runtime traffic. A changed network revision during
+  extraction discards the candidate and repeats stable sampling. Main HTTP errors are rejected.
+  macOS delegates cannot observe each HTTPS-tunneled fetch completion; its native navigation,
+  policy-settlement and stable-DOM checks retain that platform limitation.
+- Native URL admission permits HTTP(S) on ports 80/443, rejects userinfo and private/reserved
+  hosts, and repeats validation independently of React. Persisted URLs discard fragments and
+  all query fields except bounded numeric article identifiers/page numbers. Raw request URLs
+  remain in memory/stdin and never enter argv, environment, diagnostics or account traffic.
+- Webpage processing requires a native Pending registration before
+  the long command. The synchronous begin command validates the closed arguments and `main`
+  window, binds the registration to that window and operation, and acknowledges with JSON `null`.
+  The long webpage call must also match its original validated request. Cancelled registration
+  cannot be adopted by a late long call. Registration itself creates no process or filesystem
+  resources. The client rechecks cancellation after listener setup and acknowledgement, and
+  unmount cancellation continues to reach native cleanup after UI callbacks become inactive.
+- Registration and adoption use the same native barrier as window close, application exit and
+  restart. Closing cancels Pending and active claims and waits for adopted claims even before
+  they acquire a data permit. Subsequent begin/long commands cannot enter after closing starts.
+  Active calls retain their real terminal/cleanup wait; cancellation does not synthesize success
+  or release resources on a frontend-only timeout.
+- Limits cover observable requests, main navigation, DOM admission, article sizes, extraction time,
+  stable samples and attributable process RSS. Work has one 90-second deadline, including 15-second
+  readiness, 60-second navigation and 2-second extraction callback limits. Parent-observed terminal
+  work or cancellation starts one shared 15-second cleanup budget. Windows closes the controller
+  and observes BrowserProcessExited before reaping verified Job members and cache. macOS closes
+  its proxy and reaps its helper/save worker; all WebKit XPC PIDs, total RSS and immediate service
+  cleanup are outside public API control. Cancellation is matched to the operation and
+  window; a reserved worker lane excludes competing submissions. A root terminal result does not
+  leave pipe-inheriting descendants alive while Rust waits for readers.
+- Recovery receipts bind directory identity, native high-precision process birth time, executable
+  identity, operation arguments and ancestry. Existing root records never authorize a replacement
+  instance with the same profile/UUID. The application owner is identified by its actual PID,
+  birth time, absolute executable path and file identity. Its executable may have Cargo-created
+  hard links; the owner reader still rejects symbolic links/reparse points and checks the parent identity.
+  The owner PID cannot enter the terminable member set. New helper and worker executables retain
+  strict identity checks. Windows system Runtime hard links require verified native process
+  identity, ancestry and the operation's actual UDF; they do not authorize an arbitrary matching
+  filename. Old receipts retain their own stricter executable protocol. Temporary deletion uses
+  identity-bound native handles on Windows and no-follow relative directory descriptors on macOS,
+  preserving unrelated replacement content.
+- Uncertain cleanup retains its receipt and pauses the physical library for the rest of the
+  process. Ordinary data access, migration and old-copy cleanup refuse new work; Check again
+  cannot clear this condition. A controlled restart rechecks durable ownership before Ready.
+- Extraction runs against a cloned document in an isolated JavaScript world. Stored Markdown
+  excludes active HTML, embedded remote images and unsafe links. Reading and reference highlights
+  use local formal artifacts; Markdown cannot invoke native commands or fetch embedded content.
+- Rust preallocates the task ID and records the expected title, canonical URL and article hashes.
+  Python `--save-web-page-stdin` validates version 2 fields and atomically publishes the article
+  files and schema 4 manifest. Recovery after publication but before stdout validates that exact
+  formal task; unknown IDs, changed hashes or corrupted receipts fail with retained evidence.
+  The operation's JSON encoding limit is 40 MiB, with raw text/Markdown limited to 2/4 MiB.
+- Only an explicit existing AI confirmation allows source-derived content to reach the configured
+  AI supplier. Drafts send their existing inspiration/preferences/summary inputs. Account services
+  retain billing responsibilities and receive no webpage body, source requests, browser cookies,
+  profile contents or local note history.
+
+Windows system-WebView validation has saved and reopened real static/JavaScript pages with Runtime
+156.0.4314.58, released the exclusive UDF, and cancelled a real loading operation before successfully
+saving another note. Exact evidence and current regression/desktop progress are in the system-WebView
+execution plan. Legacy independent-Chromium tests do not establish acceptance of this backend.
+macOS compilation, final signatures, Sandbox behavior and runtime acceptance remain unverified in
+this Windows environment. System-host private-network, WebSocket/WebRTC, authentication and permission
+canaries require separate recorded results; no all-network isolation claim follows from basic page
+success. Paid supplier acceptance remains skipped at the user's request.
+
+## Data location, migration and recovery
+
+- Preflight registration and cancellation bind canonical request IDs to the actual native window
+  and library generation. Cancellation invalidates late events/previews, interrupts real file
+  reads and supervised validation, and waits for the real claim to finish before unfreezing data
+  actions. A cancelled completed preview loses its matching migration plan or cleanup token;
+  older requests cannot cancel a newer preparation. Closing a window prevents late claims and
+  waits for active preflight work. Non-cancellable commit/deletion work retains its protection.
+- Cleanup preview holds a normal data permit, scans both copies with no-follow identity and
+  SHA-256 checks, and rechecks library/receipt identity and cancellation before issuing a token.
+  Confirmed deletion repeats the original two-end checks and identity-bound removal. Progress
+  includes numeric byte counts without filenames; no progress data is uploaded.
+
+- The fixed system configuration root retains authentication, `.env`, preferences, application
+  logs, the bounded storage-control record and process lock. Migratable data includes only the
+  application-owned task, cache, model, runtime-component and Collection trees. External imported
+  originals, shared-root unrelated files and installation resources retain their locations.
+- Native folder selections produce purpose/window/generation/physical-identity-bound tokens.
+  Migration and cleanup accept native identifiers and one-use confirmation tokens; frontend paths
+  never authorize copying or deletion. Revalidate source/target identities, ancestors, no-follow
+  access, hard links and containment at mutation boundaries; reject nesting, aliases, incompatible
+  file/directory types and ambiguous legacy ownership. A nonempty destination may retain unrelated
+  files; only inventoried application source files participate in a merge.
+- A global native data permit covers ordinary work on both worker lanes and every implicit data write, including
+  scan recovery, task transactions, accepted deletion cleanup and audio-cache preparation. Exclusive
+  migration/cleanup drains permits and refuses new ones. Frontend Preparing allows existing
+  process/title/Collection and save/refresh chains and explicit dirty-owner saves to finish before
+  requesting that exclusive phase.
+- Inventory records relative layout, type, length, identity, permissions and SHA-256. Streaming
+  copying, target verification, source rechecks and atomic fixed-control replacement determine
+  authority. Failure retains the actual durable phase; explicit precommit cancellation preserves
+  old authority and identifiable partial copies. Publication and postcommit validation cannot be
+  cancelled into an old writable library.
+- For a user-confirmed nonempty-directory merge, a destination file with the same relative path
+  wins even when its contents differ. Source deletion uses type and physical-identity checks,
+  without comparing the duplicate file contents. Missing destination files use no-replace moves
+  or verified cross-volume copying before source deletion. Durable per-file records allow
+  continuation after termination; `merging` cannot release the partially moved source for normal
+  data use. Empty source application directories are removed without recursively deleting shared
+  roots, fixed configuration or unrelated files. Destination metadata is preserved alongside the
+  new operation; the committed marker and control record establish the resulting authority.
+- Windows pins destination ancestors and retains the partial-file handle through verification and
+  no-replace installation. Unix traversal and installation use no-follow directory descriptors and
+  relative filesystem operations. Interrupted probes with uncertain children are retained, and
+  metadata recovery checks recorded physical identity and expected byte content before mutation.
+- Startup gates task access on the fixed record, current physical library identity and generation.
+  Offline, replaced or invalid storage enters recovery without creating a default empty library.
+  Relinking accepts the same physical library with matching identity/generation, including a drive
+  letter change; copied markers and older clones do not establish authority.
+- First-restart validation uses the formal supervised worker's read-only offline probe. Copy
+  migration uses its pre-migration readiness baseline; directory merge captures and verifies the
+  actual committed destination, including destination-priority tasks, Collections and components.
+  It validates existing model caches and, only for a previously
+  ready matching component version, performs real component imports from its verified package
+  directory. Model/component contents remain unchanged. The optional schema 1 `readyWebEngine`
+  field remains readable for older migration records. Retired webpage runtime files retain ordinary
+  inventory/hash/copy checks without an executable browser probe. Old ownership receipts remain
+  recoverable, and uncertain cleanup pauses the library.
+  Validation downloads nothing, runs no ASR or paid generation, and preserves
+  missing/stale/unavailable state. Its subprocess clears inherited
+  provider/session/proxy variables, uses fixed resource/configuration paths and the explicit data
+  snapshot, disables bytecode writes and sets offline flags. Opaque legacy bytes remain untrusted.
+- The cancellable preflight probe starts only after ordinary data permits have drained. Its scoped
+  cancellation monitor terminates the supervised validation process and joins before exclusivity
+  ends; it cannot cancel a previously running user task. Every subsequent probe checks cancellation.
+- Asset protocol permission is dynamic and limited to verified output `tasks/` and playback-cache
+  subtrees. Recovery/unavailable/restart states revoke previous roots. A revoked root requires
+  controlled restart before renewed playback access; neither whole drives nor the fixed credential
+  directory are authorized. The frontend pauses playback while data actions are frozen.
+- Window close and application/update restart use native guarded commands. The process plugin is
+  not registered and has no restart capability. `restart_application` and storage-specific restart
+  atomically pause new permits and release the configuration process lock before `request_restart`.
+  Precommit closure waits for safe cancellation; postcommit
+  restart preserves the authoritative record. Forced process termination is handled by durable
+  recovery, without an inferred success or automatic old-root fallback.
+- Old-copy cleanup rechecks the exact receipt-listed source identity/hash against the current
+  active library before deletion. Changed, missing-current-copy, external and unlisted files remain;
+  fixed configuration, shared source roots and the current active root cannot be recursively removed.
+  Cleanup receipts alone never block normal Ready access.
+- Cleanup holds the verified current-copy file handle through old-file verification and deletion;
+  Windows sharing prevents that current copy from being modified or removed during the operation.
+  A failed, stopped cleanup retains its receipt and releases ordinary library access.
+- Progress exposes closed operation/generation/phase/error fields and aggregate counts plus local
+  reviewed source/target paths. It never carries file contents, per-file private names, credentials,
+  model bytes, prompts or media. No migration path or content is uploaded to Locus services.
+
+## 2026-10-31 Local note settings and deletion
+
+- Native note actions accept closed task-ID requests and derive every storage path from verified
+  native roots. Manual names never determine filenames or task identity. Metadata files use fixed
+  paths, no-follow and directory identity checks, reject hard links, and retain the task mutation lease.
+  Corrupt existing settings are preserved and reported independently from readable note content.
+- User settings are internal local metadata, excluded from worker requests, account traffic,
+  exports, diagnostics, and artifact lists. Metadata and menu actions trigger no supplier calls.
+- Source copy obtains fresh verified task information; opening uses the native opener only after
+  canonical SourceIdentity validation. Sensitive query parameters, credentials, fragments, local
+  paths, and quarantined identities never become menu source destinations.
+- Confirmed deletion persists only bounded native-derived intent fields and directory identities.
+  Successful staging of the main task accepts deletion. Pre-acceptance failure preserves caches
+  and Collection data. Subsequent failure retains cleanup intent and reports cleanup_pending.
+- Recovery continues matching staged identities even after partial file removal, protects pending
+  task IDs, prunes only exact memberships under the Collection lock, and rejects linked/replaced
+  roots or directories and malformed journals. It never restores a deleted note or removes a
+  same-name replacement. Separate directory and JSON operations do not form one atomic transaction.
+
+## 2026-10-31 Note-title disclosure and integrity
+
+- Explicit new-note submission discloses automatic cloud title generation after local transcription
+  and one additional AI Credit per attempt. The request captures its output language. Existing notes,
+  startup, history refresh, and cached URL reuse do not silently trigger paid title generation.
+- Only a deterministic transcript-derived sample of at most 12,000 Unicode characters plus title
+  instructions goes directly to the configured supplier. Media, source URLs, paths, account details,
+  preferences, and other AI results are excluded from the title prompt. Transcript content is treated
+  as quoted evidence. Locus account-server requests contain only existing checkout/account metadata.
+- The one-call provider disables SDK and supplier retries. Invalid or over-limit output fails without
+  a repair call. User retries disclose the same cost and create a new checkout identifier. Quota,
+  configuration, supplier, cancellation, and storage failure preserve the saved transcript and any
+  last committed title; raw prompts, responses, exceptions, and title text are excluded from diagnostics.
+- Closed metadata validation rejects blank, untrimmed, multiline, control/format/surrogate content
+  and values exceeding 60 Unicode characters. The English generation result is limited to ten words.
+  Titles remain local metadata and never determine a path, task ID, artifact name, or Collection ID.
+- Native title admission verifies task identity and the saved authoritative transcript before checkout.
+  Task-owned atomic publication, exact output-language checks, stale-response checks, and expected-state
+  cancellation prevent another task or newer committed title from being overwritten. A pre-admission
+  cancellation records local state without starting a worker or performing checkout.
+
+## 2026-08-25 Xiaohongshu platform subtitle privacy and download boundary
+
+- Only public or already-authorized Xiaohongshu links are in scope. The worker does not import
+  browser cookies, log in, solve CAPTCHA, or bypass private/access-controlled content.
+- `xsec_token` is used only in the in-memory public-page request. A signed subtitle query is used
+  only for that transient download; neither value is written to manifests, History, logs,
+  diagnostics, UI messages, AI prompts, server requests, or subtitle file contents.
+- Subtitle URLs must be HTTPS, credential-free, and on an exact/subdomain-matched
+  `xhscdn.com`/`xiaohongshu.com` host both before the request and after redirects. Responses are
+  restricted to subtitle-safe content types, non-empty bodies, and at most 2 MiB; atomic `.part`
+  cleanup prevents partial files from reaching the parser.
+- Raw SRT/VTT exists only in the task cache download directory and is not a registered manifest
+  artifact. The existing transcript pipeline reads the parsed result locally; Locus server never
+  receives the video, subtitle, transcript, or signed URL.
+- Subtitle acquisition is best-effort. Invalid metadata, expired signatures, blocked responses,
+  oversized content, and parse misses fall back to local ASR without replacing a successful MP4
+  with a subtitle error. The normal video-download errors remain authoritative.
+
+## 2026-08-24 Self-service activation email privacy and abuse boundary
+
+- Self-service activation requests require a valid desktop bearer session. The server derives the
+  destination email from that session and ignores any attacker-supplied email, user ID, quota, or
+  entitlement fields.
+- Plaintext activation codes exist only in one server process memory window and the outbound email.
+  They are forbidden from SQLite rows, structured logs, Admin HTML, desktop IPC results, response
+  bodies, diagnostics, and local UI persistence. There is no console fallback for activation-code
+  email.
+- `ActivationCode` remains hash-only at rest. Self-service rows add only source, bound account,
+  status, delivery timestamps, and disabled reason. `pending_delivery` is fail-closed and cannot be
+  redeemed. SMTP acceptance alone is not treated as delivery proof.
+- Bound-account and active-entitlement checks are enforced inside the redemption Store transaction,
+  not just in routes or UI state. Self-service codes cannot be redeemed by another account, cannot
+  stack with an active entitlement, and on success always reset the quota window to 20 total / 0
+  used for a fresh 31-day entitlement period.
+- The service persists dispatch limits using the reviewed database-backed rate-limit table and the
+  closed `self_service_activation` purpose. The enforced windows are one request per email per
+  60 seconds, five per email per fixed hour, and twenty per trusted client IP per fixed hour.
+- A partial unique SQLite index allows at most one active self-service code per account. New
+  successful activation-email issuance supersedes older active self-service codes, and any prepared
+  code is disabled with `activation_became_active` if entitlement turns active before enablement.
+
+## 2026-08-10 Desktop diagnostic export privacy boundary
+
+- Contract v8 adds the strict `APP_DIAGNOSTIC ` stderr prefix. It is a non-watchdog,
+  non-progress, non-terminal side channel: only the Rust runner decodes it, and invalid or
+  duplicate/expanded records fail closed to a fixed rejection marker without echoing the input.
+- Python emits only one closed, message-free classification for a terminal ASR model-download
+  failure. Rust is the sole persistence owner. Structured events and sanitized ordinary stderr
+  fallback are authorized only for semantic `DownloadAsrModel`; raw stderr from all other worker
+  operations remains unpersisted.
+- App-local ASR diagnostics are bounded to seven days and 4 MiB; each sanitized payload is at most
+  1,000 characters, fallback capture is at most 200 lines per invocation, and adjacent duplicates
+  are collapsed within bounded storage. Export treats both fixed logs as untrusted, re-sanitizes
+  them, rejects links/reparse paths, and writes only the fixed ZIP allowlist: `diagnostics.json`,
+  `desktop.log`, and `asr-model-download.log`. The archive is capped at 5 MiB and records
+  closed omission/truncation metadata.
+- The native Save As command receives no frontend path/content and returns no path or ZIP bytes.
+  It retains no app-local archive and performs no upload, DNS/HTTP/network probe, model retry,
+  server request, LLM call, or AI Credits activity. Media, transcripts, prompts, generated text,
+  model files/bytes, `.env`, account data, paths, host/IP identity, URLs, proxy material, tokens,
+  keys, raw exceptions, and tracebacks are forbidden from persisted diagnostics and exports.
+
+
+## 2026-08-01 Transcript-dissection data-flow and integrity boundary
+
+- Dissection starts only after target-specific confirmation. The preview freezes output language,
+  authoritative transcript facts, the versioned call plan, and worst-case Credits requirement;
+  an over-limit transcript or insufficient quota starts no worker and performs no checkout.
+- Worker stdin contains target/task intent, not transcript text or a frontend-supplied path. Rust
+  admits only a supported task; Python reads one validated `transcript/transcript.txt` snapshot and
+  sends only required transcript-derived chunks/prompts to the checked-out supplier.
+- Locus server checkout requests contain account, entitlement, quota, and idempotency data only.
+  Video/audio bytes, source URL, local paths, transcript/prompt/report content, preferences, other
+  AI results, credentials, and private configuration are forbidden from server payloads, logs,
+  progress, errors, fixtures shipped in the package, and diagnostics.
+- The report stores UTF-8 byte ranges and SHA-256 provenance, never copied source snippets. Rust
+  revalidates the official transcript and every cited slice before enabling local source location.
+  A mismatch is viewable as stale but cannot be located; malformed or linked artifacts fail closed.
+- `ai/dissection.json`, `ai/dissection.md`, and manifest references publish through one task journal
+  transaction. Cancellation, supplier/validation failure, and crash recovery preserve the previous
+  complete version and never expose a partial replacement.
+- Contract v5 values remain closed across JSON, Python, Rust, and TypeScript. The installer includes
+  runtime source needed for dissection but no transcript/report fixture, model weight, LLM key, or
+  user configuration.
+
+## 2026-07-24 General Tauri IPC Result Validation Boundary
+
+- Every Locus-owned Rust/Tauri command result is untrusted at the TypeScript runtime boundary.
+  Client runners return `Promise<unknown>` and domain parsers must validate closed top-level and
+  nested shapes before any field is read, defaulted, logged, or stored in application state.
+- The shared parsing primitive may inspect only own data-property descriptors on ordinary objects.
+  Arrays where objects are expected, accessors, symbols, exotic prototypes, reflection failures,
+  missing/unknown fields, wrong types, invalid enums, non-finite numbers, and incoherent semantic
+  relationships fail closed.
+- A decoding failure throws only a stable domain-owned `IpcProtocolError` code. The rejected value,
+  raw exception, getter result, account/payment data, URL, path, transcript, artifact content, or
+  updater metadata must not appear in its message, cause, enumerable fields, technical details, or
+  logs.
+- Account, History, settings, transcript detail, and Locus-owned update command DTOs are in scope.
+  Existing worker terminal-result and local-media parsers remain authoritative for their families;
+  the behavior-bearing updater plugin handle remains behind its typed plugin adapter.
+- TypeScript decoding is an integrity and compatibility boundary, not an authorization boundary.
+  Account session ownership, supported-task admission, path containment, filesystem mutation, and
+  updater signature verification remain enforced by their existing Rust/plugin owners.
+- The approved design is
+  `docs/design-docs/2026-07-24-tauri-ipc-runtime-decoding-boundary.md`; implementation evidence is
+  archived in `docs/exec-plans/completed/2026-07-24-tauri-ipc-runtime-decoding-plan.md`.
+
+## 2026-07-22 Server Authentication, Quota, and Operations Hardening
+
+- The authentication/quota check-then-write paths are replaced by semantic Store transactions and
+  locally verified with independent Prisma clients. Production configuration, logging, proxy,
+  health/lifecycle, migration/preflight/restore tooling, and the Server CI definition are also
+  implemented locally. Broad publication remains blocked on hosted CI/staging evidence and the
+  combined release gate.
+- OTP challenges are isolated by closed purpose (`desktop_login` or `admin_login`) plus normalized
+  email and state. One database transaction records an attempt, conditionally consumes a correct
+  challenge, and creates the ticket/admin session. Missing, expired, consumed, wrong-purpose,
+  wrong-code, and attempt-exhausted cases share one public invalid response.
+- OTP dispatch limiting is database-backed and atomically applies normalized-email and trusted-client-
+  IP policies before challenge creation. A process-local map or client-supplied forwarding header is
+  not authoritative. Fastify may trust forwarded addresses only from the documented loopback Nginx
+  peer; `trustProxy: true` is forbidden.
+- A rejected dispatch reports the latest release time among every window already blocking that
+  request. Conditional reservations remain inside the caller's Store transaction; rejection rolls
+  back all counters and related writes. Successful reservations from this attempt are not counted
+  as pre-existing blockers. Requests arriving later may consume newly available capacity.
+- Desktop ticket consumption and hashed session insertion commit or roll back together. Raw ticket,
+  desktop session, administrator session, and CSRF values remain service/response-only values and
+  never enter database or Store return fields in plaintext.
+- AI Credit checkout uses a parameterized conditional quota update and the existing unique
+  `(userId, requestId)` event in one transaction. Same-request replay consumes once; distinct
+  concurrent requests cannot exceed remaining quota; an event-write failure rolls back the
+  increment. Bounded database conflict retry never calls the LLM supplier.
+- Entitlement validity depends only on `expiresAt > now`; an entitlement is expired at equality.
+  Expiry and quota accounting remain persisted, while public status is derived. Migration
+  `202610290001_remove_entitlement_status` removes only the redundant entitlement column, retaining
+  IDs, expiry, quota values, the user relationship, uniqueness and quota constraints. Startup and
+  current preflight reject the old schema; recovery restores a matched database/code/config set.
+- The migration adds closed-purpose/attempt/quota checks and rejects invalid historical accounting
+  state rather than clamping it. Outstanding legacy OTPs are invalidated instead of assigned a
+  guessed purpose. Production migration requires preflight, backup, integrity/restore rehearsal,
+  and matched database/code/config rollback.
+- Production missing/partial SMTP or required secret configuration is a startup failure. Console OTP
+  requires explicit non-production opt-in and is rejected in production. Startup/config errors name
+  variables only and never print values.
+- Structured production logs may contain generated request ID, matched route/method/status, duration
+  bucket, readiness/lifecycle transition, and stable semantic outcome/error code. They must not
+  contain bodies, OTPs, raw email/IP/state, Authorization/Cookie/Set-Cookie, session/CSRF/ticket/
+  activation values or hashes, LLM/SMTP/payment secrets, request IDs used for quota, prompts,
+  transcripts, generated content, payment payloads, or raw Prisma/SQLite exception text.
+- `/health/live` and `/health/ready` return fixed non-secret bodies. Readiness checks only startup,
+  compatible/reachable SQLite, and non-draining state; it does not send SMTP, call an LLM, reveal
+  config/version/path/user counts, or weaken capability-specific account checks.
+- Shutdown first marks readiness false, then drains Fastify and disconnects Prisma through one
+  idempotent deadline-bound sequence. Startup failure closes partial resources. A timeout emits one
+  safe code and exits nonzero before the systemd stop deadline.
+- Independent Prisma clients against one real temporary SQLite file, secret-seeded log/response
+  tests, real child-process signal tests, and disposable backup/restore rehearsal are security
+  gates. Local Windows tests prove signal idempotency plus real listener/SQLite release; the POSIX
+  child fixture remains unverified until hosted Linux Server CI runs. Single-client unit tests,
+  skipped host evidence, or untested runbook prose do not close this boundary.
+- Durable design:
+  `docs/design-docs/2026-07-22-server-auth-quota-operations-hardening.md`.
+
+## 2026-07-23 Server Store Transaction-Owner Boundary
+
+- `Store` remains one consistency facade and one runtime object. Consumer-owned
+  `Pick<Store, ...>` aliases are erased TypeScript authority declarations, not repositories,
+  transaction handles, or independently injected persistence objects.
+- `Prisma.TransactionClient` is confined to `server/src/prismaStore/` private implementation
+  modules. Routes, services, the public Store contract, and application callers cannot receive a
+  client or a generic transaction callback.
+- Authentication, ticket/session exchange, payment settlement, activation redemption, AI Credit
+  checkout, and administrator entitlement adjustment keep every required read, conditional write,
+  idempotency/audit record, and final read inside one semantic transaction owner.
+- `prismaStore/rateLimits.ts` owns conditional authentication rate-limit reservations and collects
+  all blocking release times before rejecting the transaction. `prismaStore/concurrency.ts` owns
+  recognized Prisma/SQLite conflict classification, the fixed three-attempt retry bound, and
+  `attempt * 5` backoff. Retry never surrounds an SMTP, payment-provider, or LLM supplier call.
+- Private persistence modules add no logging or public error surface. Raw OTP/session/ticket/CSRF/
+  activation values, LLM keys, payment payloads, transcripts, prompts, and raw database exception
+  text remain prohibited from diagnostics and public responses.
+- The schema, reviewed migrations, dependency lockfiles, database/process composition, deployment
+  files, desktop App, Worker, and contracts are byte-for-byte unchanged by this refactor. Local
+  migration/preflight/restore and independent-client concurrency evidence do not substitute for
+  unrun hosted CI, production SMTP/staging, off-host restore, or provider validation.
+- Durable design:
+  `docs/design-docs/2026-07-23-server-store-prisma-module-split.md`.
+
+## 2026-07-22 Release Reliability and Crash-Consistency Boundary
+
+- Authoritative persistence is implemented on `main` at `61d489a`: reviewed owners use atomic
+  replacement and existing-task multi-file updates recover through the closed task journal. The
+  supervised worker watchdog is also implemented with fixed operation-owned deadlines,
+  instance-safe timeout claims, process-tree termination, and closed non-echoing outcomes. Broad
+  publication remains separately blocked on server concurrency and production operations.
+- Every authoritative destination must use same-directory staging, closed-handle sync, validation,
+  and atomic replacement. A task-local transaction journal may contain only schema/state, random
+  transaction ID, normalized allowlisted relative internal paths, and existed-before markers. It
+  must never contain artifact bytes, absolute paths, source URLs, selection tokens, credentials,
+  transcript text, prompts, generated content, or raw errors.
+- Journal recovery must validate every field/path before mutation, reject links/reparse points,
+  traversal, duplicates, unknown schema/state/fields, unsupported destinations, and missing required
+  rollback material. An invalid journal fails closed and must not touch a path outside its supported
+  task root.
+- The worker (Python) writes the task journal and the desktop (Rust) recovers it, so both languages
+  must accept exactly the same closed destination set. `contracts/task-artifact-transaction-v1.json`
+  is the single source for that set, and each language asserts set equality against it in its own
+  test suite. A destination known to only one side makes the other side reject the whole journal:
+  that still fails closed, but it also makes the desktop drop a task the worker wrote legitimately,
+  so the set must never be edited in one language alone.
+- Internal staging, rollback, and journal files are never manifest artifacts, History entries,
+  locate-file targets, cache authority, log attachments, or AI input. Original transcript backups
+  remain a separate user-facing recovery feature.
+- Rust worker watchdog policy is derived from a closed operation enum. Request JSON, UI, Python,
+  environment variables, and external content cannot extend or disable deadlines. Only validated
+  progress resets idle time; arbitrary stderr cannot keep a process alive.
+- `worker_runtime/runner.rs` remains the sole lifecycle orchestrator above private process-I/O,
+  watchdog, progress, and terminal owners. Application modules cannot import those child paths;
+  `supervisor.rs` remains the only OS signal constructor, `progress.rs` emits only contract-validated
+  payloads, and `terminal.rs` retains fixed non-echoing classification and diagnostic details.
+- Timeout termination reuses supervisor-owned numeric PID/PGID and existing no-shell process-tree
+  primitives. Instance matching prevents stale watchdogs from terminating a newer process. Safe
+  diagnostics may record operation, timeout kind/duration bucket, instance/PID, and stable outcome
+  only.
+- Timeout must not log or display request payload, source/local paths, URL, Cookie/credential,
+  prompt, transcript, generated content, complete stderr, or arbitrary OS errors. It must not
+  automatically retry AI or authorize another Credits call.
+- Desktop crash consistency and watchdog work do not close server OTP/ticket/quota concurrency,
+  abuse controls, observability, backup/restore, or multi-instance deployment safety. Those remain a
+  separately tracked release blocker.
+
+## 2026-07-21 Server HTTP Capability Boundary
+
+- Administrator session and CSRF cookie names, attributes, issuance, verification, and clearing are
+  private to `server/src/routes/admin.ts`. The split deliberately preserves the current successful
+  login wire behavior, including its duplicate administrator-session `Set-Cookie` header; changing
+  that compatibility detail requires a separate behavior/security change and provider/client
+  validation.
+- The five authenticated administrator mutations share the private `authenticateAdminMutation`
+  helper in `admin.ts`: authenticate the session first, then validate the session-bound CSRF header,
+  then enter payload validation and mutation. Rejection returns the existing 401/403 response with
+  no writes or cookie clearing. Logout uses the authenticated token to revoke only that session;
+  entitlement adjustment derives its administrator identity from the authenticated session.
+- The exact-raw-body JSON parser and `server/src/routes/billing.ts` existed only for WeChat
+  signature verification. Both were removed with the unused payment channel on 2026-11-08; the
+  Fastify instance now uses the default JSON parser, with no raw payload logging, persistence, or
+  response echo.
+- Desktop LLM checkout remains private to its authenticated route owner and preserves the existing
+  bearer-token hashing, entitlement/quota checks, server-managed secret handling, and fixed failure
+  mapping. The route split does not widen supplier credentials or add a diagnostic path.
+- Private route modules do not import Prisma or coordinate multi-write persistence. Payment
+  settlement, activation redemption, and administrator entitlement adjustment remain atomic
+  `Store`/`PrismaStore` operations behind application services.
+- Server boundary tests lock all 20 method/path pairs, exact raw webhook forwarding, cookie/CSRF
+  ownership, route-to-capability ownership, absence of feature-to-feature/Prisma/plugin imports,
+  and root-only service/parser construction.
+
+## 2026-07-20 ASR application module boundary
+
+- `worker_core.asr` remains the only supported production import surface. The private
+  `asr_runtime/` owners cannot import the root, CLI, pipeline, worker service, task store, LLM, or
+  AI extraction layers, and production callers cannot bypass the stable root.
+- SenseVoice SDK imports remain inside their default loaders; optional `numpy` and
+  `funasr` VAD utilities remain inside the VAD path. Importing ASR contracts or registry functions
+  does not load a provider SDK, initialize a model, download weights, or make a network request.
+- `registry.py` alone owns `MODELSCOPE_CACHE` mutation. `sensevoice.py` alone owns provider/VAD/WAV
+  effects, and `artifacts.py` alone owns source-identity projection plus transcript filesystem
+  output. Source identity is still validated before the output directory is created.
+- This extraction adds no prompt, transcript, path, model result, telemetry, or provider-error log.
+  Existing provider exceptions remain wrapped with the current text and cause for compatibility;
+  this layer does not claim that third-party exception text is sanitized, so it must not be added
+  to a new diagnostic or persistence path without a separate security review.
+- Canonical worker source remains under `worker/worker_core/`. The ignored Tauri worker resource
+  was refreshed only through the established build path, and recursive relative-path plus SHA-256
+  comparison proved all 56 files byte-equal. No dependency, credential, contract, manifest, or
+  model-download boundary changed.
+
+## 2026-07-20 Contract v4 local-media request boundary
+
+- Global desktop-worker contract v4 is not permission to widen the stable URL request: URL
+  processing still accepts only its v3 `contract_version + url + asr_model` stdin payload.
+- React/TypeScript may hold only a canonical UUID selection token and validated display-safe name,
+  kind, lowercase extension, and positive integer byte count. Its local-media module contains
+  no complete-path field and rejects missing, extra, wrong-type, wrong-kind, or unsafe metadata with
+  the fixed `LOCAL_MEDIA_SELECTION_INVALID` code.
+- Rust path-bearing serialization is private to the native command. It requires an absolute path,
+  matching source/display extensions, a closed media kind/extension pair, the supported ASR model,
+  and a safe basename; failures return one fixed non-echoing message. Token-bearing Rust DTOs
+  deliberately do not implement `Debug`.
+- Python parses the exact six-field local worker request into a path-bearing model whose path and
+  safe display name are excluded from repr. Missing, additional, wrong-version/type/kind/extension,
+  relative-path, unsafe-basename, or unsupported-model inputs fail before any filesystem or media
+  operation with the same fixed non-echoing message.
+- The shared registry explicitly forbids `full_path` and `selection_token` in progress. Contract
+  transport policy permits a full path only in Rust selection memory, bounded worker stdin, and
+  worker memory; the token is forbidden from worker input/output, diagnostics, persistence, prompts,
+  and cloud traffic.
+- Runtime does not pass the original selected path from Python to ffprobe or FFmpeg.
+  Python opens the original path itself, copies its bytes to a generic task-owned staging filename,
+  and gives media tools only that staging path. A validated video staging file may be atomically
+  promoted to `media/video.<ext>`; audio staging must be removed after the official WAV commits, and
+  failed/cancelled staging remains subject to the existing bounded cleanup/recovery policy.
+- The picker, selection store, worker CLI/pipeline, and closed manifest/History/UI consumers were
+  activated together on 2026-07-23. Cross-language, command-capture, recursive privacy, frontend
+  ledger, and fake-AI tests enforce the same path/token exclusions at the executable boundary.
+
+## 2026-07-20 Video-Processing Application Module Boundary
+
+- The root Tauri adapter delegates to focused URL and retry modules without changing strict command
+  inputs or public terminal results. Tauri's generated handler symbols remain at the existing root
+  paths; `lib.rs` command registration is unchanged.
+- URL cache reuse accepts only a requested URL or validated `SourceIdentity` plus ASR model and reads
+  task data exclusively through `SupportedTask`. It cannot spawn workers, resolve settings, log, or
+  access arbitrary manifest paths.
+- Source-identity preflight remains a best-effort cache optimization for failed, wrong-family,
+  unstructured, or protocol-invalid outcomes. Only completed identities influence cache matching;
+  cancellation, busy, and transport categories retain fixed closed process failure mapping.
+- Retry diagnostics contain only validated target, output language, status, and bounded safe error
+  code. They never include task ID, preference snapshot, prompt, transcript, generated body, raw
+  worker detail, URL, path, or credentials.
+- The split introduces no new input/output field, worker invocation, persistence, network access,
+  facade, local-path flow, or local-media placeholder. Contract v3 and the existing result/privacy
+  validators remain authoritative.
+
+## 2026-07-19 Video-Processing Task-Result Adapter Boundary
+
+- Only `video_processing/task_result.rs` may turn typed process-video or retry-insights worker
+  outcomes into synthetic public task failures. Callers select a closed context and cannot inject
+  arbitrary status, stage, code, or fallback prose.
+- A validated structured task result passes through unchanged. Wrong result families, protocol
+  failures, raw unstructured stderr, and runtime error details never enter synthetic public errors;
+  fixed safe codes and messages are used instead.
+- Process-video failures keep `failed/video_extracting`; retry failures keep
+  `partial_completed/insights_generating`. Pipe and wait failures retain the runner-owned fixed
+  command-error behavior and are not converted into user-content-bearing task values.
+- Cache/preflight, diagnostics, lifecycle supervision, terminal parsing, commands, contract v3, and
+  local-media v4 remain separate boundaries. This extraction adds no logging, persistence, worker,
+  network, prompt, transcript, or artifact access to the adapter.
+
+## 2026-07-19 Closed Worker Terminal-Result Boundary
+
+- Python-to-Rust stdout and Rust-to-TypeScript IPC results are untrusted runtime values. Consumers
+  must validate the operation-specific closed top-level and nested shapes before reading any field.
+- Unknown fields, missing fields, wrong types, invalid enums, unsafe codes, incoherent status/error
+  combinations, multiple terminal lines, and operation-family mismatches fail with the fixed
+  `WORKER_PROTOCOL_VIOLATION` code.
+- Protocol failures must never echo or stringify rejected stdout/IPC payloads in public errors,
+  technical details, diagnostics, or logs. This includes task paths, artifact paths, source URLs,
+  transcript text, prompts, generated content, credentials, and raw exception text.
+- Unknown error codes may cross the boundary only when they match the bounded safe-code grammar;
+  they continue to use generic localized UI guidance. This forward-safe behavior does not permit
+  unknown object fields or arbitrary error values.
+- Model-download terminal results must not contain `model_dir`; raw HTTP, archive, filesystem, or
+  downloader exceptions are converted to fixed safe code/message pairs before serialization.
+- The shared contract and cross-language negative tests are release gates. Python producer checks do
+  not replace independent Rust and TypeScript consumer validation.
+
+## 2026-07-19 Worker Atomic Artifact Commit Boundary
+
+- Official task video, audio, manifest, and preference-snapshot paths must never be used as scratch
+  outputs. Copies, FFmpeg output, and JSON text are staged beside the destination and installed only
+  through a same-directory atomic replacement after required validation succeeds.
+- Media staging names must be unique, retain a tool-compatible final suffix, stay inside the owning
+  task directory, and remain outside the manifest artifact allowlist. Cleanup is best effort, but a
+  leftover staging file is never authoritative and must not be returned to UI or History.
+- A failed write, sync, probe, decode, or replace preserves any previous official file. Raw operating
+  system, source URL, ffprobe, FFmpeg, staging-path, and destination-path text must not cross the
+  structured worker error boundary.
+- `task.json` is installed atomically after its complete payload is serialized. It may record
+  only committed ordinary files at known task-owned paths; existence of an arbitrary or partial file
+  is insufficient evidence for registration.
+- Phase 1 per-file media atomicity still preserves independently committed valid artifacts under
+  existing partial-task behavior. The implemented 2026-07-22 Phase 2 adds the closed
+  prepared/committed journal and recovery-before-read for transcript/AI/Rust edit bundles, so a
+  supported existing task resolves to the complete previous or new revision before product access.
+
+## 2026-07-18 Process-video request contract v3 boundary
+
+- React may send only the raw submitted URL in the strict `process_video` IPC request. It must not
+  send model settings, locale, output-format choices, worker modes, credentials, or derived source
+  identity.
+- Rust resolves the configured ASR model once and sends a bounded worker-stdin request containing
+  exactly contract version, URL, and allowlisted `asr_model`. The same resolved model is used for
+  cache matching and worker execution.
+- Python rejects missing, legacy, additional, wrong-version, empty-URL, and unsupported-model fields
+  before source resolution or task mutation. Fixed invalid-request errors must not echo payloads,
+  URLs, userinfo, query values, fragments, settings paths, environment values, or parser details.
+- The process path has no model compatibility fallback and Python must not override the explicit
+  worker model from `APP_ASR_MODEL`. Desktop and bundled worker remain an atomic release unit.
+- Shared schema and cross-language tests are security gates: adding a field requires a closed type,
+  explicit owner and consumer, safe failure policy, and non-echoing negative tests.
+
+## 2026-07-16 Local Media Path and Artifact Boundary
+
+- The complete local source path is sensitive. It may exist only in the Rust selection store, the
+  bounded one-shot worker stdin pipe, and worker memory while opening the source. It is forbidden in
+  React/JavaScript, IPC responses, argv, environment variables, manifests, task IDs, artifact names,
+  History, progress, errors, technical details, logs, transcript exports, prompts, and cloud traffic.
+- The native picker is not an authorization by path string. Rust returns a random opaque UUID token
+  and keeps one non-persisted matching selection. Processing rejects stale/fabricated tokens and
+  revalidates absolute ordinary-file status, allowlisted extension, nonzero size, no symlink,
+  junction, or reparse point, plus unchanged size and modification time before worker launch.
+- A safe display name is basename-only, strips separators, control characters, and Unicode
+  bidi/directional formatting controls, is bounded to 160 characters while preserving extension, and
+  falls back when empty. It may be displayed/persisted locally for History but is forbidden from
+  diagnostics and AI prompts. Tokens are never persisted or logged.
+- Contract v4 local requests are closed and non-echoing. Rust and Python reject missing, additional,
+  invalid, mismatched-kind, changed, linked, malformed, or missing-stream sources through fixed codes.
+  Raw ffprobe/FFmpeg commands, stdout/stderr, payloads, and operating-system errors must pass the
+  existing sanitizer and cannot be returned as primary or technical UI text if they expose a path.
+- The original selected path is consumed only by Rust validation and Python file-open/copy code.
+  ffprobe/FFmpeg receive only a generic task-owned staging path; raw source directory names and
+  basenames are forbidden from their argv, lifecycle diagnostics, and sanitized failures.
+- File-dialog filters and extensions are not trusted content validation. The worker probes stream
+  structure and requires video+audio for a video source or audio for an audio source. Cover art does
+  not grant video classification. No shell interpolation is permitted for copy, probe, or conversion.
+- Video and WAV outputs use generic task-root-derived names and partial/temporary writes. Only
+  validated final artifacts enter the manifest. Path resolution, link/reparse checks, deletion,
+  playback, and file-location commands retain the existing strict task-root boundary.
+- A local manifest is accepted only when exactly one safe source variant holds. URL requires the
+  existing canonical SourceIdentity predicate; local requires empty URL/null identity and closed safe
+  metadata. Unrecognized variants remain product-isolated and physically untouched.
+- Media never goes to Locus server or the LLM provider. Existing confirmed AI may read the saved
+  transcript but receives no local filename, path, selection token, media bytes, or manifest. Logs may
+  record only safe aggregate kind/extension/size-or-duration buckets, stage, elapsed time, and code.
+
+## 2026-07-15 Localization and AI Output-Language Boundary
+
+- `ui-preferences.json` must remain app-local and contain only schema version plus the closed language
+  preference enum. It must not contain account/session data, source URLs, output/model paths,
+  inspiration preferences, transcripts, prompts, or generated content, and it must never be sent to
+  Locus server.
+- All locale resources must be bundled. UI locale selection and switching must make no
+  translation-resource network request or introduce a remote translation or telemetry provider.
+- Worker/model progress producers must accept only contract-registered codes and closed per-key
+  argument schemas. Public model IDs must be enumerated; language must be a 2-35 character safe tag;
+  attempt/total must be integers from 1 through 100; unknown args must be rejected. `current_file`
+  must be 1-255 characters, reject separators/control characters/`.`/`..`, be required only by the
+  two model-file codes, and be forbidden otherwise. Consumers must drop an invalid event and record
+  only its safe code; they must not render worker prose as fallback.
+- URL, full path, Cookie, credential, request headers, prompt, transcript, preference prose, and
+  generated content must remain forbidden in events and diagnostics; the shared registry names these
+  as `url`, `full_path`, `cookie`, `credential`, `transcript_content`, `prompt`, `generated_content`,
+  `request_headers`, and `preference_prose`.
+- `output_language` must be one of three enum values in a closed request whose target is
+  `summary | insights`; only `insights` may carry the optional object preference snapshot. The worker
+  must map the enum to fixed internal prompt instructions; arbitrary UI strings must never be used.
+  Missing, invalid, target-incompatible, or additional fields must fail with a fixed non-echoing error.
+- Diagnostic logs may record target, validated output locale, stable message/error code, and safe
+  aggregate values only. They must not record the LLM prompt, transcript snippets, generated body,
+  full preference snapshot, or raw request payload.
+- Raw worker/provider errors require the existing sanitization boundary before they can appear in an
+  optional technical-details disclosure. Unknown progress natural language is discarded rather than
+  displayed or logged as a fallback.
+- AI language compliance must add no detection, translation, or retry call. The LLM supplier must
+  receive no new user content beyond the already confirmed target data; AI Credits and server
+  checkout must stay on the existing per-call boundary.
+
+## 2026-07-12 Open-Source macOS Release Boundary
+
+- Locus v0.2.16 may use ad-hoc-signed, non-notarized macOS DMGs only for the explicitly approved
+  personal-development, small-user, and open-source distribution model. The release page must
+  disclose the one-time Gatekeeper approval before presenting feature highlights.
+- Ad-hoc signing is an integrity seal, not Apple identity verification. Release notes and UI/docs
+  must not claim Developer ID signing, notarization, App Store review, or silent enterprise
+  deployment support.
+- The macOS build must verify the final `.app` with `codesign --verify --deep --strict` before DMG
+  upload. Runtime import smoke must not mutate the signed bundle with `.pyc` or `__pycache__` files.
+- Release artifacts must not contain Apple signing/notarization credentials, Tauri updater private
+  keys, `.env` files, LLM keys, payment credentials, ASR model weights, user configuration, logs,
+  history tasks, transcripts, or other user artifacts.
+- Apple Developer ID signing plus notarization and stapling remain required before removing the
+  Gatekeeper disclosure or expanding to a no-manual-step consumer/commercial distribution.
+
+## 2026-07-11 Workspace Data-Flow Disclosure
+
+- The local and AI workspaces are two UI projections of one task, not two storage or network
+  pipelines. Video, audio, raw source URL, complete transcript, task manifest, and local
+  preferences remain on the desktop and must not be sent to Locus server.
+- The local workspace may read local media/transcript artifacts only through existing
+  validated task-root Tauri commands. Extracting `TranscriptReviewPanel` must not duplicate
+  path resolution, relax link/reparse checks, or bypass expected-task save guards.
+- The AI workspace may initiate cloud generation only after target-specific confirmation.
+  The worker rereads the saved official `transcript/transcript.txt` and sends only allowed
+  transcript chunks to the checked-out LLM supplier. Video and audio are never uploaded.
+- Preference snapshots are allowed only for the confirmed inspiration target. Summary and
+  its attached Mermaid generation must always receive no preference snapshot.
+- While AI uses the saved transcript, the editor and save action are disabled to prevent UI
+  ambiguity about which version was sent. Playback, scrolling, and local file location do
+  not alter the prompt input and remain available.
+- Target status, errors, logs, browser fixtures, screenshots, and accessibility labels must
+  not include raw source URLs, credentials, complete prompt text, or complete transcript
+  content.
+- Local processing and AI generation are separate command capabilities, not a boolean mode.
+  `process_video` must not define, parse, normalize, or forward a `generate_insights` field and
+  must never construct an LLM client. Explicit use of the retired field is rejected with fixed
+  `INVALID_REQUEST_PAYLOAD` semantics without echoing the request or source URL.
+- Only confirmed `retry_insights` may receive checkout material, construct an AI client, write AI
+  artifacts, or consume quota. A direct worker invocation cannot recover the retired automatic-AI
+  branch through a compatibility parser or environment setting.
+
+## 2026-07-12 Permanent History Deletion Boundary
+
+- Product deletion accepts only a strict task ID for a currently supported History vNext task.
+  IPC must reject frontend-supplied task/output/cache paths, URLs, manifests, commands, or unknown
+  fields.
+- Rust must derive and canonicalize the configured roots, prove the target is exactly
+  `<output>/tasks/<task-id>`, and reject root or descendant symlink, junction, and reparse-point
+  storage before mutation. It must never delete the output root, tasks root, another task, models,
+  settings, auth state, diagnostics, update state, or global cache.
+- Unsupported legacy, malformed, quarantined, missing-marker, or invalid-identity directories
+  remain physically untouched and unavailable to the delete UI.
+- Playback cache deletion is limited to `.app-audio-review/<task-id>` and precedes authoritative
+  task deletion. Cache failure aborts before task mutation; primary recursive deletion failure may
+  partially complete and cannot be rolled back.
+- Deletion diagnostics expose only fixed outcome/error codes and elapsed time. They must not
+  include task IDs, discovered filenames, local paths, canonical/source URLs, manifest content, or
+  raw operating-system errors.
+- The frontend disables deletion during local processing, AI generation, cancellation, transcript
+  save, or another deletion; Rust independently rejects an active video/AI supervisor lane.
+
+## 2026-07-11 Unsupported Legacy Task Isolation Boundary
+
+- Only a schema v3 manifest with the current source-privacy marker, a present and
+  allowlisted canonical SourceIdentity matching `source_url`, and no quarantine flag may
+  enter history, cache reuse, transcript load/save, detail, or AI retry.
+- Schema v1/v2, missing-marker, quarantined, malformed, invalid-identity, symlink,
+  junction, and reparse-point tasks are unsupported legacy data. Product code fails closed
+  before artifact reads and must not return their task id, directory name, source URL,
+  error detail, preview, or artifact content to UI, logs, or diagnostics.
+- Unsupported directories remain physically untouched. Locus does not start a migration
+  worker, rewrite manifests/artifacts, add markers, rename directories, backfill indexes,
+  quarantine data, or delete files. Users may back up or delete those directories manually
+  outside the product.
+- History list diagnostics may contain only the fixed stage name, aggregate supported and
+  ignored counts, and elapsed milliseconds. They must not identify ignored entries. History
+  list and repeated opens are Rust-only and must never create a Python process.
+- `get_history_detail(taskId)` reads only the latest explicitly selected supported task,
+  after strict task-id and no-link validation. Stale responses are discarded before they
+  reach the workflow controller.
+
+## 2026-07-10 Desktop Task-Identity Isolation Boundary
+
+- Desktop workflow state is task-scoped user data. A history selection must not replace task identity while a worker, AI retry, or cancellation operation is active, because late callbacks could otherwise expose one task's transcript, artifacts, summary, or insights in another task's UI.
+- The workflow controller owns operation invalidation and complete history restoration. App, history loading, and detail features must use narrow semantic actions rather than a generic workflow-state setter.
+- Task-local transcript saves must include the expected task ID and are ignored if the visible task changed before the save returns. Resetting for a permitted history restore closes detail/preference transient UI, preventing task-local controls from continuing to act on a prior task.
+
+## 2026-07-10 Desktop Process-Tree Cancellation Boundary
+
+- Only `worker_runtime::supervisor` may signal a PID/PGID, and only one recorded by the private `ProcessSupervisor` for the current in-process worker or model-download instance. Application modules receive semantic task/model-download execution plus cancellation/activity methods; the lanes, raw requests/specifications, and all supervisor mutation/OS termination functions remain private.
+- `WorkerLane::run` is the sole owner of Locus worker spawn, register-before-stdin, pipe ownership, reader startup, wait/reap, finish-before-reader-join, terminal classification, and lifecycle diagnostics. It must not accept a PID, PGID, executable, command, environment key, or shell fragment from IPC, UI, worker output, task data, or a log entry.
+- `TaskWorkerFacade::execute(WorkerJob)` is the only application-facing task-lane execution entry.
+  It must derive the fixed invocation, lifecycle operation, progress route, lane, and credential
+  policy exhaustively. Only `RetryInsights` may resolve server-managed LLM invocation material;
+  process-video, process-local-media, and source-identity jobs cannot receive it through their API.
+- The implemented ASR model-download capability is
+  `AsrModelDownloadJob -> worker_runtime::command -> WorkerCommandSpec`. The semantic job may carry
+  only the existing download URL, SHA-256, ModelScope endpoint, and SenseVoice revision override
+  values; executable, argv, stdin, environment keys/removals, cwd, operation, progress route, and
+  lane remain runtime-owned. `WorkerCommandSpec` and `WorkerRunRequest` are inaccessible outside
+  `worker_runtime`, and lifecycle diagnostics must not render any override value. The permanent
+  source gate prevents crate/root re-export, raw application imports, and ownership of
+  `--download-asr-model` outside `worker_runtime`. Evidence:
+  `docs/exec-plans/completed/2026-07-24-asr-model-download-job-capability-plan.md`.
+- Windows cancellation uses the fixed `taskkill /T /F` argument vector. Unix cancellation uses a fixed `kill` argument vector directed at the worker-created process group, first `TERM` and then bounded-grace `KILL` only if the group remains. No shell interpolation is permitted.
+- A delivered termination signal is not proof of a final cancelled state. State rollback after a signal error and terminal cleanup after child observation must match the same instance ID, so stale cancellation/exit handling cannot hide a real result or interfere with a newer process.
+- A valid structured worker result wins a concurrent cancellation claim. Without a structured result, only the matching `Cancelling` terminal phase becomes cancelled; malformed success is a protocol violation and malformed failure remains a typed unstructured failure.
+- Cancellation must preserve existing task artifacts, cache, and model files. Lifecycle logs use fixed operation/status markers and must not include raw worker arguments, stdin, environment values, full executable/current-directory paths, source/local-media paths, URLs, credentials, descendant command lines, stderr bodies, transcripts, prompts, preferences, generated content, or arbitrary termination diagnostics.
+- Worker and ASR model progress may cross Tauri only through the closed runtime routes and their existing contract validators. Typed job/model-download execution derives the route; application modules cannot supply or select an arbitrary parser, event name, route, or unvalidated progress payload.
+- The Unix parent-plus-child fixture is conditional on a Unix host. Windows command/state coverage does not prove macOS signal delivery, so the supported macOS release requires native-host validation. Linux is not a supported release platform and is not a release gate.
+
+## 2026-07-10 Entitlement Transaction Integrity Boundary
+
+- A payment webhook, activation-code redemption, and administrator entitlement adjustment are security-sensitive state transitions. Their related data changes must commit or roll back together; partial-write compensation is not an acceptable consistency mechanism.
+- Store-level semantic operations must validate current state and make all related writes in one transaction. Prisma transaction callbacks must remain inside PrismaStore; routes and services must not compose a persistence transaction from generic read/write calls.
+- Webhook replays are safe only when provider event, order binding, and transaction identity agree. Conflicts must return a structured public error without overwriting the recorded transaction; unique-event handling must inspect Prisma known error codes, never fragile exception text.
+- Administrator compensation audit records are required evidence, not best-effort telemetry. A failure to write the append-only audit record rolls back the entitlement mutation. Logs may identify record IDs and users but must not include payment payloads, activation-code plaintext, session tokens, or free-form support notes.
+- All administrator quota grants are additive, require an audit reason, preserve `llmQuotaUsed`, and use the same entitlement-adjustment transaction. Direct remaining-quota edits, reductions, and resets are not supported without a separately approved audited operation.
+- Historical automatic recovery is limited to a verified, deterministic payment replay. Ambiguous redeemed-code and missing-audit states require an administrator `manual_repair` adjustment so the repair itself is append-only and auditable.
+- WeChat Pay was never enabled and was removed on 2026-11-08. No payment provider code, route, credential, or database table remains; the local billing tests that exercised internal state transitions were removed with the channel.
+
+## 2026-07-10 Source URL Secret Boundary
+
+- A submitted source URL is credential-bearing input even when it points to public content. `xsec_token`, access/session/auth tokens, signatures, expiries, cookies encoded in queries, URL userinfo, and fragments must be treated as secrets or volatile request material.
+- `SourceRequest.download_url` is transient request material for frontend-to-Tauri IPC, the one-shot worker stdin pipe, and the downloader/fallback argument. A cache-only worker preflight may also receive the raw submission through stdin but may return only validated `SourceIdentity`. Neither request object has a persistence/result serialization path; the raw URL must not enter worker argv, worker environment variables, `task.json`, transcript files, results, progress events, history, desktop logs, UI errors, cloud prompts, or server requests.
+- Production worker argv contains fixed mode flags only. Payload-bearing child stdin is piped, capped at 1 MiB, written once, and closed before waiting; fixed no-payload commands use null stdin. Empty, oversized, malformed, unreadable, or undeliverable input fails with fixed messages that do not include parser text or payload fragments.
+- Request transport never uses a shell and does not accept a command, executable, PID, or environment key from the request payload. `WorkerLane::run` registers payload-bearing production workers before stdin delivery, so Windows tree termination and Unix process-group TERM-to-KILL escalation remain available even while a pipe write is blocked. Delivery failure or cancellation terminates and reaps the matching child and must not create a fallback argv/environment path.
+- `canonical_url` is reconstructed from an allowlisted platform identifier and is the only source URL allowed beyond the current download boundary. Canonicalization must drop userinfo, fragments, and every query field except Bilibili's non-default part selector.
+- Downloader stderr and fallback exceptions are untrusted because tools may echo the original URL. Only structured error codes and source-identity-sanitized public messages may cross into results or diagnostics.
+- Cloud AI receives only the saved task-root `transcript/transcript.txt` text selected by the user action after exact-path and link/reparse-point validation. Transcript Markdown metadata, alternate same-named text files, source URLs, manifest contents, local paths, and downloader diagnostics are forbidden prompt inputs. The `transcript` polish target additionally enforces a bounded payload: ~2000-char sentence-boundary chunks, at most 24 chunks per run (longer transcripts fail closed with `POLISH_TRANSCRIPT_TOO_LONG`), one checkout per run, and the polished output is written only to `transcript/polished.txt` with a `polished.meta.json` recording the source-transcript SHA-256; a meta hash mismatch hides the polished body instead of trusting stale content.
+- Unsupported legacy task data is never migrated or inspected beyond the minimum manifest
+  eligibility check. Physical legacy files, exported copies, backups, and old logs remain
+  outside automatic product mutation and require user-managed backup or deletion.
+
+## 2026-07-06 Insight Preference Privacy Boundary
+
+- `我的灵感档案` and per-run generation preferences are local desktop data by default and must not be uploaded to Locus server.
+- The inspiration profile should be stored under app-local data as a constrained JSON file, not in app-local `.env`, because it is product data rather than runtime configuration.
+- The current app-local file is schema v2. Its profile contains exactly the six long-term-context
+  fields, and Tauri must validate before atomically mutating it. There is no v1 migration: the
+  feature has shipped only the v2 format, so every persisted preference file is already v2 and no
+  legacy `defaultStyles`/`defaultAvoid` or `legacyGenerationPreferenceSeed` exists.
+- A skipped inspiration profile may be represented locally by a marker such as `profileSkipped: true`, but skipped means `no profile / unspecified`; the app must not synthesize, log, upload, or send a default persona in its place.
+- Each AI generation confirmation must state that transcript snippets will be sent to the administrator-configured cloud LLM supplier for that output, while the selected preference snapshot is sent only with the `启发灵感` generation request and must not be sent with `要点总结` or Mermaid mindmap requests.
+- A current Inspiration worker snapshot may contain only the resolved six-field profile (or null),
+  the explicit skip marker, one complete current generation preference object, and labels for those
+  exact fields. Historical task-local v1 snapshots remain immutable local evidence and must never
+  update schema v2 global state.
+- Logs, diagnostics, UI errors, server requests, and quota checkout metadata must not include full inspiration profiles, full generation preferences, complete prompts, transcripts, or generated insight content.
+- 成稿生成不打印工具参数、工具返回内容、模型回复片段或完整异常转储。`DRAFT_GENERATION_FAILED`
+  使用固定安全消息 `Draft generation failed.`；原始异常不进入返回结果或 task manifest。
+  hook 警告仅包含内部层名与固定事件名，MCP 清理警告仅使用固定消息。
+- The account service must not add API fields for storing profiles, generation preferences, transcripts, insight topics, or local task manifest contents.
+- Users must be able to clear the local inspiration profile. Clearing it affects future generation only and must not delete existing local task artifacts.
+
+## 2026-07-05 Desktop Diagnostics Log Boundary
+
+- Desktop diagnostics are written only to app-local data `logs/desktop.log`.
+- Worker lifecycle logs may include only fixed operation kind, supervisor-owned PID, safe process exit/status markers, structured status/error/stage fields, and closed safe summaries. They must not include raw command vectors, stdin, environment values, full executable/current-directory paths, source/local-media paths, URL material, raw stderr, transcripts, prompts, preferences, or generated bodies.
+- Non-lifecycle desktop logs may include task id, structured error code, validated target/locale, cache outcomes, and sanitized short error text. Any local path diagnostic must be explicitly justified and constrained; lifecycle code must not log full resource or app-local paths.
+- Logs must not include LLM API keys, desktop session tokens, cookies, sensitive request headers, complete volatile YouTube media/CDN URLs, or Google/YouTube login material.
+- YouTube JavaScript runtime support must not introduce browser cookie import, account login automation, CAPTCHA solving, proxy bypass, remote component fetching, or private-content scraping.
+- Diagnostic logs are not uploaded to Locus server and are not exposed through normal result artifact actions.
+- Deno is bundled only as a local `yt-dlp` JavaScript runtime. It must not be used for browser cookie import, account login automation, CAPTCHA solving, proxy bypass, remote app-code loading, or private-content scraping.
+
+## 2026-07-18 Task Access Facade Enforcement
+
+- Raw Rust `TaskManifest` parsing, support-predicate checks, artifact-key lookup, relative-path
+  validation, canonical containment checks, and manifest writes remain private to the
+  `task_manifest` module tree. `task_manifest.rs` is the sole crate-visible import surface; private
+  `source_identity`, `schema`, `storage`, and `access` children must not be imported by History,
+  cache, transcript, deletion, worker-runtime, or other application callers.
+- Canonical URL/source identity policy stays pure in `source_identity`; raw DTO, safe projection,
+  and relative artifact policy stay pure in `schema`; configured roots, manifest I/O,
+  canonicalization, and link/reparse checks stay in `storage`; support gating and task capabilities
+  stay in `access`. Only the stable root may re-export the existing safe surface.
+- History, cache, transcript, and deletion code must enter through `SupportedTask::scan/open` and
+  must not reconstruct support, manifest, or path checks locally.
+- `SupportedTask` means the current storage and source-privacy predicate already passed. A scan
+  isolates and counts an invalid individual entry without returning its identity or content;
+  inability to enumerate the configured task root remains an operation failure.
+- Artifact access uses the closed `TaskArtifact` enum. Transcript mutation uses `TaskEditSession`;
+  deletion and playback may receive only the validated task-local path capability required for
+  their filesystem operation. No facade method may turn task access into an arbitrary path browser.
+- Python URL orchestration and retry application-flow persistence must use `TaskStoreFacade`.
+  `OpenedTask` may expose a
+  validated `TaskContext` and normalized transcript metadata, but not the raw manifest payload.
+- The local-file source variant extends the central support predicate and its contract tests. It
+  must not reintroduce caller-specific URL/local manifest acceptance rules.
+
+## 2026-07-19 Media Preparation Facade Enforcement
+
+- `run_worker_pipeline` must not reconstruct download, downloaded-file selection, ffprobe, video
+  copy, audio extraction/reuse, or subtitle-discovery flows. Those operations enter through
+  `MediaPreparationFacade` and return only `PreparedMedia` or a typed sanitized failure.
+- `MediaPreparationFacade` may receive a validated `TaskContext` for bounded task-owned paths, but
+  it must not import `TaskStoreFacade`, finalize a result, write a task manifest, invoke ASR, or enter
+  any AI extraction path.
+- The current facade accepts the closed `UrlMediaSource | LocalMediaSource` union. The local variant
+  landed together with contract v4 and its real CLI consumer, and keeps the complete local path out
+  of media-tool argv, progress, results, errors, logs, manifests, transcripts, prompts, and UI state.
+- A local audio result must expose no video path; local video/audio results expose no subtitle
+  candidate. Partial media remains unregistered until the task persistence boundary validates the
+  final artifact.
+
+## 2026-07-21 Worker Pipeline Private-Owner Enforcement
+
+- `worker_core.pipeline` is the sole production import surface for pipeline-owned symbols. Modules
+  outside the private `pipeline_runtime/` tree must not import its children directly, and private
+  children must not import the stable root, CLI, or worker service.
+- URL process orchestration owns no AI extraction, LLM, output-language, or retry dependency. The AI
+  owner owns no ASR, media, source-resolution, or task-persistence dependency; it must validate the
+  exact official `transcript.txt` path and all link/junction constraints before reading or invoking
+  a prompt.
+- Transcript code is the only private owner of ASR behavior. Shared policy may depend only on the
+  stable `Transcriber` contract, while orchestration enters media and persistence only through
+  `MediaPreparationFacade`, `SourceRequest`, and `TaskStoreFacade`.
+- The move creates no new input, output, network, persistence, prompt, progress, diagnostic, or log
+  surface. Existing rules forbidding source URLs, local paths, transcripts, prompts, generated
+  content, credentials, and sensitive headers from diagnostics remain unchanged.
+- The canonical worker is authoritative. Packaged Tauri resources must be generated through the
+  supported refresh path and compared recursively by relative file set and bytes; private runtime
+  files must never be maintained through hand-edited mirror copies.
+- The local-media implementation extends the approved orchestration/transcript owners and preserves
+  process-versus-AI isolation; future source work must not bypass these boundaries through another
+  private import path.
+
+## 2026-07-24 Implemented Python Process-Adapter and Application-Handler Boundary
+
+- The CLI parses only the five fixed modes, reads one capped stdin object, renders
+  contract-validated progress/terminal JSON, dispatches to the stable facade, and selects the
+  process exit code. It owns no platform resolution, ASR/LLM factory, request/pipeline helper,
+  persistence, or model-download behavior, and exposes no test compatibility namespace.
+- `worker_service.py` direct-reexports exactly five concrete private application handlers.
+  Only that facade may import the use-case handler modules in production; handlers may import the
+  defaults owner and existing domain boundaries but may not import sibling handlers, CLI, or the
+  facade.
+- Moving composition must preserve the platform-aware resolver used by the real CLI, all bounded
+  stdin and failure results, recovery/commit mappings, progress validation, server-managed Insight
+  client construction, output language, AI Credits, model-download sanitization, and existing
+  dependency-injection seams.
+- Retry artifact reads receive `TaskPaths` and use explicit reviewed fields. Dynamic
+  `object/getattr()` path access is rejected by a source-boundary gate.
+- No handler may log or return request JSON, raw source URLs beyond the existing safe completed
+  source-identity result, local source paths, credentials, prompts, transcript content, generated
+  content, full third-party exceptions, or transaction-internal paths. No new network or
+  persistence surface is authorized.
+- Exact-tree, dependency-direction, factory-owner, direct-reexport, typed-path, and package-mirror
+  tests keep this capability boundary closed. Design and completed execution evidence:
+  `docs/design-docs/2026-07-24-python-worker-application-facade.md` and
+  `docs/exec-plans/completed/2026-07-24-python-worker-application-facade-plan.md`.
+
+## 2026-07-05 Task Artifact Path Boundary
+
+- Task-manifest artifact-path fields may contain local paths only as relative paths under the owning task directory. Absolute paths, `..`, path traversal, remote URLs, cookies, headers, or credentials must be rejected; the allowlisted `source_identity.canonical_url` is source metadata, not an artifact path.
+- Tauri task commands must resolve `task_id` to a manifest under the configured output root and must verify every resolved artifact path remains inside that task directory.
+- Repeated URL task reuse may read only local manifests and manifest-relative artifacts under the configured output root. It must not trust failed tasks, missing artifacts, traversal paths, remote URLs, cookies, headers, or credentials.
+- Transcript review and save commands should receive `task_id`, not arbitrary transcript/audio paths. The audio player and text editor may access only manifest-declared artifacts for that task.
+- The active data root's `cache/tasks/<task_id>/` may store temporary or diagnostic files, but the UI should not expose it as a browseable artifact folder.
+- Legacy flat output files, old app-local history records, and non-current task manifests
+  are not trusted task authorities and have no compatibility reader. Data migration preserves
+  application-owned legacy bytes without trusting or executing them; ambiguous ownership blocks migration.
+
+## 2026-07-05 Platform Subtitle Safety Boundary
+
+- Subtitle-first reuse may request only public subtitle files exposed through the same no-login `yt-dlp` flow used for public YouTube and Bilibili video downloads.
+- Subtitle support must not add `--cookies`, `--cookies-from-browser`, browser cookie stores, account login automation, QR login, CAPTCHA solving, proxies for access-control bypass, private-content scraping, or member/age/private bypass.
+- Raw `.vtt` and `.srt` files belong to `cache/tasks/<task_id>/download/` and must not be exposed as normal result artifacts or written into manifest artifact paths.
+- `task.json` may record transcript source metadata and text preview, but must not store complete raw subtitle files, cookies, credential-bearing headers, or volatile media CDN URLs.
+- Subtitle parse failures, missing files, unsupported formats, and unusable text must degrade to local ASR rather than surfacing platform bypass instructions or asking users for cookies/login material.
+
+## 2026-07-03 Transcript Audio Review Local File Boundary
+
+- Transcript review may read only the transcript path and audio path associated with the current task or a local history record. It must not become an arbitrary file browser, text editor, or media player.
+- Tauri transcript commands must validate path shape, file extension, existence, and relationship to known transcript/audio artifacts before returning a playable path or writing edits.
+- `transcript_detail.rs` remains the sole Tauri/runtime-root boundary. Its private `audio_playback`, `segments`, and `edit_storage` children may receive only `SupportedTask` / `TaskEditSession` capabilities and fixed internal roots; they must not parse raw manifests, accept frontend paths, resolve app runtime directories, add network access, or log transcript/path content.
+- Audio-cache replacement and canonical containment stay in `audio_playback`; tolerant optional-sidecar reads and strict edited-sidecar writes stay in `segments`; `edit_storage` orchestrates linked-target validation, official-path enforcement, one-time backups, ordered transcript writes, preview updates, and manifest encoding. Shared target/parent link checks and sibling `original/` path calculation belong to `task_manifest/storage`, exposed through the task root for transcript and draft edits. Metadata link/reparse detection belongs to `atomic_files`; each entry retains its existing type and containment checks.
+- `load_transcript_detail` may return transcript text, optional segment metadata, backup status, and a validated local audio path. It must not return cookies, request headers, remote media CDN URLs, LLM keys, or private signing material.
+- `save_transcript_edit` may write the official transcript `.txt`, matching `.md`, optional segment sidecar, and local history preview. The first save should create an original backup once and must not overwrite that backup later.
+- Empty transcript saves, path traversal, non-transcript files, and unrelated local paths must fail recoverably.
+- Segment metadata is local-only review data. It must not be sent to Locus server unless a future product spec explicitly adds a server workflow.
+- The audio player should use Tauri-validated local paths only. Missing audio must degrade to text editing without attempting remote downloads or network lookups.
+- Tauri may create playback copies under the active data root's `cache/.app-audio-review/<task_id>/` only after validating the original manifest-declared audio artifact. This cache is rebuildable and acquires the same native data permit as the task read.
+- Manual playback-cache cleanup accepts no arbitrary path and resolves only the active location snapshot's `.app-audio-review` subtree. It protects task artifacts, other caches, models, runtime components, Collections, authentication, `.env`, logs and preferences.
+- Playback-cache size reporting is local UI state only. It must not upload audio paths, source paths, transcripts, or cache metadata to Locus server.
+- The Tauri asset protocol authorizes only the verified active output `tasks/` and playback-cache subtrees. Every returned audio path remains task-validated; fixed configuration, models, general task scratch files and arbitrary user directories are outside authorization. Unavailable storage revokes prior roots.
+
+## 2026-06-29 YouTube Public Video Safety Boundary
+
+- YouTube v1 may request only user-submitted public ordinary video or Shorts links through `yt-dlp`, and only to create one local media file for transcription.
+- Locus must not read browser cookies, persist cookies, request cookie files, use `--cookies`, use `--cookies-from-browser`, store Google/YouTube login material, automate login, solve CAPTCHA, bypass age/member/private restrictions, use proxies for access control bypass, or process playlists as a batch.
+- `watch?v=...&list=...` may be accepted only as a single-video request with `--no-playlist`; playlist/channel/handle/music/live/login-gated inputs must fail recoverably.
+- YouTube/Google volatile media CDN URLs, signed query strings, cookies, Authorization headers, and login or bypass instructions must not be stored in app-local history, UI errors, logs, settings, or Locus server requests.
+- Worker error sanitization should remove `googlevideo.com`/`videoplayback` signed URLs and cookie guidance before messages reach the UI.
+- Existing completed local media files must be preserved if a new YouTube download attempt fails.
+- A bounded 20-minute execution budget terminates a `yt-dlp` download child that stops making progress. The timeout result carries no URL, cookie, token or media CDN value, is reported through the existing `VIDEO_DOWNLOAD_FAILED` path, and triggers no automatic retry, platform fallback, or AI Credit call.
+
+## 2026-06-27 Bilibili Public Video Fallback Safety Boundary
+
+- Bilibili fallback may request only user-submitted public or user-authorized ordinary video links, safe `b23.tv` redirects, public video metadata APIs, public playurl APIs, and public DASH media URLs needed to create one local MP4 for transcription.
+- The fallback must not read browser cookies, persist cookies, collect or store `SESSDATA`, automate login, show QR login, solve CAPTCHA, scrape private videos, bypass member-only access, decrypt DRM, rotate user agents, use proxy pools, or spoof browser fingerprints.
+- PGC/bangumi/movie links, VIP/member-only streams, login-required streams, private/unavailable videos, CAPTCHA/risk-control pages, malformed API responses, DRM-protected streams, and no-playable-stream cases must return structured recoverable errors rather than attempting to bypass platform controls.
+- Fixed compatibility headers such as `User-Agent`, `Referer`, `Origin`, and `Accept-Language` are allowed for public Bilibili API/media requests. Credential-bearing headers and cookies are not allowed.
+- The stable root adapter is the only production entry point outside the private `bilibili/` package. `transport.py` owns urllib, bounded response decoding, Range restart, and safe streaming; `artifacts.py` owns candidate attempts and FFmpeg execution. AST gates reject child-to-root/application/ASR/AI back-edges and direct production imports of private modules.
+- Compressed response input and decoded gzip/Brotli/deflate output are both checked against the fixed response limit before JSON interpretation. Oversized decoded output fails with `BILIBILI_VIDEO_INFO_UNAVAILABLE` without including the response URL, encoding header, body, or decoder exception text. This post-decode rejection is not a strict compression-library peak-memory guarantee.
+- Streaming/resumable video and audio download helpers must enforce max-size and no-progress limits, keep partial files scoped to destination `.part`/temporary `.m4s` files, and preserve any existing completed media file if the new download or FFmpeg merge fails.
+- Full volatile Bilibili CDN URLs, cookies, `SESSDATA`, sensitive request headers, authorization material, and DRM key material must not be stored in local history, UI errors, logs, app-local settings, or Locus server requests. Logs may keep short causes, hostnames, Bilibili IDs, part index, quality labels, byte sizes, and local output paths.
+
+## 2026-06-27 Xiaohongshu Public Video Fallback Safety Boundary
+
+- Xiaohongshu fallback may request only user-submitted public or user-authorized share links, short links, full note URLs, and their public media URLs.
+- The fallback must not read browser cookies, persist cookies, upload cookies, automate login, solve CAPTCHA, scrape private notes, rotate user agents, use proxy pools, or spoof browser fingerprints.
+- Process-local anonymous cookies naturally issued by a public Xiaohongshu page may exist for one worker invocation only and must not be written to app-local settings, history, logs, UI errors, or Locus server requests.
+- The stable root adapter is the only production entry point outside the private `xiaohongshu/` package. `source.py` owns allowlisted host/path and bounded short-link policy; `page.py` owns status/decompression/state interpretation; `streams.py` is deterministic and side-effect-free; `transport.py` alone owns CookieJar, raw urllib, Range restart, and safe writes. AST gates reject child-to-root/application/ASR/AI back-edges and direct production imports of private modules.
+- Brotli/gzip/deflate decoding keeps the existing post-decompression size cap and fixed non-echoing failures. Compression libraries may allocate expanded output before that rejection, so this boundary does not claim a strict peak-memory guarantee.
+- Streaming/resumable video download helpers must enforce max-size and no-progress limits, keep partial files scoped to the destination `.part`, and preserve any existing completed media file if the new download fails.
+- Full volatile media CDN URLs, cookies, sensitive request headers, `xsec_token`, and authorization material must not be stored in manifests, History, progress, diagnostics, AI prompts, Locus server requests, or UI error text. Logs may keep short fixed causes, hostnames, quality labels, byte sizes, and local output paths.
+- Image-only notes, unavailable notes, login-gated notes, CAPTCHA-gated notes, private notes, rate-limited pages, malformed page state, oversized videos, stalled downloads, and no-playable-stream cases must return structured recoverable errors rather than attempting to bypass platform controls.
+
+## 2026-06-27 Admin Entitlement Adjustment Boundary
+
+- Manual entitlement and quota adjustments are restricted to the configured Admin Web account and must reuse HttpOnly admin session cookies plus `x-app-csrf` validation.
+- Every successful adjustment must be auditable with administrator email, target user, reason, before/after values, and timestamp. Corrections should create another audit record instead of rewriting the original event.
+- Adjustment notes are operational metadata only. They must not include LLM API keys, cookies, transcripts, private video URLs, local file paths, activation-code plaintext beyond the creation response, or sensitive support chat contents.
+- Server logs should identify adjustment IDs and target users, but should avoid logging free-form notes in full.
+- Manual compensation must never require users to upload videos, audio, transcripts, histories, local model caches, cookies, or desktop configuration files.
+
+## 2026-06-26 Public Link Fallback Safety Boundary
+
+- EasyDownload-derived work may improve Locus's handling of public or user-authorized share links, but it must not introduce browser cookie import, persistent cookie storage, account login automation, QR login, CAPTCHA solving, private-content scraping, proxy pools, user-agent rotation, or browser fingerprint spoofing.
+- Locus must not migrate EasyDownload's WeChat MITM, certificate authority installation, system proxy changes, or administrator-elevation behavior.
+- Worker fallbacks may use fixed compatibility headers and process-local anonymous cookies naturally issued by a public share page for one invocation only. Those cookies must not be read from browser stores, written to disk, sent to Locus server, or stored in history/logs.
+- Bilibili ordinary public-video DASH assembly is allowed only when it can run without login or cookies and produces one local MP4 for transcription. Bilibili login, QR login, SESSDATA handling, PGC/bangumi, member-only behavior, DRM, and downloader-oriented workflows remain out of scope.
+- Safe download helpers must avoid logging cookies, sensitive headers, authorization material, submitted/download URLs, or full volatile media CDN URLs. Logs may keep platform names, hostnames, short sanitized error causes, quality labels, byte sizes, task ids, and local output paths; history may keep only canonical source identities.
+- When a link is unavailable, login-gated, CAPTCHA-gated, private, image-only, or has no playable video stream, the worker must return structured recoverable errors rather than attempting to bypass access controls.
+
+## 2026-06-25 Douyin Share Page Fallback Boundary
+
+- The Douyin fallback may request public `iesdouyin.com` share pages and public media CDN URLs for user-submitted public or user-authorized links.
+- The fallback must not require, collect, persist, or upload browser cookies. Exported cookie files are not part of the supported product path for this fallback.
+- The fallback may use a fixed mobile Safari user agent and minimal public-page headers for compatibility with public share pages. It must not use user-agent rotation, proxy pools, browser fingerprint spoofing, CAPTCHA solving, login automation, or account-authenticated scraping.
+- A process-local cookie jar may accept anonymous cookies naturally set by the public share page, such as `ttwid`, but those cookies must be discarded after the worker invocation and must not be written to history, logs, app-local settings, or server requests.
+- The stable root adapter is the only production entry point outside the private `douyin/` package.
+  `source.py` owns allowlisted ID/host/short-link policy; `page.py` owns in-memory Router Data
+  interpretation; `streams.py` owns deterministic bit-rate and bounded ratio-probe policy;
+  `transport.py` alone owns CookieJar, raw urllib, Range removal, and atomic candidate writes. AST
+  gates reject child-to-root/application/ASR/AI back-edges and direct production imports of private
+  modules.
+- Candidate request or safe-write failure may advance to the next ordered stream, but arbitrary
+  filesystem exceptions still propagate. The shared atomic writer keeps `.part` scoped beside the
+  destination and preserves an existing completed MP4 until a valid replacement succeeds.
+- The fallback must not attempt to solve CAPTCHA, defeat login gates, bypass private content restrictions, or automate account-authenticated scraping.
+- Worker logs, history records, and UI errors must not store submitted/download URLs, cookies, sensitive request headers, or full media CDN URLs when those URLs contain volatile request tokens. Logs may keep canonical platform identifiers, short sanitized error summaries, hostnames, stream quality labels, byte sizes, task ids, and local output paths.
+- Downloaded video, extracted audio, transcripts, summaries, mindmaps, and topic outputs remain local artifacts under the configured output/cache directories; no fallback media data is sent to the Locus server.
+- The packaged worker must be generated from canonical source and compared recursively by file set
+  and bytes; the private package must never be maintained through hand-edited resource copies.
+
+## 2026-06-23 Desktop Update Boundary
+
+- Desktop updates must use Tauri updater signature verification before installation.
+- The updater public key may be bundled in `tauri.conf.json`; the private signing key and signing password must never be committed, bundled, or stored on Locus server runtime hosts unless that host is the intended signing environment.
+- The public update endpoint returns only release metadata and artifact URLs; it must not require desktop authentication and must not return user data, account data, LLM keys, or ASR model credentials.
+- `updates.json` may store `lastCheckedAt`, `postponedUntil`, and `skippedVersion` only. It must not store downloaded installers, signatures, private keys, session tokens, video URLs, transcripts, or model cache paths beyond generic update preferences.
+- Updating the app preserves the active data root and fixed configuration root. Installation waits for worker/model/component operations and migration; restart uses `restart_application` and cannot bypass native storage protection through a process-plugin permission.
+- Waiving mainland China live updater testing does not relax the signature-verification requirement. It only means the GitHub Releases network path is not a v1 release blocker; unsigned or malformed updater artifacts must still be rejected by configuration and release checks.
+
+## 2026-06-23 LLM Secret Boundary
+
+- Desktop clients must not read repository-root `.env` files for LLM configuration.
+- Local dotenv files must not be treated as a supported place for `APP_LLM_PROVIDER`, `APP_LLM_BASE_URL`, `APP_LLM_API_KEY`, `APP_LLM_MODEL`, or `APP_LLM_TIMEOUT_SECONDS`.
+- Tauri worker subprocesses remove legacy local LLM environment variables before launch.
+- Server-managed checkout environment variables remain allowed only for the insight-generation invocation.
+- Fixed-root `.env` retains non-LLM settings and legacy output compatibility. Ordinary saves write only the supported ASR selection and preserve existing output keys; managed data authority comes from the separate atomic storage-control record.
+
+## 2026-06-23 ASR Model Cache Cleanup Boundary
+
+- Automatic ASR cache cleanup may only touch Locus's known SenseVoice Small and VAD model cache directories plus stale `._____temp` directories without `model.pt`.
+- Unknown model directories or user-created files under the active data root's `models/` must be preserved.
+- Cleanup failures must not delete broader app-local data, block transcription, or hide the original ASR model availability state.
+
+## Account and Billing Service
+
+- The account service stores only email accounts, OTP metadata, session token hashes, activation-code hashes/prefixes, entitlements, admin sessions, LLM config metadata, and quota events.
+- Desktop session tokens are opaque random values. The server stores SHA-256 hashes only; the desktop client stores the raw token in app-local data under `auth/session.json`.
+- Email OTP codes expire after 10 minutes, allow at most 5 attempts, are purpose-scoped, and must be
+  rate-limited atomically by normalized email and trusted client IP.
+- Login deep-link tickets expire after 5 minutes, are single-use, and must be bound to a desktop-generated `state` value.
+- SMTP credentials and server encryption keys must only be configured through the server environment. They must not be bundled into the desktop installer.
+- Activation codes must be high-entropy, single-use, and stored as hashes only. The full code is displayed once when an administrator creates it.
+- Admin Web access is restricted to `APP_ADMIN_EMAIL` and uses HttpOnly 12-hour sessions. The
+  historical development fallback is not a valid production configuration; production must set the
+  administrator email explicitly. Admin write routes must validate CSRF tokens.
+- The service must not accept uploads or API fields containing video, audio, transcript, insight, cookie, or user-local configuration data.
+- The service may store a dedicated Locus client LLM API key. It must be encrypted at rest with `APP_LLM_CONFIG_ENCRYPTION_KEY`, never displayed in full, and treated as revocable client runtime material rather than a supplier master key.
+- The dedicated client LLM key is delivered to authenticated entitled desktop clients during checkout. This improves out-of-box setup but does not prevent extraction from a compromised client; supplier-side key rotation and quota controls remain required.
+
+<!-- 由 vibe-coding-launcher 生成。 -->
+
+## Scope
+
+Locus 涉及公开视频 URL、下载文件、本地音频、ASR 文字稿、可选 LLM API 和导出文件。本文件定义默认安全边界。
+
+## Content Boundary
+
+- 仅用于公开视频、用户自己发布的视频、已授权视频、内部研究或内容归档。
+- 不实现绕过平台访问限制、批量抓取未授权内容、规避版权或隐私规则的能力。
+- 当前产品路径不支持浏览器 cookie 导入、浏览器 cookie 文件、平台账号登录或 Cookie 辅助下载。worker fallback 只能使用公开视频页面自然下发的进程内匿名 cookie，且必须在本次 worker 调用结束后丢弃，不得上传、持久化、写入历史、日志或 app-local settings。
+
+## Local Data
+
+- `outputs/tasks/<task_id>/` 存放用户最终产物和 `task.json`，默认不提交仓库。
+- 用户通过设置中的数据存储位置迁移主要本机资料；Legacy 模式兼容已有 `APP_OUTPUT_DIR`，Managed 模式采用受控数据根。空目标迁移保留原件，清理需要明确确认；已有目录合并采用已经确认的目标同名文件优先规则，移动文件并删除重复源文件。
+- 当前数据根的 `cache/tasks/<task_id>/` 存放下载缓存、中间文件和调试产物，默认不提交仓库；它不得作为历史或正式产物真相源。
+- 只有满足当前 schema v3、source-privacy marker 和 canonical SourceIdentity 契约的
+  `task.json` 才是任务库索引和 artifact 真相源；旧版记录与目录仅物理留存，
+  不作为当前任务读取或信任。数据位置迁移按应用归属保留其原件，不改变信任等级。
+- 当前数据根的 `models/` 和 `runtime/` 存放模型与运行组件，默认不提交仓库。
+- `updates.json` 只存放更新检查偏好，默认不提交仓库；不得包含用户内容、账号 session、release signing private key 或下载包二进制。
+- 对外分发安装包不内置 ASR 模型权重；核心本地 ASR 模型只在用户提交已验证任务且所选模型缺失时下载。模型、运行组件、缓存、输出与合集写入当前数据根，`.env`、凭据、偏好和应用日志留在固定配置根；这些可写资料不进入安装目录。
+- 取消任务会终止当前 worker 进程树；已写入的 `outputs/`、`cache/` 和 `models/` 文件默认保留，不做自动清理。
+
+## Secrets
+
+- LLM API Key、代理地址和云端配置不得硬编码到桌面端或 worker；管理员在 server Admin Web 中配置，server 负责加密保存。
+- LLM 配置不得从 app-local data `.env` 或项目根 `.env` 读取；真实 `.env` 被 `.gitignore` 忽略，仓库只保留不含 LLM key 的 `.env.example` 和安装包 `.env.template` 占位模板。
+- 旧本地 LLM 键名 `APP_LLM_PROVIDER`、`APP_LLM_BASE_URL`、`APP_LLM_API_KEY`、`APP_LLM_MODEL` 和 `APP_LLM_TIMEOUT_SECONDS` 必须被 dotenv 加载链路忽略。
+- 旧输出兼容键 `APP_OUTPUT_DIR` 不得包含网络路径凭据或敏感 token；普通配置保存不能覆盖该键或改变已管理数据位置。
+- 日志不得输出完整密钥、cookies 或敏感请求头。
+
+## External Services
+
+- LLM-generated Markdown rendered in the desktop UI must go through the sanitized Markdown renderer. Raw HTML from `summary.md` must be skipped or sanitized and must not be rendered with `dangerouslySetInnerHTML`.
+- 下载、转码和 ASR 默认本地处理。
+- 现有 PyTorch `iic/SenseVoiceSmall` 保留其既有官方 ModelScope 优先、Hugging Face 回退的兼容下载策略，且不得根据 UI 语言、locale 或账号地区改变顺序。ONNX `iic/SenseVoiceSmall-onnx` 仅可访问官方 ModelScope ASR 与 ONNX VAD 模型，不得使用 Hugging Face、镜像、自定义归档或运行期导出回退。
+- 发布方配置 `APP_ASR_MODEL_DOWNLOAD_URL` 时只访问该自定义归档源，不得再访问 ModelScope 或 Hugging Face；该配置不得包含凭据、URL 查询 token 或敏感请求头。
+- 模型下载事件、日志和技术详情只允许保留源名称、主机名、公开模型 ID、尝试次数及超时/失败分类；不得保留带 token 的完整 URL、凭据、Cookie、请求头或完整原始下载器输出。
+- ASR 模型选择通过 `APP_ASR_MODEL` 保存到本地 `.env`；该键只允许选择受支持的本地 ASR 模型标识，不得携带凭据、URL 查询 token 或敏感请求头。
+- `APP_ASR_MODEL_MIGRATION` 只是本地的一次性界面提示状态，用于说明迁移把默认模型切到了 ONNX。它不参与模型选择、源验证或下载决策，也不得被当作信任信号；清除它只影响设置页是否显示提示。
+- 要点总结、启发灵感与文字稿解剖分别通过 agent_runtime 使用管理员配置的云端 LLM；每次实际供应商请求先独立 checkout，SDK、provider 与运行器的隐式重试关闭。worker 按来源读取正式媒体文字稿或网页正文，将允许的正文与本次工具反馈发送到 checkout 返回的地址，确认面板必须明确提示这一点。偏好快照只允许随启发灵感目标发送。三个目标只开放产物交付工具。
+- 桌面更新检查会访问 GitHub Releases 上的公开 `latest.json` updater manifest；该请求不上传本地文件、历史、模型缓存或账号 session。
+- UI 设置面板管理本机 ASR，并通过独立确认的迁移流程管理数据位置；云端 LLM 是否就绪由账号状态展示，文字稿主流程不依赖 LLM。
+- worker 对外部服务错误必须返回结构化错误码，不得吞掉失败。
+
+## Validation
+
+涉及安全边界的改动至少需要：
+
+- 检查 `.gitignore` 是否覆盖模型、输出、中间文件和密钥。
+- 检查日志中不包含密钥、cookies 或完整敏感头。
+- 在 spec 或 ExecPlan 中说明云端 LLM 数据流和用户提示。

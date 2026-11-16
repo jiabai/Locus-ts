@@ -1,0 +1,37 @@
+{
+  "model": "test-model",
+  "stream": false,
+  "messages": [
+    {
+      "role": "system",
+      "content": "你是一个中文笔记助手。"
+    },
+    {
+      "role": "user",
+      "content": "请总结下面这段文字稿。"
+    }
+  ],
+  "tool_choice": "auto",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "submit_summary",
+        "description": "Submit the final Markdown key summary; a valid submission finishes this run.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "markdown": {
+              "type": "string",
+              "description": "Complete Markdown key summary ready for direct display"
+            }
+          },
+          "required": [
+            "markdown"
+          ]
+        }
+      }
+    }
+  ],
+  "max_tokens": 8192
+}

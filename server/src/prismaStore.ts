@@ -1,0 +1,271 @@
+import type { PrismaClient } from "@prisma/client";
+import type { Store } from "./store.js";
+import * as anysearchConfigOperations from "./prismaStore/anysearchConfig.js";
+import * as authOperations from "./prismaStore/auth.js";
+import * as entitlementOperations from "./prismaStore/entitlements.js";
+import * as llmConfigOperations from "./prismaStore/llmConfig.js";
+import * as selfServiceActivationOperations from "./prismaStore/selfServiceActivation.js";
+import * as userSessionOperations from "./prismaStore/userSession.js";
+
+export class PrismaStore implements Store {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  async upsertUserByEmail(
+    email: string,
+    now: Date,
+  ): ReturnType<Store["upsertUserByEmail"]> {
+    return authOperations.upsertUserByEmail(this.prisma, email, now);
+  }
+
+  async getUserById(userId: string): ReturnType<Store["getUserById"]> {
+    return authOperations.getUserById(this.prisma, userId);
+  }
+
+  async issueEmailOtp(
+    input: Parameters<Store["issueEmailOtp"]>[0],
+  ): ReturnType<Store["issueEmailOtp"]> {
+    return authOperations.issueEmailOtp(this.prisma, input);
+  }
+
+  async invalidateIssuedOtpAfterDeliveryFailure(
+    otpId: string,
+    now: Date,
+  ): ReturnType<Store["invalidateIssuedOtpAfterDeliveryFailure"]> {
+    return authOperations.invalidateIssuedOtpAfterDeliveryFailure(this.prisma, otpId, now);
+  }
+
+  async verifyDesktopOtpAndCreateTicket(
+    input: Parameters<Store["verifyDesktopOtpAndCreateTicket"]>[0],
+  ): ReturnType<Store["verifyDesktopOtpAndCreateTicket"]> {
+    return authOperations.verifyDesktopOtpAndCreateTicket(this.prisma, input);
+  }
+
+  async verifyAdminOtpAndCreateSession(
+    input: Parameters<Store["verifyAdminOtpAndCreateSession"]>[0],
+  ): ReturnType<Store["verifyAdminOtpAndCreateSession"]> {
+    return authOperations.verifyAdminOtpAndCreateSession(this.prisma, input);
+  }
+
+  async exchangeDesktopTicketAndCreateSession(
+    input: Parameters<Store["exchangeDesktopTicketAndCreateSession"]>[0],
+  ): ReturnType<Store["exchangeDesktopTicketAndCreateSession"]> {
+    return authOperations.exchangeDesktopTicketAndCreateSession(this.prisma, input);
+  }
+
+  async createSession(
+    input: Parameters<Store["createSession"]>[0],
+  ): ReturnType<Store["createSession"]> {
+    return authOperations.createSession(this.prisma, input);
+  }
+
+  async findSessionByTokenHash(
+    tokenHash: string,
+    now: Date,
+  ): ReturnType<Store["findSessionByTokenHash"]> {
+    return authOperations.findSessionByTokenHash(this.prisma, tokenHash, now);
+  }
+
+  async revokeSession(
+    tokenHash: string,
+    now: Date,
+  ): ReturnType<Store["revokeSession"]> {
+    return authOperations.revokeSession(this.prisma, tokenHash, now);
+  }
+
+
+  async getEntitlement(userId: string): ReturnType<Store["getEntitlement"]> {
+    return entitlementOperations.getEntitlement(this.prisma, userId);
+  }
+
+  async upsertEntitlement(
+    userId: string,
+    expiresAt: Date,
+    now: Date,
+    quota: Parameters<Store["upsertEntitlement"]>[3] = {},
+  ): ReturnType<Store["upsertEntitlement"]> {
+    return entitlementOperations.upsertEntitlement(
+      this.prisma,
+      userId,
+      expiresAt,
+      now,
+      quota,
+    );
+  }
+
+  async consumeLlmQuota(
+    userId: string,
+    requestId: string,
+    now: Date,
+  ): ReturnType<Store["consumeLlmQuota"]> {
+    return entitlementOperations.consumeLlmQuota(this.prisma, userId, requestId, now);
+  }
+
+
+  async getLlmConfig(): ReturnType<Store["getLlmConfig"]> {
+    return llmConfigOperations.getLlmConfig(this.prisma);
+  }
+
+  async upsertLlmConfig(
+    input: Parameters<Store["upsertLlmConfig"]>[0],
+    now: Date,
+  ): ReturnType<Store["upsertLlmConfig"]> {
+    return llmConfigOperations.upsertLlmConfig(this.prisma, input, now);
+  }
+
+  async getAnysearchConfig(): ReturnType<Store["getAnysearchConfig"]> {
+    return anysearchConfigOperations.getAnysearchConfig(this.prisma);
+  }
+
+  async upsertAnysearchConfig(
+    input: Parameters<Store["upsertAnysearchConfig"]>[0],
+    now: Date,
+  ): ReturnType<Store["upsertAnysearchConfig"]> {
+    return anysearchConfigOperations.upsertAnysearchConfig(this.prisma, input, now);
+  }
+
+  async createActivationCode(
+    input: Parameters<Store["createActivationCode"]>[0],
+  ): ReturnType<Store["createActivationCode"]> {
+    return entitlementOperations.createActivationCode(this.prisma, input);
+  }
+
+  async findActivationCodeByHash(
+    codeHash: string,
+  ): ReturnType<Store["findActivationCodeByHash"]> {
+    return entitlementOperations.findActivationCodeByHash(this.prisma, codeHash);
+  }
+
+  async markActivationCodeRedeemed(
+    codeHash: string,
+    userId: string,
+    redeemedAt: Date,
+  ): ReturnType<Store["markActivationCodeRedeemed"]> {
+    return entitlementOperations.markActivationCodeRedeemed(
+      this.prisma,
+      codeHash,
+      userId,
+      redeemedAt,
+    );
+  }
+
+  async prepareSelfServiceActivationCode(
+    input: Parameters<Store["prepareSelfServiceActivationCode"]>[0],
+  ): ReturnType<Store["prepareSelfServiceActivationCode"]> {
+    return selfServiceActivationOperations.prepareSelfServiceActivationCode(
+      this.prisma,
+      input,
+    );
+  }
+
+  async disablePreparedSelfServiceActivationCode(
+    input: Parameters<Store["disablePreparedSelfServiceActivationCode"]>[0],
+  ): ReturnType<Store["disablePreparedSelfServiceActivationCode"]> {
+    return selfServiceActivationOperations.disablePreparedSelfServiceActivationCode(
+      this.prisma,
+      input,
+    );
+  }
+
+  async activatePreparedSelfServiceActivationCode(
+    input: Parameters<Store["activatePreparedSelfServiceActivationCode"]>[0],
+  ): ReturnType<Store["activatePreparedSelfServiceActivationCode"]> {
+    return selfServiceActivationOperations.activatePreparedSelfServiceActivationCode(
+      this.prisma,
+      input,
+    );
+  }
+
+  async redeemActivationCodeAndGrantEntitlement(
+    input: Parameters<Store["redeemActivationCodeAndGrantEntitlement"]>[0],
+  ): ReturnType<Store["redeemActivationCodeAndGrantEntitlement"]> {
+    return entitlementOperations.redeemActivationCodeAndGrantEntitlement(
+      this.prisma,
+      input,
+    );
+  }
+
+  async listActivationCodes(): ReturnType<Store["listActivationCodes"]> {
+    return entitlementOperations.listActivationCodes(this.prisma);
+  }
+
+
+  async listUsers(): ReturnType<Store["listUsers"]> {
+    return authOperations.listUsers(this.prisma);
+  }
+
+  async createAdminSession(
+    input: Parameters<Store["createAdminSession"]>[0],
+  ): ReturnType<Store["createAdminSession"]> {
+    return authOperations.createAdminSession(this.prisma, input);
+  }
+
+  async findAdminSessionByTokenHash(
+    tokenHash: string,
+    now: Date,
+  ): ReturnType<Store["findAdminSessionByTokenHash"]> {
+    return authOperations.findAdminSessionByTokenHash(this.prisma, tokenHash, now);
+  }
+
+  async revokeAdminSession(
+    tokenHash: string,
+    now: Date,
+  ): ReturnType<Store["revokeAdminSession"]> {
+    return authOperations.revokeAdminSession(this.prisma, tokenHash, now);
+  }
+
+  async verifyUserOtpAndCreateWebSession(
+    input: Parameters<Store["verifyUserOtpAndCreateWebSession"]>[0],
+  ): ReturnType<Store["verifyUserOtpAndCreateWebSession"]> {
+    return userSessionOperations.verifyUserOtpAndCreateWebSession(this.prisma, input);
+  }
+
+  async verifyDesktopOtpAndCreateTicketAndWebSession(
+    input: Parameters<Store["verifyDesktopOtpAndCreateTicketAndWebSession"]>[0],
+  ): ReturnType<Store["verifyDesktopOtpAndCreateTicketAndWebSession"]> {
+    return userSessionOperations.verifyDesktopOtpAndCreateTicketAndWebSession(
+      this.prisma,
+      input,
+    );
+  }
+
+  async createUserSession(
+    input: Parameters<Store["createUserSession"]>[0],
+  ): ReturnType<Store["createUserSession"]> {
+    return userSessionOperations.createUserSession(this.prisma, input);
+  }
+
+  async findUserSessionByTokenHash(
+    tokenHash: string,
+    now: Date,
+  ): ReturnType<Store["findUserSessionByTokenHash"]> {
+    return userSessionOperations.findUserSessionByTokenHash(this.prisma, tokenHash, now);
+  }
+
+  async revokeUserSession(
+    tokenHash: string,
+    now: Date,
+  ): ReturnType<Store["revokeUserSession"]> {
+    return userSessionOperations.revokeUserSession(this.prisma, tokenHash, now);
+  }
+
+
+  async createAdminEntitlementAdjustment(
+    input: Parameters<Store["createAdminEntitlementAdjustment"]>[0],
+  ): ReturnType<Store["createAdminEntitlementAdjustment"]> {
+    return entitlementOperations.createAdminEntitlementAdjustment(this.prisma, input);
+  }
+
+  async listAdminEntitlementAdjustments(
+    limit = 50,
+  ): ReturnType<Store["listAdminEntitlementAdjustments"]> {
+    return entitlementOperations.listAdminEntitlementAdjustments(this.prisma, limit);
+  }
+
+  async applyEntitlementAdjustmentWithAudit(
+    input: Parameters<Store["applyEntitlementAdjustmentWithAudit"]>[0],
+  ): ReturnType<Store["applyEntitlementAdjustmentWithAudit"]> {
+    return entitlementOperations.applyEntitlementAdjustmentWithAudit(this.prisma, input);
+  }
+
+
+}

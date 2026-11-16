@@ -1,0 +1,917 @@
+from __future__ import annotations
+
+import io
+import json
+import stat
+import tarfile
+import zipfile
+from pathlib import Path
+
+import pytest
+import worker_core.model_download as model_download
+import worker_core.worker_application.model_download as model_download_handler
+import worker_core.worker_service as worker_service
+from worker_core.model_download import (
+    ARCHIVE_INVALID_ERROR_CODE,
+    DEFAULT_SENSEVOICE_REVISION,
+    ONNX_SENSEVOICE_BPE_MODEL_ID,
+    ONNX_SENSEVOICE_MODEL_ID,
+    ONNX_VAD_MODEL_ID,
+    SENSEVOICE_MODEL_ID,
+    VAD_MODEL_ID,
+    ModelDownloadError,
+    download_asr_model_cache,
+    normalize_asr_model_cache_layout,
+    validate_asr_model_cache,
+)
+from worker_core.progress_events import (
+    MODEL_PROGRESS_REGISTRY,
+    build_model_progress_event,
+)
+
+PHASE_BY_MESSAGE_CODE = {
+    "model.download.preparing": "preparing",
+    "model.primary.downloading": "primary_model",
+    "model.vad.downloading": "vad_model",
+    "model.bpe.downloading": "bpe_model",
+    "model.archive.downloading": "archive_download",
+    "model.archive.reading": "archive_download",
+    "model.archive.extracting": "archive_validate",
+    "model.file.downloading": "primary_model",
+    "model.file.completed": "primary_model",
+}
+
+
+def torch_model_bytes(payload: bytes = b"model-data") -> bytes:
+    return b"PK\x03\x04" + payload
+
+
+def create_valid_cache(root: Path) -> None:
+    sensevoice_dir = root / "models" / "iic" / "SenseVoiceSmall"
+    vad_dir = root / "models" / "iic" / "speech_fsmn_vad_zh-cn-16k-common-pytorch"
+    sensevoice_dir.mkdir(parents=True)
+    vad_dir.mkdir(parents=True)
+    (sensevoice_dir / "model.pt").write_bytes(torch_model_bytes(b"sensevoice"))
+    (vad_dir / "model.pt").write_bytes(torch_model_bytes(b"vad"))
+    (root / "MODEL_VERSION.txt").write_text(
+        "model=iic/SenseVoiceSmall\nvad=iic/speech_fsmn_vad_zh-cn-16k-common-pytorch\n",
+        encoding="utf-8",
+    )
+
+
+def create_valid_legacy_cache(root: Path) -> None:
+    sensevoice_dir = root / "iic" / "SenseVoiceSmall"
+    vad_dir = root / "iic" / "speech_fsmn_vad_zh-cn-16k-common-pytorch"
+    sensevoice_dir.mkdir(parents=True)
+    vad_dir.mkdir(parents=True)
+    (sensevoice_dir / "model.pt").write_bytes(torch_model_bytes(b"sensevoice"))
+    (vad_dir / "model.pt").write_bytes(torch_model_bytes(b"vad"))
+    (root / "MODEL_VERSION.txt").write_text(
+        "model=iic/SenseVoiceSmall\nvad=iic/speech_fsmn_vad_zh-cn-16k-common-pytorch\n",
+        encoding="utf-8",
+    )
+
+
+def test_validate_asr_model_cache_rejects_plain_text_model_files(tmp_path: Path) -> None:
+    sensevoice_dir = tmp_path / "models" / "iic" / "SenseVoiceSmall"
+    vad_dir = tmp_path / "models" / "iic" / "speech_fsmn_vad_zh-cn-16k-common-pytorch"
+    sensevoice_dir.mkdir(parents=True)
+    vad_dir.mkdir(parents=True)
+    (sensevoice_dir / "model.pt").write_bytes(b"not-a-torch-model")
+    (vad_dir / "model.pt").write_bytes(b"not-a-torch-model")
+
+    (tmp_path / "MODEL_VERSION.txt").write_text(
+        "model=iic/SenseVoiceSmall\nvad=iic/speech_fsmn_vad_zh-cn-16k-common-pytorch\n",
+        encoding="utf-8",
+    )
+    assert not validate_asr_model_cache(tmp_path)
+
+    (sensevoice_dir / "model.pt").write_bytes(torch_model_bytes(b"sensevoice"))
+    assert not validate_asr_model_cache(tmp_path)
+
+    (vad_dir / "model.pt").write_bytes(torch_model_bytes(b"vad"))
+    assert validate_asr_model_cache(tmp_path)
+
+
+def test_model_download_terminal_success_omits_local_model_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret_dir = tmp_path / "review-secret-model-dir"
+    monkeypatch.setattr(
+        model_download_handler,
+        "download_asr_model_cache",
+        lambda **_kwargs: secret_dir,
+    )
+
+    result = worker_service.run_asr_model_download_once(
+        project_root=tmp_path,
+        environ={"APP_MODEL_DIR": secret_dir.as_posix()},
+        asr_model=SENSEVOICE_MODEL_ID,
+    )
+
+    assert result == {
+        "status": "completed",
+        "model": SENSEVOICE_MODEL_ID,
+    }
+    assert "review-secret" not in repr(result)
+
+
+def test_model_download_terminal_uses_allowlisted_onnx_model_and_ignores_pytorch_overrides(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_download(**kwargs: object) -> Path:
+        captured.update(kwargs)
+        return tmp_path / "models" / "onnx"
+
+    monkeypatch.setattr(model_download_handler, "download_asr_model_cache", fake_download)
+
+    result = worker_service.run_asr_model_download_once(
+        asr_model=ONNX_SENSEVOICE_MODEL_ID,
+        project_root=tmp_path,
+        environ={
+            "APP_ASR_MODEL_DOWNLOAD_URL": "https://third-party.invalid/model.zip",
+            "APP_MODELSCOPE_ENDPOINT": "https://third-party.invalid/modelscope",
+        },
+    )
+
+    assert result == {"status": "completed", "model": ONNX_SENSEVOICE_MODEL_ID}
+    captured_progress_callback = captured.pop("progress_callback")
+    assert callable(captured_progress_callback)
+    assert captured == {
+        "cache_dir": tmp_path / "models",
+        "model_name": ONNX_SENSEVOICE_MODEL_ID,
+    }
+
+
+def test_model_download_terminal_failure_maps_archive_detail_to_fixed_message(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = "review-secret-member"
+
+    def fail_download(**_kwargs: object) -> None:
+        raise ModelDownloadError(
+            ARCHIVE_INVALID_ERROR_CODE,
+            f"Archive contains unsafe member {secret}",
+        )
+
+    monkeypatch.setattr(
+        model_download_handler,
+        "download_asr_model_cache",
+        fail_download,
+    )
+
+    result = worker_service.run_asr_model_download_once(project_root=tmp_path)
+
+    assert result == {
+        "status": "failed",
+        "code": ARCHIVE_INVALID_ERROR_CODE,
+        "message": "Downloaded ASR model archive was invalid.",
+    }
+    assert secret not in repr(result)
+
+
+def test_model_download_terminal_failure_never_exposes_third_party_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = "review-secret-provider-url"
+
+    def fail_download(**_kwargs: object) -> None:
+        raise RuntimeError(secret)
+
+    monkeypatch.setattr(
+        model_download_handler,
+        "download_asr_model_cache",
+        fail_download,
+    )
+
+    result = worker_service.run_asr_model_download_once(project_root=tmp_path)
+
+    assert result == {
+        "status": "failed",
+        "code": "ASR_MODEL_DOWNLOAD_FAILED",
+        "message": "ASR model download failed.",
+    }
+    assert secret not in repr(result)
+
+
+@pytest.mark.parametrize("message_code", PHASE_BY_MESSAGE_CODE)
+def test_model_download_tracks_phase_and_forwards_progress_once_unchanged(
+    message_code: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    progress_events: list[dict[str, object]] = []
+    diagnostic_events: list[object] = []
+    progress_spec = MODEL_PROGRESS_REGISTRY[message_code]
+    progress_event = build_model_progress_event(
+        message_code,
+        status=progress_spec.status,
+        progress=42,
+        current_file=(
+            "model.onnx" if progress_spec.current_file == "required" else None
+        ),
+        message_args=(
+            {"model": SENSEVOICE_MODEL_ID}
+            if "model" in progress_spec.allowed_args
+            else None
+        ),
+    )
+
+    def fail_download(**kwargs: object) -> None:
+        callback = kwargs["progress_callback"]
+        assert callable(callback)
+        callback(progress_event)
+        raise RuntimeError("https://private.example C:/Users/name token-secret")
+
+    monkeypatch.setattr(model_download_handler, "download_asr_model_cache", fail_download)
+
+    result = worker_service.run_asr_model_download_once(
+        project_root=tmp_path,
+        progress_callback=progress_events.append,
+        diagnostic_callback=diagnostic_events.append,
+    )
+
+    assert progress_events == [progress_event]
+    assert progress_events[0] is progress_event
+    assert len(diagnostic_events) == 1
+    assert diagnostic_events[0].phase == PHASE_BY_MESSAGE_CODE[message_code]
+    assert result == {
+        "status": "failed",
+        "code": "ASR_MODEL_DOWNLOAD_FAILED",
+        "message": "ASR model download failed.",
+    }
+    assert "private.example" not in json.dumps(diagnostic_events[0].to_dict())
+
+
+def test_model_download_defaults_diagnostic_phase_to_preparing_without_progress(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    diagnostics: list[object] = []
+    monkeypatch.setattr(
+        model_download_handler,
+        "download_asr_model_cache",
+        lambda **_kwargs: (_ for _ in ()).throw(TimeoutError("token-secret")),
+    )
+
+    result = worker_service.run_asr_model_download_once(
+        project_root=tmp_path,
+        diagnostic_callback=diagnostics.append,
+    )
+
+    assert len(diagnostics) == 1
+    assert diagnostics[0].phase == "preparing"
+    assert diagnostics[0].code == "connection_timeout"
+    assert "token-secret" not in repr(result) + repr(diagnostics[0].to_dict())
+
+
+def test_model_download_refines_archive_invalid_phase_without_message_inspection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    diagnostics: list[object] = []
+
+    def fail_download(**kwargs: object) -> None:
+        kwargs["progress_callback"](
+            {
+                "status": "downloading",
+                "progress": 20,
+                "message_code": "model.archive.downloading",
+            }
+        )
+        raise ModelDownloadError(ARCHIVE_INVALID_ERROR_CODE, "member /home/name token")
+
+    monkeypatch.setattr(model_download_handler, "download_asr_model_cache", fail_download)
+
+    worker_service.run_asr_model_download_once(
+        project_root=tmp_path,
+        environ={"APP_ASR_MODEL_DOWNLOAD_URL": "https://private.example/model.zip"},
+        asr_model=SENSEVOICE_MODEL_ID,
+        diagnostic_callback=diagnostics.append,
+    )
+
+    assert diagnostics[0].phase == "archive_validate"
+    assert diagnostics[0].code == "archive_invalid"
+
+
+def test_model_download_invalid_progress_does_not_update_diagnostic_phase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    diagnostics: list[object] = []
+
+    def emit_invalid_progress(**kwargs: object) -> None:
+        kwargs["progress_callback"](
+            {
+                "status": "downloading",
+                "progress": 20,
+                "message_code": "model.archive.downloading",
+                "unexpected": "field",
+            }
+        )
+
+    monkeypatch.setattr(
+        model_download_handler,
+        "download_asr_model_cache",
+        emit_invalid_progress,
+    )
+
+    result = worker_service.run_asr_model_download_once(
+        project_root=tmp_path,
+        diagnostic_callback=diagnostics.append,
+    )
+
+    assert result["status"] == "failed"
+    assert len(diagnostics) == 1
+    assert diagnostics[0].phase == "preparing"
+
+
+@pytest.mark.parametrize("code_failure", [KeyboardInterrupt, SystemExit])
+def test_model_download_hostile_error_code_returns_generic_failure_and_diagnostic(
+    code_failure: type[BaseException],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    diagnostics: list[object] = []
+
+    class HostileModelDownloadError(ModelDownloadError):
+        def __init__(self) -> None:
+            RuntimeError.__init__(self, "response-secret")
+
+        @property
+        def code(self) -> str:
+            raise code_failure("code-secret")
+
+    def fail_download(**kwargs: object) -> None:
+        kwargs["progress_callback"](
+            {
+                "status": "downloading",
+                "progress": 20,
+                "message_code": "model.archive.downloading",
+            }
+        )
+        raise HostileModelDownloadError()
+
+    monkeypatch.setattr(model_download_handler, "download_asr_model_cache", fail_download)
+
+    result = worker_service.run_asr_model_download_once(
+        project_root=tmp_path,
+        diagnostic_callback=diagnostics.append,
+    )
+
+    assert result == {
+        "status": "failed",
+        "code": "ASR_MODEL_DOWNLOAD_FAILED",
+        "message": "ASR model download failed.",
+    }
+    assert len(diagnostics) == 1
+    assert diagnostics[0].phase == "archive_download"
+    assert diagnostics[0].category == "unexpected"
+    assert diagnostics[0].code == "unexpected_failure"
+
+
+def test_model_download_rejects_hostile_string_subclass_error_code(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class HostileCode(str):
+        def __eq__(self, _other: object) -> bool:
+            raise KeyboardInterrupt("comparison-secret")
+
+    class HostileModelDownloadError(ModelDownloadError):
+        def __init__(self) -> None:
+            RuntimeError.__init__(self, "response-secret")
+            self.code = HostileCode("MODEL_ARCHIVE_INVALID")
+
+    monkeypatch.setattr(
+        model_download_handler,
+        "download_asr_model_cache",
+        lambda **_kwargs: (_ for _ in ()).throw(HostileModelDownloadError()),
+    )
+
+    result = worker_service.run_asr_model_download_once(project_root=tmp_path)
+
+    assert result == {
+        "status": "failed",
+        "code": "ASR_MODEL_DOWNLOAD_FAILED",
+        "message": "ASR model download failed.",
+    }
+
+
+def test_model_download_diagnostic_callback_failure_never_masks_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        model_download_handler,
+        "download_asr_model_cache",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("response-secret")),
+    )
+
+    def fail_callback(_event: object) -> None:
+        raise RuntimeError("callback-secret")
+
+    result = worker_service.run_asr_model_download_once(
+        project_root=tmp_path,
+        diagnostic_callback=fail_callback,
+    )
+
+    assert result == {
+        "status": "failed",
+        "code": "ASR_MODEL_DOWNLOAD_FAILED",
+        "message": "ASR model download failed.",
+    }
+
+
+@pytest.mark.parametrize("callback_failure", [KeyboardInterrupt, SystemExit])
+def test_model_download_base_exception_from_diagnostic_callback_is_supplemental(
+    callback_failure: type[BaseException],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        model_download_handler,
+        "download_asr_model_cache",
+        lambda **_kwargs: (_ for _ in ()).throw(TimeoutError("response-secret")),
+    )
+
+    def fail_callback(_event: object) -> None:
+        raise callback_failure("callback-secret")
+
+    result = worker_service.run_asr_model_download_once(
+        project_root=tmp_path,
+        diagnostic_callback=fail_callback,
+    )
+
+    assert result == {
+        "status": "failed",
+        "code": "ASR_MODEL_DOWNLOAD_FAILED",
+        "message": "ASR model download failed.",
+    }
+
+
+def test_model_download_classifier_failure_is_supplemental(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        model_download_handler,
+        "download_asr_model_cache",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("response-secret")),
+    )
+    monkeypatch.setattr(
+        model_download_handler,
+        "classify_model_download_exception",
+        lambda *_args: (_ for _ in ()).throw(KeyboardInterrupt("classifier-secret")),
+    )
+
+    result = worker_service.run_asr_model_download_once(
+        project_root=tmp_path,
+        diagnostic_callback=lambda _event: None,
+    )
+
+    assert result == {
+        "status": "failed",
+        "code": "ASR_MODEL_DOWNLOAD_FAILED",
+        "message": "ASR model download failed.",
+    }
+
+
+def test_model_download_hostile_exception_metadata_cannot_replace_public_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class AttributeTrapError(RuntimeError):
+        @property
+        def errno(self) -> int:
+            raise KeyboardInterrupt("errno-secret")
+
+        def __getattribute__(self, name: str) -> object:
+            if name == "__dict__":
+                raise SystemExit("dict-secret")
+            return super().__getattribute__(name)
+
+    monkeypatch.setattr(
+        model_download_handler,
+        "download_asr_model_cache",
+        lambda **_kwargs: (_ for _ in ()).throw(AttributeTrapError()),
+    )
+
+    result = worker_service.run_asr_model_download_once(
+        project_root=tmp_path,
+        diagnostic_callback=lambda _event: None,
+    )
+
+    assert result == {
+        "status": "failed",
+        "code": "ASR_MODEL_DOWNLOAD_FAILED",
+        "message": "ASR model download failed.",
+    }
+
+
+def test_model_download_success_and_unsupported_model_emit_no_diagnostic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    diagnostics: list[object] = []
+    monkeypatch.setattr(model_download_handler, "download_asr_model_cache", lambda **_kwargs: None)
+
+    success = worker_service.run_asr_model_download_once(
+        project_root=tmp_path,
+        diagnostic_callback=diagnostics.append,
+    )
+    unsupported = worker_service.run_asr_model_download_once(
+        project_root=tmp_path,
+        asr_model="private/unsupported",
+        diagnostic_callback=diagnostics.append,
+    )
+
+    assert success["status"] == "completed"
+    assert unsupported["code"] == "ASR_MODEL_UNSUPPORTED"
+    assert diagnostics == []
+
+
+def test_validate_asr_model_cache_requires_marker_and_model_files(tmp_path: Path) -> None:
+    assert not validate_asr_model_cache(tmp_path)
+
+    (tmp_path / "MODEL_VERSION.txt").write_text("model=iic/SenseVoiceSmall\n", encoding="utf-8")
+    assert not validate_asr_model_cache(tmp_path)
+
+    create_valid_cache(tmp_path)
+    assert validate_asr_model_cache(tmp_path)
+
+
+def test_validate_asr_model_cache_accepts_modelscope_snapshot_layout(tmp_path: Path) -> None:
+    create_valid_legacy_cache(tmp_path)
+
+    assert validate_asr_model_cache(tmp_path)
+
+
+def test_download_asr_model_cache_uses_modelscope_snapshot_download(tmp_path: Path) -> None:
+    calls: list[dict[str, object]] = []
+    events: list[dict[str, object]] = []
+
+    def fake_snapshot_download(**kwargs: object) -> str:
+        calls.append(kwargs)
+        if kwargs["model_id"] == SENSEVOICE_MODEL_ID:
+            model_dir = Path(kwargs["cache_dir"]) / "iic" / "SenseVoiceSmall"
+        else:
+            model_dir = (
+                Path(kwargs["cache_dir"]) / "iic" / "speech_fsmn_vad_zh-cn-16k-common-pytorch"
+            )
+        model_dir.mkdir(parents=True, exist_ok=True)
+        (model_dir / "model.pt").write_bytes(torch_model_bytes(b"model"))
+        callback_type = kwargs["progress_callbacks"][0]
+        filename = (
+            r"C:\review-secret\model.pt"
+            if kwargs["model_id"] == SENSEVOICE_MODEL_ID
+            else "secret=review-secret.bin"
+        )
+        callback = callback_type(filename, 10)
+        callback.update(5)
+        callback.end()
+        return str(kwargs["cache_dir"])
+
+    result = download_asr_model_cache(
+        cache_dir=tmp_path,
+        revision="v1.2.3",
+        endpoint="https://modelscope.example",
+        snapshot_downloader=fake_snapshot_download,
+        progress_callback=events.append,
+    )
+
+    assert result == tmp_path
+    assert calls == [
+        {
+            "model_id": SENSEVOICE_MODEL_ID,
+            "revision": "v1.2.3",
+            "cache_dir": tmp_path / "models",
+            "endpoint": "https://modelscope.example",
+            "progress_callbacks": calls[0]["progress_callbacks"],
+        },
+        {
+            "model_id": VAD_MODEL_ID,
+            "revision": DEFAULT_SENSEVOICE_REVISION,
+            "cache_dir": tmp_path / "models",
+            "endpoint": "https://modelscope.example",
+            "progress_callbacks": calls[1]["progress_callbacks"],
+        },
+    ]
+    assert validate_asr_model_cache(tmp_path)
+    assert not (tmp_path / "iic" / "SenseVoiceSmall").exists()
+    assert not (tmp_path / "iic" / "speech_fsmn_vad_zh-cn-16k-common-pytorch").exists()
+    assert [event["message_code"] for event in events] == [
+        "model.download.preparing",
+        "model.primary.downloading",
+        "model.file.downloading",
+        "model.file.completed",
+        "model.vad.downloading",
+        "model.file.downloading",
+        "model.file.completed",
+        "model.download.completed",
+    ]
+    assert events[0] == {
+        "status": "started",
+        "progress": 0,
+        "message_code": "model.download.preparing",
+        "message_args": {"model": SENSEVOICE_MODEL_ID},
+    }
+    assert events[-1] == {
+        "status": "completed",
+        "progress": 100,
+        "message_code": "model.download.completed",
+        "message_args": {"model": SENSEVOICE_MODEL_ID},
+    }
+    assert [event["current_file"] for event in events if "current_file" in event] == [
+        "model.pt",
+        "model.pt",
+        "model-file",
+        "model-file",
+    ]
+    assert all("message" not in event for event in events)
+    assert "review-secret" not in repr(events)
+
+
+def test_download_onnx_model_cache_uses_only_official_modelscope_assets(tmp_path: Path) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_snapshot_download(**kwargs: object) -> str:
+        calls.append(kwargs)
+        cache_root = Path(kwargs["cache_dir"])
+        model_id = kwargs["model_id"]
+        if model_id == ONNX_SENSEVOICE_MODEL_ID:
+            target = cache_root / "iic" / "SenseVoiceSmall-onnx"
+            target.mkdir(parents=True)
+            (target / "model_quant.onnx").write_bytes(b"onnx-asr")
+            (target / "config.yaml").write_text("frontend_conf: {}\n", encoding="utf-8")
+            (target / "am.mvn").write_bytes(b"mean")
+            (target / "tokens.json").write_text("{}", encoding="utf-8")
+        elif model_id == ONNX_VAD_MODEL_ID:
+            target = cache_root / "iic" / "speech_fsmn_vad_zh-cn-16k-common-onnx"
+            target.mkdir(parents=True)
+            (target / "model_quant.onnx").write_bytes(b"onnx-vad")
+            (target / "config.yaml").write_text("frontend_conf: {}\n", encoding="utf-8")
+            (target / "am.mvn").write_bytes(b"mean")
+        elif model_id == ONNX_SENSEVOICE_BPE_MODEL_ID:
+            target = cache_root / "iic" / "SenseVoiceSmall"
+            target.mkdir(parents=True)
+            (target / "chn_jpn_yue_eng_ko_spectok.bpe.model").write_bytes(b"bpe")
+        else:
+            raise AssertionError(f"unexpected model source: {model_id}")
+        return str(cache_root)
+
+    result = download_asr_model_cache(
+        cache_dir=tmp_path,
+        model_name=ONNX_SENSEVOICE_MODEL_ID,
+        snapshot_downloader=fake_snapshot_download,
+        onnx_asset_hashes={},
+    )
+
+    assert result == tmp_path / "onnx"
+    assert [call["model_id"] for call in calls] == [
+        ONNX_SENSEVOICE_MODEL_ID,
+        ONNX_VAD_MODEL_ID,
+        ONNX_SENSEVOICE_BPE_MODEL_ID,
+    ]
+    assert all(call["endpoint"] is None for call in calls)
+    assert validate_asr_model_cache(
+        tmp_path,
+        model_name=ONNX_SENSEVOICE_MODEL_ID,
+        onnx_asset_hashes={},
+    )
+    assert not (tmp_path / "onnx" / "models" / "iic" / "SenseVoiceSmall-onnx" / "model.pt").exists()
+
+    bpe_path = (
+        tmp_path
+        / "onnx"
+        / "models"
+        / "iic"
+        / "SenseVoiceSmall-onnx"
+        / "chn_jpn_yue_eng_ko_spectok.bpe.model"
+    )
+    bpe_path.unlink()
+    assert not validate_asr_model_cache(
+        tmp_path,
+        model_name=ONNX_SENSEVOICE_MODEL_ID,
+        onnx_asset_hashes={},
+    )
+
+
+def test_validate_onnx_model_cache_rejects_hash_mismatch(tmp_path: Path) -> None:
+    onnx_root = tmp_path / "onnx"
+    asr_dir = onnx_root / "models" / "iic" / "SenseVoiceSmall-onnx"
+    vad_dir = onnx_root / "models" / "iic" / "speech_fsmn_vad_zh-cn-16k-common-onnx"
+    asr_dir.mkdir(parents=True)
+    vad_dir.mkdir(parents=True)
+    for path in [
+        asr_dir / "model_quant.onnx",
+        asr_dir / "config.yaml",
+        asr_dir / "am.mvn",
+        asr_dir / "tokens.json",
+        asr_dir / "chn_jpn_yue_eng_ko_spectok.bpe.model",
+        vad_dir / "model_quant.onnx",
+        vad_dir / "config.yaml",
+        vad_dir / "am.mvn",
+    ]:
+        path.write_bytes(b"fixture")
+    (onnx_root / "MODEL_VERSION.txt").write_text(
+        f"model={ONNX_SENSEVOICE_MODEL_ID}\nvad={ONNX_VAD_MODEL_ID}\n",
+        encoding="utf-8",
+    )
+
+    assert not validate_asr_model_cache(
+        tmp_path,
+        model_name=ONNX_SENSEVOICE_MODEL_ID,
+        onnx_asset_hashes={Path("models/iic/SenseVoiceSmall-onnx/model_quant.onnx"): "wrong"},
+    )
+
+
+def test_normalize_asr_model_cache_layout_migrates_legacy_only_cache(
+    tmp_path: Path,
+) -> None:
+    create_valid_legacy_cache(tmp_path)
+
+    normalize_asr_model_cache_layout(tmp_path)
+
+    assert (tmp_path / "MODEL_VERSION.txt").is_file()
+    assert validate_asr_model_cache(tmp_path)
+    assert (tmp_path / "models" / "iic" / "SenseVoiceSmall" / "model.pt").is_file()
+    assert (
+        tmp_path / "models" / "iic" / "speech_fsmn_vad_zh-cn-16k-common-pytorch" / "model.pt"
+    ).is_file()
+    assert not (tmp_path / "iic" / "SenseVoiceSmall").exists()
+    assert not (tmp_path / "iic" / "speech_fsmn_vad_zh-cn-16k-common-pytorch").exists()
+
+
+def test_normalize_asr_model_cache_layout_removes_duplicate_known_legacy_dirs(
+    tmp_path: Path,
+) -> None:
+    create_valid_cache(tmp_path)
+    legacy_sensevoice = tmp_path / "iic" / "SenseVoiceSmall"
+    legacy_vad = tmp_path / "iic" / "speech_fsmn_vad_zh-cn-16k-common-pytorch"
+    unknown_legacy = tmp_path / "iic" / "custom-model"
+    legacy_sensevoice.mkdir(parents=True)
+    legacy_vad.mkdir(parents=True)
+    unknown_legacy.mkdir(parents=True)
+    (legacy_sensevoice / "model.pt").write_bytes(torch_model_bytes(b"duplicate-sensevoice"))
+    (legacy_vad / "model.pt").write_bytes(torch_model_bytes(b"duplicate-vad"))
+    (unknown_legacy / "model.pt").write_bytes(b"keep-me")
+    stale_temp = tmp_path / "._____temp"
+    stale_temp.mkdir()
+    (stale_temp / "partial.bin").write_bytes(b"not-a-model")
+
+    normalize_asr_model_cache_layout(tmp_path)
+
+    assert validate_asr_model_cache(tmp_path)
+    assert not legacy_sensevoice.exists()
+    assert not legacy_vad.exists()
+    assert (unknown_legacy / "model.pt").read_bytes() == b"keep-me"
+    assert not stale_temp.exists()
+
+
+def test_download_asr_model_cache_extracts_custom_archive_layout(tmp_path: Path) -> None:
+    archive_root = tmp_path / "archive-root"
+    create_valid_cache(archive_root)
+    archive_path = tmp_path / "sensevoice-cache.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        for file_path in archive_root.rglob("*"):
+            if file_path.is_file():
+                archive.write(file_path, file_path.relative_to(archive_root))
+
+    target = tmp_path / "target-cache"
+    events: list[dict[str, object]] = []
+    result = download_asr_model_cache(
+        cache_dir=target,
+        download_url=str(archive_path),
+        progress_callback=events.append,
+    )
+
+    assert result == target
+    assert validate_asr_model_cache(target)
+    sensevoice_model = target / "models" / "iic" / "SenseVoiceSmall" / "model.pt"
+    assert sensevoice_model.read_bytes() == torch_model_bytes(b"sensevoice")
+    assert [event["message_code"] for event in events] == [
+        "model.download.preparing",
+        "model.archive.reading",
+        "model.archive.extracting",
+        "model.download.completed",
+    ]
+    assert all("message" not in event for event in events)
+
+
+def test_download_asr_model_cache_emits_remote_archive_code_without_url(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive_root = tmp_path / "archive-root"
+    create_valid_cache(archive_root)
+    archive_path = tmp_path / "sensevoice-cache.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        for file_path in archive_root.rglob("*"):
+            if file_path.is_file():
+                archive.write(file_path, file_path.relative_to(archive_root))
+
+    def fake_download(
+        url: str,
+        destination: Path,
+        *,
+        progress_callback: object = None,
+        urlopen: object = None,
+        max_bytes: int = 0,
+        attempts: int = 3,
+    ) -> None:
+        Path(destination).write_bytes(archive_path.read_bytes())
+
+    monkeypatch.setattr(model_download, "_download_url_to_file", fake_download)
+    events: list[dict[str, object]] = []
+
+    download_asr_model_cache(
+        cache_dir=tmp_path / "target-cache",
+        download_url="https://models.example/cache.zip?token=review-secret",
+        progress_callback=events.append,
+    )
+
+    assert [event["message_code"] for event in events] == [
+        "model.download.preparing",
+        "model.archive.downloading",
+        "model.archive.extracting",
+        "model.download.completed",
+    ]
+    assert "review-secret" not in repr(events)
+
+
+def test_download_asr_model_cache_rejects_tar_symlink_members(tmp_path: Path) -> None:
+    archive_path = tmp_path / "sensevoice-cache.tar"
+    with tarfile.open(archive_path, "w") as archive:
+        marker = b"model=iic/SenseVoiceSmall\nvad=iic/speech_fsmn_vad_zh-cn-16k-common-pytorch\n"
+        marker_info = tarfile.TarInfo("MODEL_VERSION.txt")
+        marker_info.size = len(marker)
+        archive.addfile(marker_info, io.BytesIO(marker))
+
+        model_link = tarfile.TarInfo("models/iic/SenseVoiceSmall/model.pt")
+        model_link.type = tarfile.SYMTYPE
+        model_link.linkname = "../../outside/model.pt"
+        archive.addfile(model_link)
+
+        vad_bytes = b"vad"
+        vad_info = tarfile.TarInfo("models/iic/speech_fsmn_vad_zh-cn-16k-common-pytorch/model.pt")
+        vad_info.size = len(vad_bytes)
+        archive.addfile(vad_info, io.BytesIO(vad_bytes))
+
+    with pytest.raises(ModelDownloadError) as exc_info:
+        download_asr_model_cache(cache_dir=tmp_path / "target", download_url=str(archive_path))
+
+    assert exc_info.value.code == ARCHIVE_INVALID_ERROR_CODE
+    assert "unsupported" in exc_info.value.message
+
+
+def test_download_asr_model_cache_rejects_zip_symlink_members(tmp_path: Path) -> None:
+    archive_path = tmp_path / "sensevoice-cache.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr(
+            "MODEL_VERSION.txt",
+            "model=iic/SenseVoiceSmall\nvad=iic/speech_fsmn_vad_zh-cn-16k-common-pytorch\n",
+        )
+        symlink_info = zipfile.ZipInfo("models/iic/SenseVoiceSmall/model.pt")
+        symlink_info.external_attr = (stat.S_IFLNK | 0o777) << 16
+        archive.writestr(symlink_info, "../../outside/model.pt")
+        archive.writestr(
+            "models/iic/speech_fsmn_vad_zh-cn-16k-common-pytorch/model.pt",
+            b"vad",
+        )
+
+    with pytest.raises(ModelDownloadError) as exc_info:
+        download_asr_model_cache(cache_dir=tmp_path / "target", download_url=str(archive_path))
+
+    assert exc_info.value.code == ARCHIVE_INVALID_ERROR_CODE
+    assert "unsupported" in exc_info.value.message
+
+
+def test_model_emit_without_callback_returns_before_event_validation() -> None:
+    model_download._emit(
+        None,
+        "not.a.registered-code",
+        "not-a-status",
+        -1,
+        current_file="C:unsafe.pt",
+    )
+
+
+def test_modelscope_callback_without_consumer_skips_filename_sanitizing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_if_sanitized(filename: object) -> str:
+        raise AssertionError(f"must not sanitize without a consumer: {filename!r}")
+
+    monkeypatch.setattr(model_download, "safe_current_file_basename", fail_if_sanitized)
+    callback_type = model_download._make_modelscope_progress_callback(None, 10, 72)
+    callback = callback_type("malformed-model-name", 10)
+
+    callback.update(5)
+    callback.end()

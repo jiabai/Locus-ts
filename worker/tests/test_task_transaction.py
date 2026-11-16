@@ -1,0 +1,405 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+from worker_core import task_transaction
+from worker_core.task_transaction import (
+    JOURNAL_FILE_NAME,
+    RecoveryOutcome,
+    TaskArtifactCommitError,
+    TaskArtifactRecoveryError,
+    commit_task_artifacts,
+    recover_task_artifacts,
+)
+
+
+class SimulatedCrash(BaseException):
+    pass
+
+
+def _task_dir(tmp_path: Path) -> Path:
+    task_dir = tmp_path / "outputs" / "tasks" / "task-1"
+    (task_dir / "transcript").mkdir(parents=True)
+    (task_dir / "ai").mkdir()
+    return task_dir
+
+
+def _transaction_internal_files(task_dir: Path) -> list[Path]:
+    return sorted(
+        (
+            path
+            for path in task_dir.rglob(".app-*")
+            if path.is_file()
+        ),
+        key=lambda path: path.as_posix(),
+    )
+
+
+def test_commit_replaces_complete_bundle_and_cleans_internal_files(tmp_path: Path) -> None:
+    task_dir = _task_dir(tmp_path)
+    txt_path = task_dir / "transcript" / "transcript.txt"
+    md_path = task_dir / "transcript" / "transcript.md"
+    manifest_path = task_dir / "task.json"
+    txt_path.write_bytes(b"old text\n")
+    md_path.write_bytes(b"# Old\n")
+    manifest_path.write_bytes(b'{"status":"old"}\n')
+
+    commit_task_artifacts(
+        task_dir,
+        {
+            "transcript/transcript.txt": b"new text\n",
+            "transcript/transcript.md": b"# New\n",
+            "task.json": b'{"status":"new"}\n',
+        },
+    )
+
+    assert txt_path.read_bytes() == b"new text\n"
+    assert md_path.read_bytes() == b"# New\n"
+    assert manifest_path.read_bytes() == b'{"status":"new"}\n'
+    assert _transaction_internal_files(task_dir) == []
+
+
+def test_transaction_accepts_only_fixed_dissection_artifact_paths(tmp_path: Path) -> None:
+    task_dir = _task_dir(tmp_path)
+
+    commit_task_artifacts(
+        task_dir,
+        {
+            "ai/dissection.json": b'{}\n',
+            "ai/dissection.md": b"# report\n",
+            "task.json": b'{}\n',
+        },
+    )
+
+    assert (task_dir / "ai" / "dissection.json").read_bytes() == b'{}\n'
+    assert (task_dir / "ai" / "dissection.md").read_bytes() == b"# report\n"
+    with pytest.raises(TaskArtifactCommitError):
+        commit_task_artifacts(task_dir, {"ai/custom-dissection.json": b"{}"})
+
+
+@pytest.mark.parametrize(
+    "failure_event",
+    [
+        "after_journal_prepared",
+        "after_replace:ai/dissection.json",
+        "after_replace:ai/dissection.md",
+        "after_replace:task.json",
+    ],
+)
+def test_interrupted_dissection_bundle_restores_previous_complete_revision(
+    tmp_path: Path,
+    failure_event: str,
+) -> None:
+    task_dir = _task_dir(tmp_path)
+    old_payloads = {
+        "ai/dissection.json": b'{"revision":"old"}\n',
+        "ai/dissection.md": b"# old\n",
+        "task.json": b'{"artifacts":{"dissection":"ai/dissection.json"}}\n',
+    }
+    for relative, content in old_payloads.items():
+        path = task_dir / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+
+    def interrupt(event: str) -> None:
+        if event == failure_event:
+            raise SimulatedCrash()
+
+    with pytest.raises(SimulatedCrash):
+        commit_task_artifacts(
+            task_dir,
+            {
+                "ai/dissection.json": b'{"revision":"new"}\n',
+                "ai/dissection.md": b"# new\n",
+                "task.json": b'{"artifacts":{"dissection":"ai/dissection.json"}}\n',
+            },
+            _fault_hook=interrupt,
+        )
+
+    assert recover_task_artifacts(task_dir) == RecoveryOutcome.ROLLED_BACK
+    for relative, content in old_payloads.items():
+        assert (task_dir / relative).read_bytes() == content
+
+
+def test_commit_accepts_draft_destinations(tmp_path: Path) -> None:
+    task_dir = _task_dir(tmp_path)
+
+    commit_task_artifacts(
+        task_dir,
+        {
+            "ai/draft.md": b"# draft\n",
+            "ai/original/draft.md": b"# draft before edit\n",
+            "task.json": b'{"artifacts":{"draft":"ai/draft.md"}}\n',
+        },
+    )
+
+    assert (task_dir / "ai" / "draft.md").read_bytes() == b"# draft\n"
+    assert (task_dir / "ai" / "original" / "draft.md").read_bytes() == (
+        b"# draft before edit\n"
+    )
+    assert _transaction_internal_files(task_dir) == []
+
+
+def test_precommit_crash_recovers_complete_previous_revision_idempotently(
+    tmp_path: Path,
+) -> None:
+    task_dir = _task_dir(tmp_path)
+    txt_path = task_dir / "transcript" / "transcript.txt"
+    md_path = task_dir / "transcript" / "transcript.md"
+    txt_path.write_bytes(b"old text\n")
+    md_path.write_bytes(b"# Old\n")
+
+    def crash_after_first_replace(event: str) -> None:
+        if event == "after_replace:transcript/transcript.txt":
+            raise SimulatedCrash()
+
+    with pytest.raises(SimulatedCrash):
+        commit_task_artifacts(
+            task_dir,
+            {
+                "transcript/transcript.txt": b"new text\n",
+                "transcript/transcript.md": b"# New\n",
+            },
+            _fault_hook=crash_after_first_replace,
+        )
+
+    assert (task_dir / JOURNAL_FILE_NAME).is_file()
+    assert txt_path.read_bytes() == b"new text\n"
+    assert md_path.read_bytes() == b"# Old\n"
+
+    assert recover_task_artifacts(task_dir) is RecoveryOutcome.ROLLED_BACK
+    assert txt_path.read_bytes() == b"old text\n"
+    assert md_path.read_bytes() == b"# Old\n"
+    assert recover_task_artifacts(task_dir) is RecoveryOutcome.NONE
+    assert _transaction_internal_files(task_dir) == []
+
+
+def test_postcommit_crash_keeps_complete_new_revision_and_cleans_idempotently(
+    tmp_path: Path,
+) -> None:
+    task_dir = _task_dir(tmp_path)
+    txt_path = task_dir / "transcript" / "transcript.txt"
+    md_path = task_dir / "transcript" / "transcript.md"
+    txt_path.write_bytes(b"old text\n")
+    md_path.write_bytes(b"# Old\n")
+
+    def crash_after_commit(event: str) -> None:
+        if event == "after_journal_committed":
+            raise SimulatedCrash()
+
+    with pytest.raises(SimulatedCrash):
+        commit_task_artifacts(
+            task_dir,
+            {
+                "transcript/transcript.txt": b"new text\n",
+                "transcript/transcript.md": b"# New\n",
+            },
+            _fault_hook=crash_after_commit,
+        )
+
+    assert txt_path.read_bytes() == b"new text\n"
+    assert md_path.read_bytes() == b"# New\n"
+    assert recover_task_artifacts(task_dir) is RecoveryOutcome.COMMITTED_CLEANED
+    assert txt_path.read_bytes() == b"new text\n"
+    assert md_path.read_bytes() == b"# New\n"
+    assert recover_task_artifacts(task_dir) is RecoveryOutcome.NONE
+    assert _transaction_internal_files(task_dir) == []
+
+
+def test_precommit_recovery_restores_deleted_destination(tmp_path: Path) -> None:
+    task_dir = _task_dir(tmp_path)
+    segments_path = task_dir / "transcript" / "segments.json"
+    txt_path = task_dir / "transcript" / "transcript.txt"
+    segments_path.write_bytes(b'{"segments":[{"id":"old"}]}\n')
+    txt_path.write_bytes(b"old text\n")
+
+    def crash_after_delete(event: str) -> None:
+        if event == "after_replace:transcript/segments.json":
+            raise SimulatedCrash()
+
+    with pytest.raises(SimulatedCrash):
+        commit_task_artifacts(
+            task_dir,
+            {
+                "transcript/segments.json": None,
+                "transcript/transcript.txt": b"new text\n",
+            },
+            _fault_hook=crash_after_delete,
+        )
+
+    assert not segments_path.exists()
+    assert recover_task_artifacts(task_dir) is RecoveryOutcome.ROLLED_BACK
+    assert segments_path.read_bytes() == b'{"segments":[{"id":"old"}]}\n'
+    assert txt_path.read_bytes() == b"old text\n"
+
+
+def test_commit_rejects_unsupported_destination_before_mutation(tmp_path: Path) -> None:
+    task_dir = _task_dir(tmp_path)
+    outside = tmp_path / "outside.txt"
+    outside.write_bytes(b"outside\n")
+
+    with pytest.raises(TaskArtifactCommitError) as captured:
+        commit_task_artifacts(task_dir, {"../outside.txt": b"changed\n"})
+
+    assert str(captured.value) == "Task artifacts could not be stored safely."
+    assert captured.value.__cause__ is None
+    assert outside.read_bytes() == b"outside\n"
+    assert _transaction_internal_files(task_dir) == []
+
+
+def test_invalid_journal_fails_closed_without_touching_authoritative_files(
+    tmp_path: Path,
+) -> None:
+    task_dir = _task_dir(tmp_path)
+    transcript_path = task_dir / "transcript" / "transcript.txt"
+    transcript_path.write_bytes(b"mixed but untouched\n")
+    outside = tmp_path / "outside.txt"
+    outside.write_bytes(b"outside\n")
+    (task_dir / JOURNAL_FILE_NAME).write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "transaction_id": "a" * 32,
+                "state": "prepared",
+                "entries": [
+                    {
+                        "destination": "../outside.txt",
+                        "staging": ".artifact-"
+                        + "a" * 32
+                        + "-0.staging",
+                        "rollback": None,
+                        "existed_before": False,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(TaskArtifactRecoveryError) as captured:
+        recover_task_artifacts(task_dir)
+
+    assert str(captured.value) == "Task artifacts could not be recovered safely."
+    assert captured.value.__cause__ is None
+    assert transcript_path.read_bytes() == b"mixed but untouched\n"
+    assert outside.read_bytes() == b"outside\n"
+    assert (task_dir / JOURNAL_FILE_NAME).is_file()
+
+
+def test_missing_prepared_rollback_fails_before_any_restore(tmp_path: Path) -> None:
+    task_dir = _task_dir(tmp_path)
+    txt_path = task_dir / "transcript" / "transcript.txt"
+    md_path = task_dir / "transcript" / "transcript.md"
+    txt_path.write_bytes(b"mixed new text\n")
+    md_path.write_bytes(b"mixed new markdown\n")
+    transaction_id = "b" * 32
+    journal = {
+        "schema_version": 1,
+        "transaction_id": transaction_id,
+        "state": "prepared",
+        "entries": [
+            {
+                "destination": "transcript/transcript.txt",
+                "staging": f"transcript/.artifact-{transaction_id}-0.staging",
+                "rollback": f"transcript/.artifact-{transaction_id}-0.rollback",
+                "existed_before": True,
+            },
+            {
+                "destination": "transcript/transcript.md",
+                "staging": f"transcript/.artifact-{transaction_id}-1.staging",
+                "rollback": f"transcript/.artifact-{transaction_id}-1.rollback",
+                "existed_before": True,
+            },
+        ],
+    }
+    (task_dir / JOURNAL_FILE_NAME).write_text(
+        json.dumps(journal),
+        encoding="utf-8",
+    )
+    (task_dir / "transcript" / f".artifact-{transaction_id}-0.rollback").write_bytes(
+        b"old text\n"
+    )
+
+    with pytest.raises(TaskArtifactRecoveryError):
+        recover_task_artifacts(task_dir)
+
+    assert txt_path.read_bytes() == b"mixed new text\n"
+    assert md_path.read_bytes() == b"mixed new markdown\n"
+
+
+def test_recovery_removes_only_closed_name_orphans(tmp_path: Path) -> None:
+    task_dir = _task_dir(tmp_path)
+    orphan = (
+        task_dir
+        / "ai"
+        / ".artifact-cccccccccccccccccccccccccccccccc-0.staging"
+    )
+    unrelated = task_dir / "ai" / ".app-user-note.staging"
+    orphan.write_bytes(b"orphan")
+    unrelated.write_bytes(b"keep")
+
+    assert recover_task_artifacts(task_dir) is RecoveryOutcome.NONE
+
+    assert not orphan.exists()
+    assert unrelated.read_bytes() == b"keep"
+
+
+def test_contract_fixtures_match_python_parser() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    contract = json.loads(
+        (repository_root / "contracts" / "task-artifact-transaction-v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    for fixture in contract["validFixtures"]:
+        task_transaction._parse_journal_payload(fixture)
+    for fixture in contract["invalidFixtures"]:
+        with pytest.raises(ValueError):
+            task_transaction._parse_journal_payload(fixture["journal"])
+
+
+def test_closed_destinations_match_shared_contract() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    contract = json.loads(
+        (repository_root / "contracts" / "task-artifact-transaction-v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert sorted(task_transaction._ALLOWED_DESTINATIONS) == sorted(
+        contract["allowedDestinations"]
+    )
+    assert sorted(task_transaction._NON_ARTIFACT_DESTINATIONS) == sorted(
+        contract["nonArtifactDestinations"]
+    )
+    assert dict(task_transaction.ARTIFACT_KEY_BY_RELATIVE_PATH) == (
+        contract["artifactKeysByDestination"]
+    )
+    assert sorted(
+        parent.as_posix() for parent in task_transaction._INTERNAL_PARENTS
+    ) == sorted(contract["internalParents"])
+
+
+def test_store_manifest_keys_come_from_the_transaction_owner() -> None:
+    from worker_core import task_store
+
+    assert (
+        task_store.ARTIFACT_KEY_BY_RELATIVE_PATH
+        is task_transaction.ARTIFACT_KEY_BY_RELATIVE_PATH
+    )
+
+
+def test_recovery_removes_closed_orphan_journal_staging(tmp_path: Path) -> None:
+    task_dir = _task_dir(tmp_path)
+    orphan = (
+        task_dir
+        / ".artifact-transaction.dddddddddddddddddddddddddddddddd.part.json"
+    )
+    orphan.write_bytes(b"incomplete journal")
+
+    assert recover_task_artifacts(task_dir) is RecoveryOutcome.NONE
+
+    assert not orphan.exists()

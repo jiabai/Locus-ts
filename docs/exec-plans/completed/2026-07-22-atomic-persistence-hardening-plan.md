@@ -1,0 +1,330 @@
+# Atomic Persistence Hardening Implementation Plan
+
+> This ExecPlan is a living document. The sections Progress, Surprises & Discoveries, Decision Log,
+> and Outcomes & Retrospective must be kept up to date as work proceeds.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:test-driven-development while
+> implementing each task and superpowers:verification-before-completion before claiming the release
+> blocker is closed. Keep this plan current after every checkpoint.
+
+**Goal:** Make every authoritative transcript, AI, and Rust task-manifest/edit write crash-safe, and
+make multi-file updates to an existing task recover to one complete committed revision.
+
+**Architecture:** Extend the existing Python same-directory atomic writer, add a narrow Rust
+equivalent, and implement one closed task-local transaction journal shared by Python worker and Rust
+task access. Individual files use staging + sync + atomic replace; existing-task bundles use a
+prepared/committed journal so FrameQ readers recover before trusting artifacts.
+
+**Tech Stack:** Python 3.12, pytest, Rust/std filesystem APIs, Cargo tests, Serde, existing task
+access facades, Vitest/script ownership gates, Markdown governance.
+
+---
+
+## Purpose / Big Picture
+
+After this plan is complete, a power loss, full disk, process crash, or file replacement failure
+cannot turn a previously usable supported task into a product-visible half revision. Users keep the
+last complete transcript/AI/task state or receive the complete new one after automatic recovery;
+they never need to inspect internal transaction files. No successful content bytes, task schema,
+History behavior, provider calls, or AI Credits policy changes.
+
+## Progress
+
+- [x] 2026-07-22: Verified direct final-path writes in Python transcript/AI producers and Rust task
+  manifest/transcript edit owners; confirmed existing media/worker-manifest atomic primitive covers
+  only Phase 1. Validation: source inspection with `rg` plus the named production owners.
+- [x] 2026-07-22: Approved the product boundary and durable Phase 2 design; registered this work as
+  a broad-release blocker. Validation: documentation diff and governance index registration.
+- [x] 2026-07-22: Added byte characterization, failure-injection, and production-write ownership
+  tests. RED evidence: focused pytest produced 6 intended failures (missing byte/JSON atomic APIs and
+  transcript/AI writers bypassing replacement); the Node ownership gate reported all 7 current
+  direct-write violations across the named Python/Rust owners.
+- [x] 2026-07-22: Completed the Python per-file atomic primitive with UTF-8 text, bytes, pretty JSON,
+  fixed non-echoing failures, ordinary-file checks, reparse/link checks, cleanup, and best-effort
+  directory sync. GREEN evidence: `worker/tests/test_atomic_files.py` reports 14 passed, 2 skipped;
+  the two skips are Windows symlink fixtures unavailable without local symlink privilege.
+- [x] 2026-07-22: Implemented the closed task transaction journal in Python and Rust with shared
+  valid/invalid fixtures, prepared rollback, committed cleanup, orphan cleanup, manifest-last
+  ordering, and idempotent recovery. GREEN evidence: focused atomic/transaction pytest reports
+  24 passed, 2 skipped; both Node contract/ownership tests and Rust fixture/recovery tests pass.
+- [x] 2026-07-22: Moved worker transcript and AI target payloads plus the final manifest behind the
+  transaction boundary. Commit failure preserves the prior revision, returns fixed storage codes,
+  and does not repeat the captured LLM calls. Focused integration coverage reports 101 passed.
+- [x] 2026-07-22: Added the Rust atomic writer, supported-task recovery gate, task-local coordinator,
+  retry-child lease, and transactional transcript edit/backups. A real Windows no-delete-sharing
+  fixture and the injected mid-commit matrix preserve the prior complete revision.
+- [x] 2026-07-22: Completed local and packaging validation. Worker 563 passed / 2 native-symlink
+  fixtures skipped; App 551 passed; Rust 185 passed outside the restrictive process sandbox; scripts
+  25 passed; Ruff, TypeScript/i18n lint, frontend build, rustfmt, governance, 63-file packaged-worker
+  SHA-256 equality, and Tauri release `--no-bundle` build passed.
+- [x] 2026-07-22: Landed the reviewed implementation on `main` at `61d489a` by fast-forward merge,
+  reran the complete worker/app/Rust/script/lint/build/governance gates on the merged tree, removed
+  the clean feature worktree, and deleted the merged branch. Validation: Worker 563 passed / 2
+  skipped, App 551 passed, Rust 185 passed, scripts 25 passed, and the final `main` worktree was
+  clean.
+
+## Surprises & Discoveries
+
+- Evidence: `worker/frameq_worker/atomic_files.py` already provides unique same-directory
+  staging, file `fsync`, `os.replace`, and best-effort directory sync. Reuse and extend it rather
+  than introducing another worker persistence helper.
+- Evidence: `worker/frameq_worker/task_store.py` already writes `frameq-task.json` and the preference
+  snapshot atomically, but
+  Python transcript and AI producers bypass that helper.
+- Evidence: Rust `task_manifest/storage.rs::write_task_manifest`, transcript edit storage, and
+  segments still
+  use direct writes. Transcript edit can change several already-visible fixed files while manifest
+  bytes remain unchanged, so “manifest last” alone is not a sufficient commit marker.
+- Evidence: `task_manifest/access.rs` is the existing validated supported-task entry point and is
+  therefore the correct recovery gate. Recovery must not create a second
+  raw-manifest or path-validation owner.
+- Evidence: the current Windows test host rejects unprivileged file and directory symlink fixture
+  creation. Link/reparse rejection remains implemented and source-tested, but native symlink
+  execution must be rerun on a host with Developer Mode or equivalent privilege.
+- Evidence: an invalid manifest could previously declare a transaction rollback path under a known
+  artifact key. Artifact-path validation now rejects dot-prefixed internal path components, and
+  History regression coverage proves transaction and per-file atomic staging paths cannot be listed
+  or located.
+- Evidence: the Rust blocked-stdin cancellation test fails only inside the restrictive command
+  sandbox with `RequestDeliveryFailed`; the same complete 185-test suite passes outside that sandbox.
+
+## Decision Log
+
+- Decision: Keep official paths and task schema v3; use a task-local prepared/committed journal
+  rather than versioned artifact directories. Rationale: changing artifact paths/schema immediately
+  before broad release would expand History, AI, cache, locate-file, and legacy compatibility risk.
+  Date/Author: 2026-07-22, User + Codex.
+- Decision: The atomic journal state, not manifest byte replacement, is the existing-task commit
+  point. Rationale: a transcript text edit may not change manifest artifact declarations. Date/Author:
+  2026-07-22, Codex.
+- Decision: Summary/mindmap and insights JSON/Markdown commit as two independent target
+  transactions. Rationale: this preserves existing `partial_completed` behavior and does not roll
+  back a successful target when the other target fails. Date/Author: 2026-07-22, Codex.
+- Decision: Do not add a third-party filesystem transaction/locking dependency. Rationale: current
+  application ownership already prevents conflicting mutations; a narrow per-task Rust guard plus
+  recovery-before-read closes product-visible races without inventing a general database. Date/Author:
+  2026-07-22, Codex.
+
+## Outcomes & Retrospective
+
+Implementation and recorded local acceptance are complete and landed on `main` in `61d489a`.
+Authoritative transcript, AI, manifest, preference-snapshot, and Rust transcript-edit writes now use
+atomic replacement; existing-task bundles recover through journal v1 to the old or new complete
+revision. The current Windows host passed a real sharing-violation fixture and the full local/package
+gates. Residual validation remains unverified for macOS/Unix native permission and symlink behavior,
+forced termination, and real Tauri transcript/AI smoke. External programs that bypass FrameQ task
+access remain outside the product transaction guarantee. Broad publication remains independently
+blocked on worker-watchdog and server-operations work.
+
+## Context and Orientation
+
+- Product specification:
+  `docs/product-specs/2026-07-22-release-reliability-hardening.md`.
+- Durable design:
+  `docs/design-docs/2026-07-19-worker-atomic-artifact-commit.md` Phase 2.
+- Existing Python primitive: `worker/frameq_worker/atomic_files.py`.
+- Python authoritative producers:
+  `worker/frameq_worker/asr_runtime/artifacts.py`,
+  `worker/frameq_worker/insightflow/summary.py`, and
+  `worker/frameq_worker/insightflow/generator.py`.
+- Python task access/manifest owner: `worker/frameq_worker/task_store.py`.
+- Rust task trust/storage owners: `app/src-tauri/src/task_manifest/access.rs` and
+  `app/src-tauri/src/task_manifest/storage.rs`.
+- Rust transcript edit owners: `app/src-tauri/src/transcript_detail/edit_storage.rs` and
+  `app/src-tauri/src/transcript_detail/segments.rs`.
+- Canonical worker source is `worker/frameq_worker/`; the Tauri resource worker is generated and
+  must never be edited directly.
+
+## Required Invariants
+
+- No authoritative production destination is opened for truncating write.
+- Staging and rollback paths stay beside/inside the validated task directory, use unpredictable
+  names, reject links/reparse points, and remain outside artifact allowlists.
+- Every payload is completely serialized/formatted and validated before the first authoritative
+  replacement.
+- A `prepared` transaction recovers the complete previous revision; a `committed` transaction keeps
+  the complete new revision.
+- Recovery never interprets arbitrary paths from disk. Journal fields are closed, relative,
+  normalized, deduplicated, and checked against exact supported destination patterns.
+- A failed or invalid recovery never deletes source media, original transcript backups, or external
+  paths and never returns raw path/content/error material.
+- Existing user-visible bytes, artifact names, schemas, progress, History, cancellation, cache,
+  local-media planning, provider calls, and AI Credits remain unchanged.
+
+## Plan of Work
+
+### Task 1: Freeze Current Bytes and Add RED Ownership Gates
+
+**Files:**
+- Create: `worker/tests/test_atomic_files.py`
+- Modify: `worker/tests/test_asr.py`
+- Modify: `worker/tests/test_insights.py`
+- Modify: `worker/tests/test_task_store.py`
+- Modify: `app/src-tauri/src/task_manifest/tests.rs`
+- Modify: `app/src-tauri/src/transcript_detail/tests.rs`
+- Create: `scripts/tests/atomic-persistence-boundary.test.mjs`
+
+- [x] Characterize exact transcript TXT/Markdown/segments, summary/mindmap, insights JSON/Markdown,
+  manifest, backup, and saved-edit bytes before changing writers.
+- [x] Add a source ownership test that rejects direct authoritative `Path.write_text`, `fs::write`,
+  `File::create`, or truncating `OpenOptions` in the listed production owners while allowing test
+  fixtures and reviewed atomic modules.
+- [x] Add RED tests showing a simulated replace failure preserves the old destination and a failed
+  first write leaves no destination.
+- [x] Run focused tests and record the expected failures in this Progress section.
+
+### Task 2: Complete the Python Per-File Atomic Primitive
+
+**Files:**
+- Modify: `worker/frameq_worker/atomic_files.py`
+- Modify: `worker/tests/test_atomic_files.py`
+
+- [x] Keep `staged_file` as the single low-level owner. Add byte-writing and staged-content
+  validation APIs only if required; do not duplicate staging/replace logic in artifact modules.
+- [x] Reject linked/reparse/irregular destinations or parents according to the current task-root
+  boundary before replacement. Preserve Windows closed-handle semantics.
+- [x] Map create/write/sync/validation/replace failures to fixed non-echoing exceptions and always
+  attempt staging cleanup without replacing the primary error.
+- [x] Test existing destination, absent destination, Unicode content, JSON serialization, nonregular
+  staging, sync failure, replace failure, cleanup failure, and parent-directory sync fallback.
+- [x] Run `uv run pytest worker\tests\test_atomic_files.py -q` and require GREEN (10 passed, 2
+  native-symlink fixtures skipped on this Windows host).
+
+### Task 3: Define and Cross-Test Transaction Journal v1
+
+**Files:**
+- Create: `contracts/task-artifact-transaction-v1.json`
+- Create: `worker/frameq_worker/task_transaction.py`
+- Create: `worker/tests/test_task_transaction.py`
+- Create: `app/src-tauri/src/task_manifest/transaction.rs`
+- Modify: `app/src-tauri/src/task_manifest.rs`
+- Modify: `app/src-tauri/src/task_manifest/tests.rs`
+- Create: `scripts/tests/task-artifact-transaction-contract.test.mjs`
+
+- [x] Define exact closed fields for schema version, transaction ID, state, and entries. Entries may
+  contain only normalized relative destination/staging/rollback names and `existed_before`.
+- [x] Register the exact allowed destination set/patterns for transcript and AI artifacts plus
+  `frameq-task.json`; forbid source media, configuration, logs, original backups, and external paths.
+- [x] Implement identical Python/Rust parse and validation semantics from shared valid/invalid JSON
+  fixtures. Unknown fields/schema/state, duplicates, separators outside normalized relative paths,
+  links, missing rollback files, and unsupported targets fail closed.
+- [x] Implement `prepared` rollback and `committed` cleanup idempotently. A second recovery pass must
+  make no further authoritative change.
+- [x] Do not expose the raw journal DTO outside the Python task facade or Rust task-manifest module.
+- [x] Run focused Python, Rust, and script contract tests and require GREEN.
+
+### Task 4: Move Python Transcript and AI Producers Behind Transactions
+
+**Files:**
+- Modify: `worker/frameq_worker/asr_runtime/artifacts.py`
+- Modify: `worker/frameq_worker/insightflow/summary.py`
+- Modify: `worker/frameq_worker/insightflow/generator.py`
+- Modify: `worker/frameq_worker/pipeline_runtime/transcript.py`
+- Modify: `worker/frameq_worker/pipeline_runtime/insights.py`
+- Modify: `worker/frameq_worker/worker_service.py`
+- Modify: `worker/frameq_worker/task_store.py`
+- Modify: `worker/tests/test_asr.py`
+- Modify: `worker/tests/test_insights.py`
+- Modify: `worker/tests/test_pipeline.py`
+- Modify: `worker/tests/test_task_store.py`
+
+- [x] Make transcript generation build and validate every payload before committing TXT/Markdown and
+  optional segments. New task manifest remains the visibility boundary.
+- [x] Move existing-task transaction ownership high enough that the selected AI target files and
+  the final manifest participate in one commit. Summary/mindmap form one target transaction and
+  insights JSON/Markdown another; lower InsightFlow formatters must not commit early. Commit only
+  the target that completed, preserving `partial_completed` and returned artifact maps.
+- [x] Recover an unresolved journal before Python opens, retries, or finalizes an existing task.
+- [x] Ensure an LLM response is never repeated because disk commit failed. Return the fixed storage
+  error and let the user decide whether to retry.
+- [x] Add failure injection after every destination replace and both journal states; assert complete
+  old/new revision, unchanged provider-call count, unchanged Credits count, and hidden internal
+  files.
+- [x] Run focused worker suites and then `uv run pytest worker\tests` plus
+  `uv run ruff check worker`.
+
+### Task 5: Add Rust Atomic Manifest and Transcript Transactions
+
+**Files:**
+- Create: `app/src-tauri/src/atomic_files.rs`
+- Create: `app/src-tauri/src/task_manifest/coordinator.rs`
+- Modify: `app/src-tauri/src/lib.rs`
+- Modify: `app/src-tauri/src/task_manifest/storage.rs`
+- Modify: `app/src-tauri/src/task_manifest/access.rs`
+- Modify: `app/src-tauri/src/task_manifest/tests.rs`
+- Modify: `app/src-tauri/src/video_processing/retry_insights.rs`
+- Modify: `app/src-tauri/src/transcript_detail/edit_storage.rs`
+- Modify: `app/src-tauri/src/transcript_detail/segments.rs`
+- Modify: `app/src-tauri/src/transcript_detail/tests.rs`
+
+- [x] Implement one private same-directory Rust atomic writer with exclusive unique staging,
+  `write_all`, `sync_all`, validation, rename/replace, parent sync where supported, and safe cleanup.
+  Keep platform replacement details inside this module.
+- [x] Replace `write_task_manifest` direct writing while preserving exact pretty JSON plus newline.
+- [x] Stage transcript text, preserved-prefix Markdown, optional segments, one-time original backups,
+  and manifest bytes before mutation; then commit them through journal v1.
+- [x] Add a narrow per-task Rust coordinator around recovery/read/edit and hold the matching mutation
+  lease across the complete supervised `retry_insights` child invocation. History skips a busy task;
+  direct open/edit returns a fixed busy result. Do not add a second global workflow lock.
+- [x] Recover before supported task scan/open/edit and skip/fail closed according to existing scan
+  versus direct-open policy.
+- [x] Add Windows sharing-violation and Unix permission/fault fixtures where deterministic, plus the
+  complete crash-point matrix using injected hooks rather than killing the test process.
+- [x] Run focused Rust tests, full Cargo tests, and rustfmt.
+
+### Task 6: Close Cross-Language and Product Regression Gates
+
+**Files:**
+- Modify: `app/src/i18n/errorResources.ts`
+- Modify: `app/src/i18n/errorResources.test.ts`
+- Modify: `app/src/i18n/resources.test.ts`
+- Modify: `app/src/workerErrorCopy.ts`
+- Modify: `app/src/workerErrorCopy.test.ts`
+- Modify: `app/src/features/transcript/useTranscriptDetailController.test.ts`
+- Modify: `app/tests/app-input.browser.test.ts`
+- Modify: this ExecPlan and release-plan evidence
+
+- [x] Add localized stable guidance for atomic write and recovery failures through the existing
+  `errorResources` and `workerErrorCopy` mapping. Preserve sanitized technical-details behavior.
+- [x] Prove task History/detail/AI retry never lists or locates staging, journal, or rollback files.
+- [x] Prove existing task bytes and manifest schema remain compatible on all successful paths.
+- [x] Refresh the packaged worker only through the established build helper and prove recursive
+  canonical/mirror equality.
+- [x] Run all validation commands below. Record exact totals, warnings, unavailable native evidence,
+  and residual risk before marking this plan complete.
+
+## Validation and Acceptance
+
+```powershell
+uv run pytest worker\tests\test_atomic_files.py worker\tests\test_task_transaction.py -q
+uv run pytest worker\tests
+uv run ruff check worker
+cargo test --manifest-path app\src-tauri\Cargo.toml
+cargo fmt --manifest-path app\src-tauri\Cargo.toml -- --check
+npm --prefix app test
+npm --prefix app run lint
+npm --prefix app run build
+node --test scripts\tests\*.test.mjs
+python scripts\validate_agents_docs.py --level WARN
+node --input-type=module -e "import { prepareFreshWorkerResource } from './scripts/tauri-dev-fresh-worker.mjs'; await prepareFreshWorkerResource();"
+npm --prefix app run tauri -- build --no-bundle
+git diff --check
+git status --short
+```
+
+Manual/native acceptance:
+
+- Save a transcript repeatedly while exercising long text, segments present/absent, file locks, and
+  forced app termination; reopen and verify one complete revision plus intact original backup.
+- Generate each AI target with a fake provider, force termination at controlled commit points, and
+  reopen History to verify deterministic recovery without another provider/Credits call.
+- On available Windows and macOS hosts, verify replacement/recovery behavior on the actual app-local
+  filesystem and record any unavailable platform explicitly.
+
+## Release Completion Conditions
+
+- All authoritative production writes enter reviewed atomic owners.
+- Every transaction crash point recovers deterministically and idempotently.
+- Full validation is GREEN and evidence is recorded here and in the active release plan.
+- The atomic-persistence high-priority debt entry is recorded as completed after review and merge.
+- No tag, push, PR, or public release is part of this ExecPlan without separate authorization.
